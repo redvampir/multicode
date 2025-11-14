@@ -71,13 +71,15 @@ TEST_CASE("Node: Execution ports", "[node][ports]") {
     REQUIRE(!node.has_execution_flow());
     
     const auto exec_in = node.add_exec_input();
+    REQUIRE(exec_in.value != 0);
     REQUIRE(node.has_execution_flow());
-    
+
     const auto exec_out = node.add_exec_output();
-    
+    REQUIRE(exec_out.value != 0);
+
     const auto exec_inputs = node.get_exec_input_ports();
     const auto exec_outputs = node.get_exec_output_ports();
-    
+
     REQUIRE(exec_inputs.size() == 1);
     REQUIRE(exec_outputs.size() == 1);
 }

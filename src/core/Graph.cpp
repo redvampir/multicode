@@ -302,12 +302,17 @@ auto Graph::topological_sort_dfs(
     
     for (const auto conn_id : outgoing) {
         const auto* conn = get_connection(conn_id);
-        
+        if (conn == nullptr) {
+            // The adjacency list references a connection that no longer exists.
+            // Skip gracefully to preserve the algorithm's safety guarantees.
+            continue;
+        }
+
         // Only follow execution connections for topological sort
         if (conn->type != ConnectionType::Execution) {
             continue;
         }
-        
+
         const auto next_node = conn->to_node;
         
         if (in_stack.contains(next_node)) {
@@ -341,6 +346,9 @@ auto Graph::dfs_reachable(NodeId current, std::unordered_set<NodeId>& visited) c
     
     for (const auto conn_id : outgoing) {
         const auto* conn = get_connection(conn_id);
+        if (conn == nullptr) {
+            continue;
+        }
         const auto next_node = conn->to_node;
         
         if (!visited.contains(next_node)) {
@@ -635,6 +643,9 @@ auto Graph::get_statistics() const -> Statistics {
             const auto outgoing = get_connections_from(current);
             for (const auto conn_id : outgoing) {
                 const auto* conn = get_connection(conn_id);
+                if (conn == nullptr) {
+                    continue;
+                }
                 if (conn->type == ConnectionType::Execution) {
                     const auto next = conn->to_node;
                     if (!depths.contains(next)) {

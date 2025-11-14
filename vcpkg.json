@@ -19,5 +19,5 @@
       "version>=": "3.4.0"
     }
   ],
-  "builtin-baseline": "latest"
+  "builtin-baseline": "d1ff36c6520ee43f1a656c03cd6425c2974a449e"
 }

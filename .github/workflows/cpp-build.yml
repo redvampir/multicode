@@ -21,7 +21,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: 'd1ff36c6520ee43f1a656c03cd6425c2974a449e'
         
     - name: Setup MSVC
       uses: microsoft/setup-msbuild@v2
@@ -63,7 +63,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: 'd1ff36c6520ee43f1a656c03cd6425c2974a449e'
         
     - name: Configure CMake
       run: |
@@ -103,7 +103,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: 'd1ff36c6520ee43f1a656c03cd6425c2974a449e'
         
     - name: Configure CMake
       run: |
@@ -136,7 +136,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: 'd1ff36c6520ee43f1a656c03cd6425c2974a449e'
         
     - name: Configure CMake with Coverage
       run: |

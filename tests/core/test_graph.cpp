@@ -340,11 +340,13 @@ TEST_CASE("Graph: Validation - valid graph", "[graph][validation]") {
     REQUIRE(added_func_id == func_id);
     REQUIRE(added_end_id == end_id);
 
-    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
-                  func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn1 = graph.connect(
+        start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+        func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
 
-    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
-                  end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn2 = graph.connect(
+        func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+        end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
 
     REQUIRE(conn1.has_value());
     REQUIRE(conn2.has_value());
@@ -526,11 +528,13 @@ TEST_CASE("Graph: Has path", "[graph][query]") {
     REQUIRE(added_func_id == func_id);
     REQUIRE(added_end_id == end_id);
 
-    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
-                  func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn1 = graph.connect(
+        start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+        func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
 
-    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
-                  end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn2 = graph.connect(
+        func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+        end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
 
     REQUIRE(conn1.has_value());
     REQUIRE(conn2.has_value());
@@ -562,11 +566,13 @@ TEST_CASE("Graph: Statistics", "[graph][stats]") {
     REQUIRE(added_func_id == func_id);
     REQUIRE(added_end_id == end_id);
 
-    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
-                  func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn1 = graph.connect(
+        start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+        func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
 
-    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
-                  end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+    const auto conn2 = graph.connect(
+        func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+        end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
 
     REQUIRE(conn1.has_value());
     REQUIRE(conn2.has_value());

@@ -49,7 +49,8 @@ TEST_CASE("Graph: Get node", "[graph][nodes]") {
     auto node = NodeFactory::create(NodeType::Function, "func");
     const auto node_id = node->get_id();
     
-    graph.add_node(std::move(node));
+    const auto added_id = graph.add_node(std::move(node));
+    REQUIRE(added_id == node_id);
     
     const auto* found = graph.get_node(node_id);
     REQUIRE(found != nullptr);
@@ -66,7 +67,8 @@ TEST_CASE("Graph: Remove node", "[graph][nodes]") {
     auto node = NodeFactory::create(NodeType::Function);
     const auto node_id = node->get_id();
     
-    graph.add_node(std::move(node));
+    const auto added_id = graph.add_node(std::move(node));
+    REQUIRE(added_id == node_id);
     REQUIRE(graph.node_count() == 1);
     
     auto result = graph.remove_node(node_id);
@@ -82,11 +84,11 @@ TEST_CASE("Graph: Cannot add duplicate node ID", "[graph][nodes]") {
     auto node1 = std::make_unique<Node>(NodeId{100}, NodeType::Function, "func1");
     auto node2 = std::make_unique<Node>(NodeId{101}, NodeType::Function, "func2");
     
-    auto id1 = graph.add_node(std::move(node1));
-    REQUIRE(id1);
-    
-    auto id2 = graph.add_node(std::move(node2));
-    REQUIRE(id2);
+    const auto id1 = graph.add_node(std::move(node1));
+    REQUIRE(id1 == NodeId{100});
+
+    const auto id2 = graph.add_node(std::move(node2));
+    REQUIRE(id2 == NodeId{101});
     
     REQUIRE(graph.node_count() == 2);
 }
@@ -112,16 +114,20 @@ TEST_CASE("Graph: Connect nodes - valid execution flow", "[graph][connections]")
     const auto func_exec_out = func->get_exec_output_ports()[0]->get_id();
     const auto end_exec_in = end->get_exec_input_ports()[0]->get_id();
     
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
-    graph.add_node(std::move(end));
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
+    REQUIRE(added_end_id == end_id);
     
     // Connect Start -> Function
-    auto conn1 = graph.connect(start_id, start_exec_out, func_id, func_exec_in);
+    const auto conn1 = graph.connect(start_id, start_exec_out, func_id, func_exec_in);
     REQUIRE(conn1.has_value());
     
     // Connect Function -> End
-    auto conn2 = graph.connect(func_id, func_exec_out, end_id, end_exec_in);
+    const auto conn2 = graph.connect(func_id, func_exec_out, end_id, end_exec_in);
     REQUIRE(conn2.has_value());
     
     REQUIRE(graph.connection_count() == 2);
@@ -139,11 +145,14 @@ TEST_CASE("Graph: Connect nodes - data ports", "[graph][connections]") {
     const auto var_out = var->get_output_ports()[0]->get_id();
     const auto add_in_a = add->get_input_ports()[0]->get_id();
     
-    graph.add_node(std::move(var));
-    graph.add_node(std::move(add));
+    const auto added_var_id = graph.add_node(std::move(var));
+    const auto added_add_id = graph.add_node(std::move(add));
+
+    REQUIRE(added_var_id == var_id);
+    REQUIRE(added_add_id == add_id);
     
     // Connect variable to add input
-    auto conn = graph.connect(var_id, var_out, add_id, add_in_a);
+    const auto conn = graph.connect(var_id, var_out, add_id, add_in_a);
     REQUIRE(conn.has_value());
 }
 
@@ -156,12 +165,15 @@ TEST_CASE("Graph: Connection validation", "[graph][connections][validation]") {
     const auto id1 = node1->get_id();
     const auto id2 = node2->get_id();
     
-    graph.add_node(std::move(node1));
-    graph.add_node(std::move(node2));
+    const auto added_id1 = graph.add_node(std::move(node1));
+    const auto added_id2 = graph.add_node(std::move(node2));
+
+    REQUIRE(added_id1 == id1);
+    REQUIRE(added_id2 == id2);
     
     SECTION("Non-existent source node") {
         const auto port = graph.get_node(id2)->get_exec_input_ports()[0]->get_id();
-        auto result = graph.connect(NodeId{999}, PortId{1}, id2, port);
+        const auto result = graph.connect(NodeId{999}, PortId{1}, id2, port);
         
         REQUIRE(!result.has_value());
         REQUIRE(result.error().code == 301);  // Node not found
@@ -169,14 +181,14 @@ TEST_CASE("Graph: Connection validation", "[graph][connections][validation]") {
     
     SECTION("Non-existent target node") {
         const auto port = graph.get_node(id1)->get_exec_output_ports()[0]->get_id();
-        auto result = graph.connect(id1, port, NodeId{999}, PortId{1});
+        const auto result = graph.connect(id1, port, NodeId{999}, PortId{1});
         
         REQUIRE(!result.has_value());
         REQUIRE(result.error().code == 301);
     }
     
     SECTION("Non-existent port") {
-        auto result = graph.connect(id1, PortId{999}, id2, PortId{1});
+        const auto result = graph.connect(id1, PortId{999}, id2, PortId{1});
         
         REQUIRE(!result.has_value());
         REQUIRE(result.error().code == 302);  // or 303
@@ -186,7 +198,7 @@ TEST_CASE("Graph: Connection validation", "[graph][connections][validation]") {
         const auto out = graph.get_node(id1)->get_exec_output_ports()[0]->get_id();
         const auto in = graph.get_node(id1)->get_exec_input_ports()[0]->get_id();
         
-        auto result = graph.connect(id1, out, id1, in);
+        const auto result = graph.connect(id1, out, id1, in);
         
         REQUIRE(!result.has_value());
         REQUIRE(result.error().code == 304);
@@ -205,15 +217,18 @@ TEST_CASE("Graph: Disconnect", "[graph][connections]") {
     const auto out_port = start->get_exec_output_ports()[0]->get_id();
     const auto in_port = end->get_exec_input_ports()[0]->get_id();
     
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(end));
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_end_id == end_id);
     
-    auto conn = graph.connect(start_id, out_port, end_id, in_port);
+    const auto conn = graph.connect(start_id, out_port, end_id, in_port);
     REQUIRE(conn.has_value());
     REQUIRE(graph.connection_count() == 1);
-    
+
     // Disconnect
-    auto result = graph.disconnect(conn.value());
+    const auto result = graph.disconnect(conn.value());
     REQUIRE(result.has_value());
     REQUIRE(graph.connection_count() == 0);
 }
@@ -236,20 +251,29 @@ TEST_CASE("Graph: Topological sort - simple chain", "[graph][topo]") {
     const auto func2_id = func2->get_id();
     const auto end_id = end->get_id();
     
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func1));
-    graph.add_node(std::move(func2));
-    graph.add_node(std::move(end));
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func1_id = graph.add_node(std::move(func1));
+    const auto added_func2_id = graph.add_node(std::move(func2));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func1_id == func1_id);
+    REQUIRE(added_func2_id == func2_id);
+    REQUIRE(added_end_id == end_id);
     
     // Connect
-    graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
                   func1_id, graph.get_node(func1_id)->get_exec_input_ports()[0]->get_id());
-    
-    graph.connect(func1_id, graph.get_node(func1_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(func1_id, graph.get_node(func1_id)->get_exec_output_ports()[0]->get_id(),
                   func2_id, graph.get_node(func2_id)->get_exec_input_ports()[0]->get_id());
-    
-    graph.connect(func2_id, graph.get_node(func2_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn3 = graph.connect(func2_id, graph.get_node(func2_id)->get_exec_output_ports()[0]->get_id(),
                   end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
+    REQUIRE(conn3.has_value());
     
     auto result = graph.topological_sort();
     REQUIRE(result.has_value());
@@ -272,15 +296,21 @@ TEST_CASE("Graph: Topological sort - detect cycle", "[graph][topo]") {
     const auto id1 = func1->get_id();
     const auto id2 = func2->get_id();
     
-    graph.add_node(std::move(func1));
-    graph.add_node(std::move(func2));
+    const auto added_id1 = graph.add_node(std::move(func1));
+    const auto added_id2 = graph.add_node(std::move(func2));
+
+    REQUIRE(added_id1 == id1);
+    REQUIRE(added_id2 == id2);
     
     // Create cycle: func1 -> func2 -> func1
-    graph.connect(id1, graph.get_node(id1)->get_exec_output_ports()[0]->get_id(),
+    const auto conn1 = graph.connect(id1, graph.get_node(id1)->get_exec_output_ports()[0]->get_id(),
                   id2, graph.get_node(id2)->get_exec_input_ports()[0]->get_id());
-    
-    graph.connect(id2, graph.get_node(id2)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(id2, graph.get_node(id2)->get_exec_output_ports()[0]->get_id(),
                   id1, graph.get_node(id1)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
     
     auto result = graph.topological_sort();
     REQUIRE(!result.has_value());
@@ -302,15 +332,22 @@ TEST_CASE("Graph: Validation - valid graph", "[graph][validation]") {
     const auto func_id = func->get_id();
     const auto end_id = end->get_id();
     
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
-    graph.add_node(std::move(end));
-    
-    graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
+    REQUIRE(added_end_id == end_id);
+
+    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
                   func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
-    
-    graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
                   end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
     
     auto result = graph.validate();
     REQUIRE(result.is_valid);
@@ -321,9 +358,15 @@ TEST_CASE("Graph: Validation - missing Start node", "[graph][validation]") {
     
     auto func = NodeFactory::create(NodeType::Function);
     auto end = NodeFactory::create(NodeType::End);
-    
-    graph.add_node(std::move(func));
-    graph.add_node(std::move(end));
+
+    const auto func_id = func->get_id();
+    const auto end_id = end->get_id();
+
+    const auto added_func_id = graph.add_node(std::move(func));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_func_id == func_id);
+    REQUIRE(added_end_id == end_id);
     
     auto result = graph.validate();
     REQUIRE(!result.is_valid);
@@ -336,9 +379,15 @@ TEST_CASE("Graph: Validation - missing End node", "[graph][validation]") {
     
     auto start = NodeFactory::create(NodeType::Start);
     auto func = NodeFactory::create(NodeType::Function);
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
+
+    const auto start_id = start->get_id();
+    const auto func_id = func->get_id();
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
     
     auto result = graph.validate();
     REQUIRE(!result.is_valid);
@@ -353,22 +402,31 @@ TEST_CASE("Graph: Validation - unreachable nodes", "[graph][validation]") {
     auto func1 = NodeFactory::create(NodeType::Function, "connected");
     auto func2 = NodeFactory::create(NodeType::Function, "isolated");  // Not connected
     auto end = NodeFactory::create(NodeType::End);
-    
+
     const auto start_id = start->get_id();
     const auto func1_id = func1->get_id();
+    const auto func2_id = func2->get_id();
     const auto end_id = end->get_id();
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func1));
-    graph.add_node(std::move(func2));  // Isolated
-    graph.add_node(std::move(end));
-    
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func1_id = graph.add_node(std::move(func1));
+    const auto added_func2_id = graph.add_node(std::move(func2));  // Isolated
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func1_id == func1_id);
+    REQUIRE(added_func2_id == func2_id);
+    REQUIRE(added_end_id == end_id);
+
     // Connect only Start -> Func1 -> End
-    [[maybe_unused]] auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
                   func1_id, graph.get_node(func1_id)->get_exec_input_ports()[0]->get_id());
-    
-    [[maybe_unused]] auto conn2 = graph.connect(func1_id, graph.get_node(func1_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(func1_id, graph.get_node(func1_id)->get_exec_output_ports()[0]->get_id(),
                   end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
     
     auto result = graph.validate();
     REQUIRE(!result.is_valid);
@@ -385,11 +443,15 @@ TEST_CASE("Graph: Find Start node", "[graph][query]") {
     
     auto start = NodeFactory::create(NodeType::Start);
     auto func = NodeFactory::create(NodeType::Function);
-    
+
     const auto start_id = start->get_id();
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
+    const auto func_id = func->get_id();
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
     
     const auto* found = graph.find_start_node();
     REQUIRE(found != nullptr);
@@ -402,10 +464,18 @@ TEST_CASE("Graph: Find End nodes", "[graph][query]") {
     auto start = NodeFactory::create(NodeType::Start);
     auto end1 = NodeFactory::create(NodeType::End, "end1");
     auto end2 = NodeFactory::create(NodeType::End, "end2");
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(end1));
-    graph.add_node(std::move(end2));
+
+    const auto start_id = start->get_id();
+    const auto end1_id = end1->get_id();
+    const auto end2_id = end2->get_id();
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_end1_id = graph.add_node(std::move(end1));
+    const auto added_end2_id = graph.add_node(std::move(end2));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_end1_id == end1_id);
+    REQUIRE(added_end2_id == end2_id);
     
     const auto ends = graph.find_end_nodes();
     REQUIRE(ends.size() == 2);
@@ -417,10 +487,18 @@ TEST_CASE("Graph: Get nodes by type", "[graph][query]") {
     auto func1 = NodeFactory::create(NodeType::Function);
     auto func2 = NodeFactory::create(NodeType::Function);
     auto var = NodeFactory::create(NodeType::Variable);
-    
-    graph.add_node(std::move(func1));
-    graph.add_node(std::move(func2));
-    graph.add_node(std::move(var));
+
+    const auto func1_id = func1->get_id();
+    const auto func2_id = func2->get_id();
+    const auto var_id = var->get_id();
+
+    const auto added_func1_id = graph.add_node(std::move(func1));
+    const auto added_func2_id = graph.add_node(std::move(func2));
+    const auto added_var_id = graph.add_node(std::move(var));
+
+    REQUIRE(added_func1_id == func1_id);
+    REQUIRE(added_func2_id == func2_id);
+    REQUIRE(added_var_id == var_id);
     
     const auto functions = graph.get_nodes_of_type(NodeType::Function);
     REQUIRE(functions.size() == 2);
@@ -435,20 +513,27 @@ TEST_CASE("Graph: Has path", "[graph][query]") {
     auto start = NodeFactory::create(NodeType::Start);
     auto func = NodeFactory::create(NodeType::Function);
     auto end = NodeFactory::create(NodeType::End);
-    
+
     const auto start_id = start->get_id();
     const auto func_id = func->get_id();
     const auto end_id = end->get_id();
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
-    graph.add_node(std::move(end));
-    
-    [[maybe_unused]] auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
+    REQUIRE(added_end_id == end_id);
+
+    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
                   func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
-    
-    [[maybe_unused]] auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
                   end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
     
     REQUIRE(graph.has_path(start_id, end_id));
     REQUIRE(!graph.has_path(end_id, start_id));  // No reverse path
@@ -464,20 +549,27 @@ TEST_CASE("Graph: Statistics", "[graph][stats]") {
     auto start = NodeFactory::create(NodeType::Start);
     auto func = NodeFactory::create(NodeType::Function);
     auto end = NodeFactory::create(NodeType::End);
-    
+
     const auto start_id = start->get_id();
     const auto func_id = func->get_id();
     const auto end_id = end->get_id();
-    
-    graph.add_node(std::move(start));
-    graph.add_node(std::move(func));
-    graph.add_node(std::move(end));
-    
-    [[maybe_unused]] auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto added_start_id = graph.add_node(std::move(start));
+    const auto added_func_id = graph.add_node(std::move(func));
+    const auto added_end_id = graph.add_node(std::move(end));
+
+    REQUIRE(added_start_id == start_id);
+    REQUIRE(added_func_id == func_id);
+    REQUIRE(added_end_id == end_id);
+
+    const auto conn1 = graph.connect(start_id, graph.get_node(start_id)->get_exec_output_ports()[0]->get_id(),
                   func_id, graph.get_node(func_id)->get_exec_input_ports()[0]->get_id());
-    
-    [[maybe_unused]] auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
+
+    const auto conn2 = graph.connect(func_id, graph.get_node(func_id)->get_exec_output_ports()[0]->get_id(),
                   end_id, graph.get_node(end_id)->get_exec_input_ports()[0]->get_id());
+
+    REQUIRE(conn1.has_value());
+    REQUIRE(conn2.has_value());
     
     const auto stats = graph.get_statistics();
     

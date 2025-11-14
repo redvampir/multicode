@@ -18,13 +18,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4.1.7
       
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v2
+
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
-        
-    - name: Setup MSVC
-      uses: microsoft/setup-msbuild@v2
+        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
       
     - name: Configure CMake
       run: |
@@ -63,7 +63,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
         
     - name: Configure CMake
       run: |
@@ -95,15 +95,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4.1.7
       
-    - name: Install clang-tidy
+    - name: Install build tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang-tidy
+        sudo apt-get install -y build-essential cmake ninja-build clang-tidy
         
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
         
     - name: Configure CMake
       run: |
@@ -131,12 +131,12 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake lcov
+        sudo apt-get install -y build-essential cmake ninja-build lcov
         
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11.5
       with:
-        vcpkgGitCommitId: 'master'
+        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
         
     - name: Configure CMake with Coverage
       run: |

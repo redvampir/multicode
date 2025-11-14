@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "multicode-root",
+  "files": [],
+  "references": [
+    {
+      "path": "./vscode-extension"
+    }
+  ],
+  "typeAcquisition": {
+    "enable": true,
+    "include": ["dom"]
+  }
+}

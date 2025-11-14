@@ -1,0 +1,14 @@
+node_modules/**
+src/**
+.vscode/**
+**/*.ts
+**/*.map
+tsconfig.json
+tsconfig.*.json
+webpack.config.js
+package-lock.json
+scripts/**
+schemas/**
+*.vsix
+README.old.md
+.gitignore

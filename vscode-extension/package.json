@@ -1,0 +1,179 @@
+{
+  "$schema": "../schemas/package.schema.json",
+  "name": "multicode-visual-programming",
+  "displayName": "МультиКод - Visual Programming",
+  "description": "Visual programming for C++, Rust, and Assembly - Blueprint-style graph editor",
+  "version": "0.1.0",
+  "publisher": "multicode-team",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/multicode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Education"
+  ],
+  "keywords": [
+    "visual programming",
+    "blueprints",
+    "C++",
+    "Rust",
+    "Assembly",
+    "graph",
+    "low-level",
+    "Russian"
+  ],
+  "activationEvents": [
+    "onLanguage:cpp",
+    "onLanguage:rust"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "multicode.openEditor",
+        "title": "МультиКод: Open Visual Editor",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "multicode.generateCode",
+        "title": "МультиКод: Generate Code",
+        "icon": "$(code)"
+      },
+      {
+        "command": "multicode.newGraph",
+        "title": "МультиКод: New Graph",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "multicode.saveGraph",
+        "title": "МультиКод: Save Graph",
+        "icon": "$(save)"
+      },
+      {
+        "command": "multicode.loadGraph",
+        "title": "МультиКод: Load Graph",
+        "icon": "$(folder-opened)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "multicode.openEditor",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorLangId == cpp || editorLangId == rust"
+      },
+      {
+        "command": "multicode.generateCode",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "multicode.openEditor",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "multicode.openEditor",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode"
+        },
+        {
+          "command": "multicode.generateCode",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "МультиКод",
+      "properties": {
+        "multicode.language": {
+          "type": "string",
+          "enum": [
+            "cpp",
+            "rust",
+            "asm"
+          ],
+          "default": "cpp",
+          "description": "Target programming language"
+        },
+        "multicode.displayLanguage": {
+          "type": "string",
+          "enum": [
+            "ru",
+            "en",
+            "bilingual"
+          ],
+          "default": "bilingual",
+          "description": "Node display language"
+        },
+        "multicode.theme": {
+          "type": "string",
+          "enum": [
+            "dark",
+            "light",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Visual editor theme"
+        },
+        "multicode.aiNaming.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered node naming"
+        },
+        "multicode.codegen.autoGenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically generate code on graph change"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^18.0.0",
+    "@types/mocha": "^10.0.0",
+    "@types/cytoscape": "^3.21.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.0",
+    "ts-loader": "^9.5.0",
+    "mocha": "^10.2.0"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "cytoscape": "^3.26.0",
+    "cytoscape-dagre": "^2.5.0",
+    "zustand": "^4.4.0"
+  }
+}

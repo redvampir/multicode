@@ -1,0 +1,23 @@
+{
+  "$schema": "./schemas/vcpkg.schema.json",
+  "name": "multicode",
+  "version": "0.1.0",
+  "description": "Visual Programming Plugin for VS Code - Low-Level Languages",
+  "homepage": "https://github.com/your-org/multicode",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "nlohmann-json",
+      "version>=": "3.11.0"
+    },
+    {
+      "name": "spdlog",
+      "version>=": "1.12.0"
+    },
+    {
+      "name": "catch2",
+      "version>=": "3.4.0"
+    }
+  ],
+  "builtin-baseline": "latest"
+}

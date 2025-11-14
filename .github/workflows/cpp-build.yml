@@ -1,0 +1,167 @@
+name: C++ Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-windows:
+    name: Windows MSVC Build
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.1.7
+      
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11.5
+      with:
+        vcpkgGitCommitId: 'master'
+        
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v2
+      
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . `
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+      
+    - name: Build
+      run: cmake --build build --config ${{ env.BUILD_TYPE }}
+      
+    - name: Test
+      working-directory: build
+      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: multicode-windows-${{ env.BUILD_TYPE }}
+        path: |
+          build/${{ env.BUILD_TYPE }}/multicode_core.lib
+          build/${{ env.BUILD_TYPE }}/multicode_tests.exe
+          
+  build-linux:
+    name: Linux GCC Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.1.7
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake ninja-build
+        
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11.5
+      with:
+        vcpkgGitCommitId: 'master'
+        
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -G Ninja
+      
+    - name: Build
+      run: cmake --build build --config ${{ env.BUILD_TYPE }}
+      
+    - name: Test
+      working-directory: build
+      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: multicode-linux-${{ env.BUILD_TYPE }}
+        path: |
+          build/libmulticode_core.a
+          build/multicode_tests
+          
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.1.7
+      
+    - name: Install clang-tidy
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tidy
+        
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11.5
+      with:
+        vcpkgGitCommitId: 'master'
+        
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      
+    - name: Run clang-tidy
+      run: |
+        clang-tidy --version
+        # Run clang-tidy on source files
+        find src include -name '*.cpp' -o -name '*.hpp' | \
+          xargs clang-tidy -p build --warnings-as-errors='*'
+      continue-on-error: true
+      
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4.1.7
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake lcov
+        
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11.5
+      with:
+        vcpkgGitCommitId: 'master'
+        
+    - name: Configure CMake with Coverage
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=Coverage \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
+      
+    - name: Build
+      run: cmake --build build
+      
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure
+      
+    - name: Generate coverage report
+      run: |
+        lcov --capture --directory build --output-file coverage.info
+        lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info
+        lcov --list coverage.info
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4.5.0
+      with:
+        files: ./coverage.info
+        flags: unittests
+        name: codecov-multicode
+      continue-on-error: true

@@ -161,14 +161,9 @@ TEST_CASE("Port: Empty name", "[port][edge]") {
     REQUIRE(port.get_name().empty());
 }
 
-#if 0  // Display name feature not yet implemented
+#ifdef VISPROG_ENABLE_PORT_DISPLAY_NAME_TEST
 TEST_CASE("Port: Display name", "[port]") {
     Port port(PortId{1}, PortDirection::Input, DataType::Int32, "value");
-
-    REQUIRE(port.get_name() == "value");
-}
-#endif
-
 
     REQUIRE(port.get_name() == "value");
 }

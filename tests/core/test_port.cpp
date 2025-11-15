@@ -3,24 +3,7 @@
 #include <catch2/catch_all.hpp>
 #include <stdexcept>
 
-#include <string>
-#include <string_view>
-
-using Catch::Matchers::Predicate;
-
-namespace {
-
-auto InvalidArgumentMessageContains(std::string_view expected) {
-    return Predicate<std::invalid_argument>(
-        [expected](const std::invalid_argument& error) {
-            const std::string_view message{error.what() ? error.what() : ""};
-            return message.find(expected) != std::string_view::npos;
-        },
-        std::string{"сообщение содержит '"}.append(expected).append("'")
-    );
-}
-
-}  // namespace
+using Catch::Matchers::ContainsSubstring;
 
 #include "visprog/core/Port.hpp"
 
@@ -225,7 +208,7 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
 
         REQUIRE_THROWS_MATCHES(data_port.set_type_name("custom"),
                                std::invalid_argument,
-                               InvalidArgumentMessageContains("does not support"));
+                               ContainsSubstring("does not support"));
     }
 
     SECTION("Allows pointer universal markers") {
@@ -243,7 +226,7 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
 
         REQUIRE_THROWS_MATCHES(vec_port.set_type_name("void"),
                                std::invalid_argument,
-                               InvalidArgumentMessageContains("universal marker"));
+                               ContainsSubstring("universal marker"));
     }
 
     SECTION("Template accepts wildcard names") {

@@ -199,6 +199,28 @@ TEST_CASE("Port: Container element validation", "[port][types]") {
     REQUIRE_FALSE(vec_out.can_connect_to(map_in));
 }
 
+TEST_CASE("Port: Container type name normalization", "[port][types]") {
+    SECTION("Map assignments ignore formatting") {
+        Port map_out(PortId{40}, PortDirection::Output, DataType::Map, "map_out");
+        Port map_in(PortId{41}, PortDirection::Input, DataType::Map, "map_in");
+
+        map_out.set_type_name("Key=std::string, Value=Vector<int>");
+        map_in.set_type_name("value=vector< int >, key=STD::STRING");
+
+        REQUIRE(map_out.can_connect_to(map_in));
+    }
+
+    SECTION("Nested generics normalize recursively") {
+        Port vector_out(PortId{42}, PortDirection::Output, DataType::Vector, "vector_out");
+        Port vector_in(PortId{43}, PortDirection::Input, DataType::Vector, "vector_in");
+
+        vector_out.set_type_name("Map<std::string, Vector<Game.Item>>");
+        vector_in.set_type_name("map < std::string , vector<game.item> >");
+
+        REQUIRE(vector_out.can_connect_to(vector_in));
+    }
+}
+
 TEST_CASE("Port: Template placeholders", "[port][types]") {
     Port templ_out(PortId{40}, PortDirection::Output, DataType::Template, "templ_out");
     Port templ_in(PortId{41}, PortDirection::Input, DataType::Template, "templ_in");

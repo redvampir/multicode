@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -330,6 +331,17 @@ private:
     }
 }
 
+[[nodiscard]] constexpr auto allows_generic_type_name(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::Pointer:
+        case DataType::Reference:
+        case DataType::Template:
+            return true;
+        default:
+            return false;
+    }
+}
+
 [[nodiscard]] constexpr auto is_signed_integral(DataType type) noexcept -> bool {
     switch (type) {
         case DataType::Int8:
@@ -479,6 +491,35 @@ Port::Port(PortId id,
     , data_type_(data_type)
     , name_(std::move(name))
     , type_name_() {
+}
+
+auto Port::set_type_name(std::string type_name) -> bool {
+    if (!requires_type_name(data_type_)) {
+        throw std::invalid_argument(
+            "Port::set_type_name: data type '" + std::string(to_string(data_type_)) +
+            "' does not support custom type names");
+    }
+
+    const auto trimmed = trim(type_name);
+    if (trimmed.empty()) {
+        type_name_.clear();
+        return true;
+    }
+
+    auto normalized = normalize_type_name(trimmed);
+    if (normalized.empty()) {
+        type_name_.clear();
+        return true;
+    }
+
+    if (is_generic_type_name(normalized) && !allows_generic_type_name(data_type_)) {
+        throw std::invalid_argument(
+            "Port::set_type_name: universal marker '" + normalized +
+            "' is not allowed for data type '" + std::string(to_string(data_type_)) + "'");
+    }
+
+    type_name_ = std::move(normalized);
+    return true;
 }
 
 auto Port::can_connect_to(const Port& other) const noexcept -> bool {

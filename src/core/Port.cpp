@@ -54,7 +54,11 @@ struct TypeExpression {
 };
 
 [[nodiscard]] constexpr auto is_identifier_char(char ch) noexcept -> bool {
-    return std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_' || ch == '.';
+    const auto code = static_cast<unsigned char>(ch);
+    const bool is_digit = code >= static_cast<unsigned char>('0') && code <= static_cast<unsigned char>('9');
+    const bool is_upper = code >= static_cast<unsigned char>('A') && code <= static_cast<unsigned char>('Z');
+    const bool is_lower = code >= static_cast<unsigned char>('a') && code <= static_cast<unsigned char>('z');
+    return is_digit || is_upper || is_lower || ch == '_' || ch == '.';
 }
 
 [[nodiscard]] auto to_lower_ascii(std::string value) -> std::string {

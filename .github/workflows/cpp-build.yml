@@ -40,7 +40,7 @@ jobs:
       run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
       
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4.3.3
+      uses: actions/upload-artifact@v4.6.2
       with:
         name: multicode-windows-${{ env.BUILD_TYPE }}
         path: |
@@ -80,7 +80,7 @@ jobs:
       run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
       
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4.3.3
+      uses: actions/upload-artifact@v4.6.2
       with:
         name: multicode-linux-${{ env.BUILD_TYPE }}
         path: |

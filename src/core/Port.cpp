@@ -2,6 +2,191 @@
 
 #include "visprog/core/Port.hpp"
 
+#include <string_view>
+
+namespace {
+
+using visprog::core::DataType;
+
+constexpr auto whitespace_chars = " \t\n\r\f\v";
+
+[[nodiscard]] auto trim(std::string_view value) noexcept -> std::string_view {
+    const auto first = value.find_first_not_of(whitespace_chars);
+    if (first == std::string_view::npos) {
+        return {};
+    }
+
+    const auto last = value.find_last_not_of(whitespace_chars);
+    return value.substr(first, last - first + 1);
+}
+
+[[nodiscard]] constexpr auto is_generic_type_name(std::string_view name) noexcept -> bool {
+    return name.empty() || name == "*" || name == "void" || name == "auto" || name == "any";
+}
+
+[[nodiscard]] auto are_type_names_compatible(std::string_view lhs, std::string_view rhs) noexcept -> bool {
+    const auto lhs_trimmed = trim(lhs);
+    const auto rhs_trimmed = trim(rhs);
+
+    if (lhs_trimmed == rhs_trimmed) {
+        return true;
+    }
+
+    return is_generic_type_name(lhs_trimmed) || is_generic_type_name(rhs_trimmed);
+}
+
+[[nodiscard]] constexpr auto requires_type_name(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::Pointer:
+        case DataType::Reference:
+        case DataType::Array:
+        case DataType::Vector:
+        case DataType::Map:
+        case DataType::Set:
+        case DataType::Struct:
+        case DataType::Class:
+        case DataType::Enum:
+        case DataType::Template:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr auto is_signed_integral(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::Int8:
+        case DataType::Int16:
+        case DataType::Int32:
+        case DataType::Int64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr auto is_unsigned_integral(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::UInt8:
+        case DataType::UInt16:
+        case DataType::UInt32:
+        case DataType::UInt64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr auto is_integral(DataType type) noexcept -> bool {
+    return is_signed_integral(type) || is_unsigned_integral(type) || type == DataType::Bool || type == DataType::Char;
+}
+
+[[nodiscard]] constexpr auto is_floating_point(DataType type) noexcept -> bool {
+    return type == DataType::Float || type == DataType::Double;
+}
+
+[[nodiscard]] constexpr auto is_numeric(DataType type) noexcept -> bool {
+    return is_integral(type) || is_floating_point(type);
+}
+
+[[nodiscard]] constexpr auto is_string_like(DataType type) noexcept -> bool {
+    return type == DataType::String || type == DataType::StringView;
+}
+
+[[nodiscard]] constexpr auto is_pointer_like(DataType type) noexcept -> bool {
+    return type == DataType::Pointer || type == DataType::Reference;
+}
+
+[[nodiscard]] constexpr auto is_container(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::Array:
+        case DataType::Vector:
+        case DataType::Map:
+        case DataType::Set:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr auto is_user_defined(DataType type) noexcept -> bool {
+    return type == DataType::Struct || type == DataType::Class || type == DataType::Enum;
+}
+
+[[nodiscard]] constexpr auto is_numeric_widening(DataType from, DataType to) noexcept -> bool {
+    switch (from) {
+        case DataType::Int8:
+            return to == DataType::Int16 || to == DataType::Int32 || to == DataType::Int64;
+        case DataType::Int16:
+            return to == DataType::Int32 || to == DataType::Int64;
+        case DataType::Int32:
+            return to == DataType::Int64;
+        case DataType::UInt8:
+            return to == DataType::UInt16 || to == DataType::UInt32 || to == DataType::UInt64;
+        case DataType::UInt16:
+            return to == DataType::UInt32 || to == DataType::UInt64;
+        case DataType::UInt32:
+            return to == DataType::UInt64;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] constexpr auto is_integral_to_floating(DataType from, DataType to) noexcept -> bool {
+    if (!is_integral(from)) {
+        return false;
+    }
+
+    return to == DataType::Float || to == DataType::Double;
+}
+
+[[nodiscard]] constexpr auto is_float_promotion(DataType from, DataType to) noexcept -> bool {
+    return from == DataType::Float && to == DataType::Double;
+}
+
+[[nodiscard]] auto is_pointer_compatible(DataType from_type,
+                                          std::string_view from_name,
+                                          DataType to_type,
+                                          std::string_view to_name) noexcept -> bool {
+    if (!is_pointer_like(from_type) || !is_pointer_like(to_type)) {
+        return false;
+    }
+
+    return are_type_names_compatible(from_name, to_name);
+}
+
+[[nodiscard]] auto is_container_compatible(DataType from_type,
+                                            std::string_view from_name,
+                                            DataType to_type,
+                                            std::string_view to_name) noexcept -> bool {
+    if (!is_container(from_type) || !is_container(to_type)) {
+        return false;
+    }
+
+    if (from_type != to_type) {
+        return false;
+    }
+
+    return are_type_names_compatible(from_name, to_name);
+}
+
+[[nodiscard]] auto is_user_defined_compatible(DataType from_type,
+                                              std::string_view from_name,
+                                              DataType to_type,
+                                              std::string_view to_name) noexcept -> bool {
+    if (!is_user_defined(from_type) || !is_user_defined(to_type)) {
+        return false;
+    }
+
+    if (from_type != to_type) {
+        return false;
+    }
+
+    return are_type_names_compatible(from_name, to_name);
+}
+
+}  // namespace
+
 namespace visprog::core {
 
 auto Port::generate_unique_id() noexcept -> PortId {
@@ -37,12 +222,12 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
     }
     
     // Type compatibility check
-    
+
     // Execution ports can only connect to execution ports
     if (is_execution() || other.is_execution()) {
         return is_execution() == other.is_execution();
     }
-    
+
     // Any type can connect to anything (custom nodes)
     if (data_type_ == DataType::Any || other.data_type_ == DataType::Any) {
         return true;
@@ -53,85 +238,77 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
         return true;
     }
     
+    // Void ports can only connect to void ports
+    if (data_type_ == DataType::Void || other.data_type_ == DataType::Void) {
+        return data_type_ == other.data_type_;
+    }
+
     // Exact type match
     if (data_type_ == other.data_type_) {
-        // For user-defined types, check type names
-        if (data_type_ == DataType::Class || 
-            data_type_ == DataType::Struct ||
-            data_type_ == DataType::Enum) {
-            return type_name_ == other.type_name_;
+        if (requires_type_name(data_type_)) {
+            return are_type_names_compatible(type_name_, other.type_name_);
         }
         return true;
     }
-    
-    // Implicit conversions (simplified for now)
-    // TODO: Implement full type conversion rules
-    
-    // Integer to Float promotion (Int32 → Float/Double)
-    const bool int_to_float =
-        (data_type_ >= DataType::Int8 && data_type_ <= DataType::UInt64) &&
-        (other.data_type_ == DataType::Float || other.data_type_ == DataType::Double);
-    
-    if (int_to_float) {
+
+    // Template placeholders allow compatible matches by name
+    if (data_type_ == DataType::Template || other.data_type_ == DataType::Template) {
+        return are_type_names_compatible(type_name_, other.type_name_);
+    }
+
+    // Pointer and reference conversions (including pointer <-> reference)
+    if (is_pointer_compatible(data_type_, type_name_, other.data_type_, other.type_name_)) {
         return true;
     }
-    
-    // Float to Double promotion
-    if (data_type_ == DataType::Float && other.data_type_ == DataType::Double) {
+
+    if (is_pointer_compatible(other.data_type_, other.type_name_, data_type_, type_name_)) {
         return true;
     }
-    
-    // Integer widening (Int32 → Int64, but NOT Int64 → Int32)
-    const bool is_int_widening = 
-        (data_type_ == DataType::Int8 && other.data_type_ == DataType::Int16) ||
-        (data_type_ == DataType::Int8 && other.data_type_ == DataType::Int32) ||
-        (data_type_ == DataType::Int8 && other.data_type_ == DataType::Int64) ||
-        (data_type_ == DataType::Int16 && other.data_type_ == DataType::Int32) ||
-        (data_type_ == DataType::Int16 && other.data_type_ == DataType::Int64) ||
-        (data_type_ == DataType::Int32 && other.data_type_ == DataType::Int64) ||
-        (data_type_ == DataType::UInt8 && other.data_type_ == DataType::UInt16) ||
-        (data_type_ == DataType::UInt8 && other.data_type_ == DataType::UInt32) ||
-        (data_type_ == DataType::UInt8 && other.data_type_ == DataType::UInt64) ||
-        (data_type_ == DataType::UInt16 && other.data_type_ == DataType::UInt32) ||
-        (data_type_ == DataType::UInt16 && other.data_type_ == DataType::UInt64) ||
-        (data_type_ == DataType::UInt32 && other.data_type_ == DataType::UInt64);
-    
-    if (is_int_widening) {
+
+    // Container compatibility (element/key types must match)
+    if (is_container_compatible(data_type_, type_name_, other.data_type_, other.type_name_)) {
         return true;
     }
-    
-    // Any type to String conversion (to_string-like conversion)
-    if (other.data_type_ == DataType::String || other.data_type_ == DataType::StringView) {
-        return true;  // Any type can be converted to string
-    }
-    
-    // Float conversions (Float ↔ Double)
-    const bool both_floats = 
-        (data_type_ == DataType::Float || data_type_ == DataType::Double) &&
-        (other.data_type_ == DataType::Float || other.data_type_ == DataType::Double);
-    
-    if (both_floats) {
+
+    if (is_container_compatible(other.data_type_, other.type_name_, data_type_, type_name_)) {
         return true;
     }
-    
-    // Pointer/Reference conversions
-    if (data_type_ == DataType::Pointer && other.data_type_ == DataType::Reference) {
+
+    // User-defined types must have matching identifiers
+    if (is_user_defined_compatible(data_type_, type_name_, other.data_type_, other.type_name_)) {
         return true;
     }
-    
-    if (data_type_ == DataType::Reference && other.data_type_ == DataType::Pointer) {
+
+    if (is_user_defined_compatible(other.data_type_, other.type_name_, data_type_, type_name_)) {
         return true;
     }
-    
-    // String conversions
-    if (data_type_ == DataType::String && other.data_type_ == DataType::StringView) {
+
+    // Numeric promotions (integral widening, integral -> floating, float -> double)
+    if (is_numeric_widening(data_type_, other.data_type_) ||
+        is_integral_to_floating(data_type_, other.data_type_) ||
+        is_float_promotion(data_type_, other.data_type_)) {
         return true;
     }
-    
-    if (data_type_ == DataType::StringView && other.data_type_ == DataType::String) {
+
+    // Allow float interchange (Float <-> Double)
+    if (is_floating_point(data_type_) && is_floating_point(other.data_type_)) {
         return true;
     }
-    
+
+    // String-like conversions (String <-> StringView and any type -> string)
+    if (is_string_like(data_type_) && is_string_like(other.data_type_)) {
+        return true;
+    }
+
+    if (is_string_like(other.data_type_)) {
+        return true;
+    }
+
+    // Numeric to bool conversions are allowed only towards bool targets
+    if (other.data_type_ == DataType::Bool && is_numeric(data_type_)) {
+        return true;
+    }
+
     // No compatible conversion found
     return false;
 }

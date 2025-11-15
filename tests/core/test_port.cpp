@@ -140,6 +140,9 @@ TEST_CASE("Port: Array type", "[port][types]") {
     Port arr_out(PortId{1}, PortDirection::Output, DataType::Array, "arr");
     Port arr_in(PortId{2}, PortDirection::Input, DataType::Array, "in");
 
+    arr_out.set_type_name("int");
+    arr_in.set_type_name("int");
+
     REQUIRE(arr_out.can_connect_to(arr_in));
 }
 
@@ -147,8 +150,75 @@ TEST_CASE("Port: Pointer types", "[port][types]") {
     Port ptr_out(PortId{1}, PortDirection::Output, DataType::Pointer, "ptr");
     Port ptr_in(PortId{2}, PortDirection::Input, DataType::Pointer, "in");
 
-    // Pointers should be compatible
+    ptr_out.set_type_name("int");
+    ptr_in.set_type_name("int");
+
+    // Pointers should be compatible when element types match
     REQUIRE(ptr_out.can_connect_to(ptr_in));
+}
+
+TEST_CASE("Port: Custom type compatibility", "[port][types]") {
+    Port class_out(PortId{10}, PortDirection::Output, DataType::Class, "class_out");
+    Port class_in(PortId{11}, PortDirection::Input, DataType::Class, "class_in");
+    Port other_class_in(PortId{12}, PortDirection::Input, DataType::Class, "class_other");
+
+    class_out.set_type_name("Game.Character");
+    class_in.set_type_name("Game.Character");
+    other_class_in.set_type_name("Game.Inventory");
+
+    REQUIRE(class_out.can_connect_to(class_in));
+    REQUIRE_FALSE(class_out.can_connect_to(other_class_in));
+}
+
+TEST_CASE("Port: Pointer and reference interoperability", "[port][types]") {
+    Port ptr_out(PortId{20}, PortDirection::Output, DataType::Pointer, "ptr_out");
+    Port ref_in(PortId{21}, PortDirection::Input, DataType::Reference, "ref_in");
+    Port generic_ptr_in(PortId{22}, PortDirection::Input, DataType::Pointer, "generic_in");
+
+    ptr_out.set_type_name("float");
+    ref_in.set_type_name("float");
+    generic_ptr_in.set_type_name("void");
+
+    REQUIRE(ptr_out.can_connect_to(ref_in));
+    REQUIRE(ptr_out.can_connect_to(generic_ptr_in));
+}
+
+TEST_CASE("Port: Container element validation", "[port][types]") {
+    Port vec_out(PortId{30}, PortDirection::Output, DataType::Vector, "vec_out");
+    Port vec_in(PortId{31}, PortDirection::Input, DataType::Vector, "vec_in");
+    Port vec_in_other(PortId{32}, PortDirection::Input, DataType::Vector, "vec_in_other");
+    Port map_in(PortId{33}, PortDirection::Input, DataType::Map, "map_in");
+
+    vec_out.set_type_name("int");
+    vec_in.set_type_name("int");
+    vec_in_other.set_type_name("float");
+    map_in.set_type_name("std::string,int");
+
+    REQUIRE(vec_out.can_connect_to(vec_in));
+    REQUIRE_FALSE(vec_out.can_connect_to(vec_in_other));
+    REQUIRE_FALSE(vec_out.can_connect_to(map_in));
+}
+
+TEST_CASE("Port: Template placeholders", "[port][types]") {
+    Port templ_out(PortId{40}, PortDirection::Output, DataType::Template, "templ_out");
+    Port templ_in(PortId{41}, PortDirection::Input, DataType::Template, "templ_in");
+    Port templ_in_other(PortId{42}, PortDirection::Input, DataType::Template, "templ_in_other");
+
+    templ_out.set_type_name("T");
+    templ_in.set_type_name("T");
+    templ_in_other.set_type_name("U");
+
+    REQUIRE(templ_out.can_connect_to(templ_in));
+    REQUIRE_FALSE(templ_out.can_connect_to(templ_in_other));
+}
+
+TEST_CASE("Port: Void isolation", "[port][types]") {
+    Port void_out(PortId{50}, PortDirection::Output, DataType::Void, "void_out");
+    Port void_in(PortId{51}, PortDirection::Input, DataType::Void, "void_in");
+    Port int_in(PortId{52}, PortDirection::Input, DataType::Int32, "int_in");
+
+    REQUIRE(void_out.can_connect_to(void_in));
+    REQUIRE_FALSE(void_out.can_connect_to(int_in));
 }
 
 // ============================================================================

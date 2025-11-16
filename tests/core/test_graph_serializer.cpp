@@ -198,7 +198,8 @@ TEST_CASE("GraphSerializer: invalid enums are rejected", "[graph][serialization]
     REQUIRE(result.error().code == 602);
 }
 
-TEST_CASE("GraphSerializer: schema guard rejects incompatible payloads", "[graph][serialization][negative]") {
+TEST_CASE("GraphSerializer: schema guard rejects incompatible payloads",
+          "[graph][serialization][negative]") {
     const auto base = nlohmann::json::parse(kSnapshotGraph);
 
     SECTION("missing schema block") {

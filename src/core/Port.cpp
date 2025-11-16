@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -53,7 +54,11 @@ struct TypeExpression {
 };
 
 [[nodiscard]] constexpr auto is_identifier_char(char ch) noexcept -> bool {
-    return std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_' || ch == '.';
+    const auto code = static_cast<unsigned char>(ch);
+    const bool is_digit = code >= static_cast<unsigned char>('0') && code <= static_cast<unsigned char>('9');
+    const bool is_upper = code >= static_cast<unsigned char>('A') && code <= static_cast<unsigned char>('Z');
+    const bool is_lower = code >= static_cast<unsigned char>('a') && code <= static_cast<unsigned char>('z');
+    return is_digit || is_upper || is_lower || ch == '_' || ch == '.';
 }
 
 [[nodiscard]] auto to_lower_ascii(std::string value) -> std::string {
@@ -330,6 +335,17 @@ private:
     }
 }
 
+[[nodiscard]] constexpr auto allows_generic_type_name(DataType type) noexcept -> bool {
+    switch (type) {
+        case DataType::Pointer:
+        case DataType::Reference:
+        case DataType::Template:
+            return true;
+        default:
+            return false;
+    }
+}
+
 [[nodiscard]] constexpr auto is_signed_integral(DataType type) noexcept -> bool {
     switch (type) {
         case DataType::Int8:
@@ -470,6 +486,21 @@ auto Port::generate_unique_id() noexcept -> PortId {
     return PortId{next_id_.fetch_add(1, std::memory_order_relaxed)};
 }
 
+auto Port::synchronize_id_counter(PortId max_id) noexcept -> void {
+    const auto desired = max_id.value + 1;
+    auto current = next_id_.load(std::memory_order_relaxed);
+
+    while (current < desired &&
+           !next_id_.compare_exchange_weak(
+               current,
+               desired,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed
+           )) {
+        // retry until the counter catches up
+    }
+}
+
 Port::Port(PortId id,
            PortDirection direction,
            DataType data_type,
@@ -479,6 +510,35 @@ Port::Port(PortId id,
     , data_type_(data_type)
     , name_(std::move(name))
     , type_name_() {
+}
+
+auto Port::set_type_name(std::string type_name) -> bool {
+    if (!requires_type_name(data_type_)) {
+        throw std::invalid_argument(
+            "Port::set_type_name: data type '" + std::string(to_string(data_type_)) +
+            "' does not support custom type names");
+    }
+
+    const auto trimmed = trim(type_name);
+    if (trimmed.empty()) {
+        type_name_.clear();
+        return true;
+    }
+
+    auto normalized = normalize_type_name(trimmed);
+    if (normalized.empty()) {
+        type_name_.clear();
+        return true;
+    }
+
+    if (is_generic_type_name(normalized) && !allows_generic_type_name(data_type_)) {
+        throw std::invalid_argument(
+            "Port::set_type_name: universal marker '" + normalized +
+            "' is not allowed for data type '" + std::string(to_string(data_type_)) + "'");
+    }
+
+    type_name_ = std::move(normalized);
+    return true;
 }
 
 auto Port::can_connect_to(const Port& other) const noexcept -> bool {

@@ -138,4 +138,19 @@ auto NodeFactory::generate_default_name(NodeType type) -> std::string {
     return std::format("{}_{}", to_string(type), generate_node_id().value);
 }
 
+auto NodeFactory::synchronize_id_counter(NodeId max_id) -> void {
+    const auto desired = max_id.value + 1;
+    auto current = next_id_.load(std::memory_order_relaxed);
+
+    while (current < desired &&
+           !next_id_.compare_exchange_weak(
+               current,
+               desired,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed
+           )) {
+        // retry until we successfully update the counter or discover newer value
+    }
+}
+
 }  // namespace visprog::core

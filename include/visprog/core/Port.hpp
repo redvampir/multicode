@@ -17,6 +17,9 @@ public:
     /// @note Thread-safe
     [[nodiscard]] static auto generate_unique_id() noexcept -> PortId;
 
+    /// @brief Сдвинуть счётчик идентификаторов, если внешние данные содержат большие ID
+    static auto synchronize_id_counter(PortId max_id) noexcept -> void;
+
     /// @brief Create a new port
     /// @param id Unique port identifier
     /// @param direction Input or output
@@ -83,10 +86,14 @@ public:
     // Mutators
     // ========================================================================
     
-    /// @brief Set custom type name (for DataType::Class, DataType::Struct)
-    auto set_type_name(std::string type_name) -> void {
-        type_name_ = std::move(type_name);
-    }
+    /// @brief Set custom type name for complex categories
+    /// @details Разрешено только для типов, которые требуют явного имени
+    ///          (указатели, контейнеры, пользовательские, шаблоны). При
+    ///          успешной нормализации возвращает `true`. При недопустимом
+    ///          вызове (например, для примитивов или с универсальным
+    ///          маркером вне разрешённой категории) выбрасывает
+    ///          `std::invalid_argument` с диагностикой.
+    [[nodiscard]] auto set_type_name(std::string type_name) -> bool;
     
     // ========================================================================
     // Utility

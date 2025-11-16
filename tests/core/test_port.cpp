@@ -3,7 +3,31 @@
 #include <catch2/catch_all.hpp>
 #include <stdexcept>
 
-using Catch::Matchers::ContainsSubstring;
+#include <string>
+#include <string_view>
+#include <utility>
+
+namespace {
+
+template <typename Callable>
+void ExpectInvalidArgumentContains(Callable&& callable, std::string_view expected_substring) {
+    bool captured_exception = false;
+
+    try {
+        std::forward<Callable>(callable)();
+    } catch (const std::invalid_argument& error) {
+        captured_exception = true;
+
+        const std::string_view message{error.what() != nullptr ? error.what() : ""};
+        REQUIRE(message.find(expected_substring) != std::string_view::npos);
+    }
+
+    if (!captured_exception) {
+        FAIL("ожидалось исключение std::invalid_argument");
+    }
+}
+
+}  // namespace
 
 #include "visprog/core/Port.hpp"
 
@@ -206,9 +230,12 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
     SECTION("Rejects primitive types") {
         Port data_port(PortId{40}, PortDirection::Input, DataType::Int32, "value");
 
-        REQUIRE_THROWS_MATCHES(data_port.set_type_name("custom"),
-                               std::invalid_argument,
-                               ContainsSubstring("does not support"));
+        ExpectInvalidArgumentContains(
+            [&]() {
+                REQUIRE_FALSE(data_port.set_type_name("custom"));
+            },
+            "does not support"
+        );
     }
 
     SECTION("Allows pointer universal markers") {
@@ -224,9 +251,12 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
         REQUIRE(vec_port.set_type_name("int"));
         REQUIRE(vec_port.get_type_name() == "int");
 
-        REQUIRE_THROWS_MATCHES(vec_port.set_type_name("void"),
-                               std::invalid_argument,
-                               ContainsSubstring("universal marker"));
+        ExpectInvalidArgumentContains(
+            [&]() {
+                REQUIRE_FALSE(vec_port.set_type_name("void"));
+            },
+            "universal marker"
+        );
     }
 
     SECTION("Template accepts wildcard names") {

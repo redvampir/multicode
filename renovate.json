@@ -1,6 +1,128 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":separateMultipleMajorReleases",
+    "group:monorepos"
+  ],
+  "enabledManagers": ["npm", "github-actions", "vcpkg", "regex"],
+  "timezone": "Europe/Moscow",
+  "schedule": ["after 22:00 on saturday"],
+  "branchPrefix": "renovate/",
+  "rebaseWhen": "behind-base-branch",
+  "dependencyDashboardTitle": "📦 Обновления зависимостей (Renovate)",
+  "dependencyDashboardAutoclose": true,
+  "labels": ["dependencies", "automated"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 2,
+  "assigneesFromCodeOwners": true,
+  "reviewersFromCodeOwners": true,
+  "commitBodyTable": true,
+  "rollbackPrs": true,
+  "suppressNotifications": ["prIgnoreNotification"],
+  "prCreation": "not-pending",
+  "postUpdateOptions": ["npmDedupe"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 04:00 on monday"],
+    "commitMessageAction": "refresh",
+    "labels": ["dependencies", "lockfile"],
+    "prPriority": -2
+  },
+  "packageRules": [
+    {
+      "description": "Automerge безопасных обновлений GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": []
+    },
+    {
+      "description": "Группа npm dev-зависимостей VS Code расширения",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "VS Code dev dependencies",
+      "stabilityDays": 3,
+      "prPriority": -1,
+      "labels": ["dependencies", "npm", "dev"],
+      "requiredStatusChecks": [],
+      "schedule": ["every weekend"],
+      "automerge": false,
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Автообновление npm runtime зависимостей малыми версиями",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "VS Code runtime deps",
+      "stabilityDays": 7,
+      "labels": ["dependencies", "npm"],
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": [],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Основные обновления vcpkg библиотек",
+      "matchManagers": ["vcpkg"],
+      "matchUpdateTypes": ["major"],
+      "separateMinorPatch": true,
+      "groupName": "vcpkg majors",
+      "labels": ["dependencies", "c++", "breaking"],
+      "stabilityDays": 10,
+      "assignees": ["{{maintainers}}"],
+      "reviewers": ["{{maintainers}}"],
+      "automerge": false
+    },
+    {
+      "description": "Минорные и патч-обновления vcpkg",
+      "matchManagers": ["vcpkg"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "vcpkg minors",
+      "labels": ["dependencies", "c++"],
+      "stabilityDays": 5,
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": []
+    },
+    {
+      "description": "Обновления для TypeScript tooling",
+      "matchManagers": ["npm"],
+      "matchPackagePatterns": ["typescript", "eslint", "@typescript-eslint/"],
+      "labels": ["dependencies", "lint", "typescript"],
+      "stabilityDays": 5,
+      "automerge": false,
+      "separateMinorPatch": true
+    },
+    {
+      "description": "Глобальная защита от major автослияний",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Обновления инструментов форматирования",
+      "matchManagers": ["npm"],
+      "matchPackagePatterns": ["prettier"],
+      "groupName": "Formatting toolchain",
+      "labels": ["dependencies", "formatting"],
+      "stabilityDays": 7,
+      "automerge": false
+    }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^vcpkg\\.json$"],
+      "matchStrings": ["\\\"builtin-baseline\\\": \\\"(?<currentDigest>[a-f0-9]{40})\\\""],
+      "datasourceTemplate": "github-commits",
+      "depNameTemplate": "microsoft/vcpkg",
+      "versioningTemplate": "github",
+      "commitMessageTopic": "vcpkg baseline",
+      "extractVersionTemplate": "{{#if newValue}}{{newValue}}{{/if}}"
+    }
   ]
 }

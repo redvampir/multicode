@@ -2,7 +2,6 @@
 
 #include <catch2/catch_all.hpp>
 #include <stdexcept>
-
 #include <string>
 #include <string_view>
 #include <utility>
@@ -231,11 +230,7 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
         Port data_port(PortId{40}, PortDirection::Input, DataType::Int32, "value");
 
         ExpectInvalidArgumentContains(
-            [&]() {
-                static_cast<void>(data_port.set_type_name("custom"));
-            },
-            "does not support"
-        );
+            [&]() { static_cast<void>(data_port.set_type_name("custom")); }, "does not support");
     }
 
     SECTION("Allows pointer universal markers") {
@@ -251,12 +246,8 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
         REQUIRE(vec_port.set_type_name("int"));
         REQUIRE(vec_port.get_type_name() == "int");
 
-        ExpectInvalidArgumentContains(
-            [&]() {
-                static_cast<void>(vec_port.set_type_name("void"));
-            },
-            "universal marker"
-        );
+        ExpectInvalidArgumentContains([&]() { static_cast<void>(vec_port.set_type_name("void")); },
+                                      "universal marker");
     }
 
     SECTION("Template accepts wildcard names") {

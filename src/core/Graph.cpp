@@ -738,4 +738,76 @@ auto Graph::validate_port_exists(NodeId node, PortId port) const -> Result<void>
     return Result<void>();
 }
 
+auto Graph::append_connection(Connection connection) -> Result<void> {
+    if (!connection.id) {
+        return Result<void>(Error{
+            .message = "Connection ID must be non-zero",
+            .code = 305
+        });
+    }
+
+    if (connection_lookup_.contains(connection.id)) {
+        return Result<void>(Error{
+            .message = std::format(
+                "Connection {} already exists",
+                connection.id.value
+            ),
+            .code = 306
+        });
+    }
+
+    if (auto result = validate_connection(
+            connection.from_node,
+            connection.from_port,
+            connection.to_node,
+            connection.to_port
+        ); !result) {
+        return result;
+    }
+
+    const auto* from_node_ptr = get_node(connection.from_node);
+    const auto* from_port_ptr = from_node_ptr != nullptr
+        ? from_node_ptr->find_port(connection.from_port)
+        : nullptr;
+
+    if (from_port_ptr == nullptr) {
+        return Result<void>(Error{
+            .message = "Source port missing during connection append",
+            .code = 307
+        });
+    }
+
+    const auto expected_type = from_port_ptr->is_execution()
+        ? ConnectionType::Execution
+        : ConnectionType::Data;
+
+    if (expected_type != connection.type) {
+        return Result<void>(Error{
+            .message = std::format(
+                "Connection {} type mismatch: expected {} but got {}",
+                connection.id.value,
+                expected_type == ConnectionType::Execution ? "Execution" : "Data",
+                connection.type == ConnectionType::Execution ? "Execution" : "Data"
+            ),
+            .code = 308
+        });
+    }
+
+    const auto index = connections_.size();
+    connections_.push_back(connection);
+    connection_lookup_[connection.id] = index;
+    adjacency_out_[connection.from_node].push_back(connection.id);
+    adjacency_in_[connection.to_node].push_back(connection.id);
+
+    seed_connection_counter(ConnectionId{connection.id.value + 1});
+
+    return Result<void>();
+}
+
+auto Graph::seed_connection_counter(ConnectionId next) -> void {
+    if (next_connection_id_.value < next.value) {
+        next_connection_id_ = next;
+    }
+}
+
 }  // namespace visprog::core

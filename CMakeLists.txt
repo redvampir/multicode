@@ -64,6 +64,30 @@ if(NOT Catch2_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/CMakeLists.
     set(Catch2_FOUND TRUE)
 endif()
 
+if(NOT Catch2_FOUND)
+    include(FetchContent)
+    set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(CATCH_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_HELPERS OFF CACHE BOOL "" FORCE)
+    set(CATCH_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        Catch2Fetch
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.7.0
+    )
+    FetchContent_MakeAvailable(Catch2Fetch)
+    set(Catch2_FOUND TRUE)
+endif()
+
+if(TARGET Catch2)
+    target_compile_options(Catch2 PRIVATE -Wno-error -Wno-error=conversion)
+endif()
+
+if(TARGET Catch2WithMain)
+    target_compile_options(Catch2WithMain PRIVATE -Wno-error -Wno-error=conversion)
+endif()
+
 # ============================================================================
 # Core Library (C++)
 # ============================================================================
@@ -75,7 +99,8 @@ add_library(multicode_core STATIC
     src/core/Node.cpp
     src/core/NodeFactory.cpp
     src/core/Graph.cpp
-    
+    src/core/GraphSerializer.cpp
+
     # TODO: Add more sources as needed
 )
 
@@ -88,10 +113,14 @@ target_include_directories(multicode_core
 )
 
 target_link_libraries(multicode_core
-    PUBLIC 
+    PUBLIC
         $<$<TARGET_EXISTS:nlohmann_json::nlohmann_json>:nlohmann_json::nlohmann_json>
         $<$<TARGET_EXISTS:spdlog::spdlog>:spdlog::spdlog>
 )
+
+if(NOT nlohmann_json_FOUND)
+    target_include_directories(multicode_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+endif()
 
 # Compiler features
 target_compile_features(multicode_core PUBLIC cxx_std_20)
@@ -108,6 +137,7 @@ if(Catch2_FOUND)
         tests/core/test_node.cpp
         tests/core/test_port.cpp
         tests/core/test_graph.cpp
+        tests/core/test_graph_serializer.cpp
     )
     
     target_link_libraries(multicode_tests

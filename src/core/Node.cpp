@@ -291,4 +291,12 @@ auto Node::update_execution_flow_flag() -> void {
     });
 }
 
+auto Node::append_port(Port port) -> void {
+    if (port.is_execution()) {
+        has_execution_flow_ = true;
+    }
+
+    ports_.push_back(std::move(port));
+}
+
 }  // namespace visprog::core

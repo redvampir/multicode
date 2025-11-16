@@ -1,5 +1,13 @@
 # Growth Areas (0.1.0-alpha)
 
+## Оглавление
+- [Core / Graph API](#core--graph-api)
+- [Serialization](#serialization)
+- [Code Generation / Bindings](#code-generation--bindings)
+- [VS Code Extension](#vs-code-extension)
+- [CI / Tooling](#ci--tooling)
+- [Testing](#testing)
+
 ## Core / Graph API
 - Вынести конфигурацию узлов из `NodeFactory` в описатели (`NodeDescriptor`) плюс реестр. Фабрика должна читать объявление из пакета, а не держать гигантский `switch` по enum.
 - Перестать возвращать `NodeId{0}` как признак ошибки. Пусть методы добавления/удаления отдают `Result<T>` с кодами 30x - тогда UI сможет показать причину, а не гадать.
@@ -8,9 +16,9 @@
 - Подключить `spdlog` там, где формируются `Error` - пусть валидация пишет в лог код и конкретный порт/узел для нормальной диагностики.
 
 ## Serialization
-- Реализовать `GraphSerializer` на `nlohmann::json`: граф (id, name, metadata), узлы с портами/метаданными, соединения. Без него UI бессмысленен.
-- Добавить snapshot-тесты: сериализуем готовый граф, сравниваем с эталонным JSON, затем десериализуем и проверяем топологию.
-- Продумать поддержу версий (поля `version`, `coreMin`, `coreMax`), чтобы пакеты и старые проекты переживали обновления.
+- Расширить версионирование: schema v1.0.0 уже внедрена (см. [`Документы/Архитектура/README.md`](./Архитектура/README.md#сериализация-graphserializer)), теперь нужна стратегия миграций и тул `graph migrate`.
+- Подготовить CLI/инструмент `multicode graph --import/--export`, который вызывает `GraphSerializer` без участия VS Code.
+- Настроить интеграционные тесты: загрузка JSON → валидация графа → проверка, что новые ID не конфликтуют (property-based checks).
 
 ## Code Generation / Bindings
 - Ввести `ICodeGenerator` + `CppCodeGenerator`. Даже заглушка, которая выводит последовательность узлов, уже оживит команду "Generate Code".

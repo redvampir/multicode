@@ -234,8 +234,14 @@ public:
     auto set_metadata(std::string key, std::string value) -> void;
     
     /// @brief Get metadata
-    [[nodiscard]] auto get_metadata(std::string_view key) const 
+    [[nodiscard]] auto get_metadata(std::string_view key) const
         -> std::optional<std::string_view>;
+
+    /// @brief Access all metadata entries (for serialization/UI)
+    [[nodiscard]] auto get_all_metadata() const noexcept
+        -> const std::unordered_map<std::string, std::string>& {
+        return metadata_;
+    }
     
     // ========================================================================
     // Statistics
@@ -266,6 +272,8 @@ public:
     }
 
 private:
+    friend class GraphSerializer;
+
     // ========================================================================
     // Helper Methods
     // ========================================================================
@@ -289,13 +297,19 @@ private:
     
     /// @brief Remove all connections associated with a node
     auto remove_node_connections(NodeId node) -> void;
-    
+
     /// @brief Validate node exists
     [[nodiscard]] auto validate_node_exists(NodeId node) const -> Result<void>;
-    
+
     /// @brief Validate port exists on node
-    [[nodiscard]] auto validate_port_exists(NodeId node, PortId port) const 
+    [[nodiscard]] auto validate_port_exists(NodeId node, PortId port) const
         -> Result<void>;
+
+    /// @brief Append an existing connection (used during deserialization)
+    auto append_connection(Connection connection) -> Result<void>;
+
+    /// @brief Ensure connection ID counter is not behind highest ID
+    auto seed_connection_counter(ConnectionId next) -> void;
     
     // ========================================================================
     // Member Variables

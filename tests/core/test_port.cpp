@@ -232,7 +232,7 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
 
         ExpectInvalidArgumentContains(
             [&]() {
-                REQUIRE_FALSE(data_port.set_type_name("custom"));
+                static_cast<void>(data_port.set_type_name("custom"));
             },
             "does not support"
         );
@@ -253,7 +253,7 @@ TEST_CASE("Port: set_type_name validation", "[port][type_name]") {
 
         ExpectInvalidArgumentContains(
             [&]() {
-                REQUIRE_FALSE(vec_port.set_type_name("void"));
+                static_cast<void>(vec_port.set_type_name("void"));
             },
             "universal marker"
         );

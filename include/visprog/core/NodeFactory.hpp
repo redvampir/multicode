@@ -3,6 +3,7 @@
 #pragma once
 
 #include "visprog/core/Node.hpp"
+#include <atomic>
 #include <memory>
 
 namespace visprog::core {
@@ -33,6 +34,9 @@ public:
         NodeType type,
         std::string name
     ) -> std::unique_ptr<Node>;
+
+    /// @brief Ensure следующая выдача ID больше переданного значения
+    static auto synchronize_id_counter(NodeId max_id) -> void;
 
 private:
     /// @brief Generate next node ID

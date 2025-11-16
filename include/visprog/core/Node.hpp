@@ -13,6 +13,8 @@
 
 namespace visprog::core {
 
+class GraphSerializer;
+
 /// @brief Node represents a single element in the visual programming graph
 /// @details 
 /// - Immutable ID and type after construction
@@ -167,15 +169,20 @@ public:
     }
 
 private:
+    friend class GraphSerializer;
+
     // ========================================================================
     // Helper Methods
     // ========================================================================
-    
+
     /// @brief Generate next port ID
     [[nodiscard]] auto generate_port_id() -> PortId;
-    
+
     /// @brief Update execution flow flag
     auto update_execution_flow_flag() -> void;
+
+    /// @brief Append a fully constructed port (used during deserialization)
+    auto append_port(Port port) -> void;
     
     // ========================================================================
     // Member Variables

@@ -17,6 +17,9 @@ public:
     /// @note Thread-safe
     [[nodiscard]] static auto generate_unique_id() noexcept -> PortId;
 
+    /// @brief Сдвинуть счётчик идентификаторов, если внешние данные содержат большие ID
+    static auto synchronize_id_counter(PortId max_id) noexcept -> void;
+
     /// @brief Create a new port
     /// @param id Unique port identifier
     /// @param direction Input or output

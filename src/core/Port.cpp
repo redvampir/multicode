@@ -486,6 +486,21 @@ auto Port::generate_unique_id() noexcept -> PortId {
     return PortId{next_id_.fetch_add(1, std::memory_order_relaxed)};
 }
 
+auto Port::synchronize_id_counter(PortId max_id) noexcept -> void {
+    const auto desired = max_id.value + 1;
+    auto current = next_id_.load(std::memory_order_relaxed);
+
+    while (current < desired &&
+           !next_id_.compare_exchange_weak(
+               current,
+               desired,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed
+           )) {
+        // retry until the counter catches up
+    }
+}
+
 Port::Port(PortId id,
            PortDirection direction,
            DataType data_type,

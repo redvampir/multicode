@@ -1,7 +1,7 @@
 # Roadmap (реалистичная)
 
 ## v0.1 - «Граф можно сохранить и открыть» (целевой процент: 40%)
-- [ ] `GraphSerializer` (JSON) + snapshot тесты.
+- [x] `GraphSerializer` (JSON) + snapshot тесты.
 - [ ] VS Code webview skeleton: добавление/удаление узлов, соединения, сохранение/загрузка файла.
 - [ ] CLI/команда `Generate Code` возвращает заглушку текста.
 - [ ] GitHub Actions: сборка core + запуск тестов.

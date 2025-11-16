@@ -1,21 +1,23 @@
 # Dependencies
 
 ## C++ Core
+
 | Библиотека | Использование | Установка |
-| --- | --- | --- |
-| `nlohmann-json >= 3.11` | будущая сериализация графа | через vcpkg (`vcpkg install nlohmann-json`) или header-only |
-| `spdlog >= 1.12` | логирование (пока не задействовано, но добавлено для будущего) | `vcpkg install spdlog` |
-| `Catch2 >= 3.4` | unit-тесты | `vcpkg install catch2` |
+|------------|---------------|-----------|
+| `nlohmann-json >= 3.11` | Сериализация графа | через vcpkg (`vcpkg install nlohmann-json`) или header-only |
+| `spdlog >= 1.12` | Логирование (пока не задействовано, но добавлено для будущего) | `vcpkg install spdlog` |
+| `Catch2 >= 3.4` | Unit-тесты | `vcpkg install catch2` |
 
 `vcpkg.json` в корне описывает зависимости, `CMakeLists.txt` подключает их условно (если найдены).
 
 ## VS Code Extension
+
 | Пакет | Назначение | Статус |
-| --- | --- | --- |
-| `typescript`, `webpack`, `ts-loader` | сборка расширения | установлены в `package.json`, исходников нет |
-| `@vscode/webview-ui-toolkit` | UI-компоненты | не используется (нет UI) |
-| `cytoscape`, `cytoscape-dagre` | граф | не используется |
-| `zustand` | state management | не используется |
+|-------|------------|--------|
+| `typescript`, `webpack`, `ts-loader` | Сборка расширения | Установлены в `package.json`, исходников нет |
+| `@vscode/webview-ui-toolkit` | UI-компоненты | Не используется (нет UI) |
+| `cytoscape`, `cytoscape-dagre` | Отрисовка графа | Не используется |
+| `zustand` | State management | Не используется |
 
 Установка:
 ```bash

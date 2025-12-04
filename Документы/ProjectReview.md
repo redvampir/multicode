@@ -21,3 +21,4 @@
 1. **Работать итеративно**: сначала решить задачу «сохранить/загрузить граф», потом «показать UI», потом «генерировать код».
 2. **Документацию обновлять по факту** - сейчас она соответствует репозиторию, надо так и держать.
 3. **Никаких новых концепций без прототипа**. Сначала POC, потом текст.
+4. **Форматировать C++ перед пушем**: `git ls-files '*.hpp' '*.cpp' | grep -v third_party | xargs /usr/bin/clang-format -i`, особенно для `include/visprog/core/**` и `src/core/*.cpp`, чтобы CI не падал на предупреждениях `-Wclang-format-violations`. Последние фейлы приходили из-за ручных правок в `include/visprog/core/Port.hpp`, `include/visprog/core/Node.hpp`, `include/visprog/core/NodeFactory.hpp`, `src/core/Node.cpp`, `src/core/Port.cpp`, `src/core/Types.cpp`, `src/core/Graph.cpp`, сигнатуре `Graph::connect` и блоке десериализации в `src/core/GraphSerializer.cpp`/`include/visprog/core/GraphSerializer.hpp` — не трогаем отступы без `clang-format`.

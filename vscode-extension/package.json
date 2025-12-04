@@ -150,11 +150,13 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src --ext ts,tsx",
     "test": "node ./out/test/runTest.js",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "devDependencies": {
+    "@types/react": "^18.2.74",
+    "@types/react-dom": "^18.2.22",
     "@types/vscode": "^1.85.0",
     "@types/node": "^18.0.0",
     "@types/mocha": "^10.0.0",
@@ -174,6 +176,8 @@
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "cytoscape": "^3.26.0",
     "cytoscape-dagre": "^2.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "zustand": "^4.4.0"
   }
 }

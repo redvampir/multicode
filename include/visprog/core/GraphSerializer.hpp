@@ -2,11 +2,10 @@
 
 #pragma once
 
-#include "visprog/core/Graph.hpp"
-
 #include <nlohmann/json.hpp>
-
 #include <string_view>
+
+#include "visprog/core/Graph.hpp"
 
 namespace visprog::core {
 

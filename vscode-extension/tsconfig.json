@@ -7,8 +7,11 @@
     "strict": true,
     "sourceMap": true,
     "esModuleInterop": true,
+    "moduleResolution": "node",
+    "types": ["node", "react", "react-dom"],
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }

@@ -48,6 +48,6 @@
 ## Как участвовать
 - Pull Request должен компилироваться и проходить `ctest`.
 - Новая функциональность => новые тесты в `tests/core`.
-- Перед коммитом прогоняйте `clang-format` по всем `*.hpp`/`*.cpp`, чтобы CI не падал на форматировании: `clang-format -i $(git ls-files '*.hpp' '*.cpp')`.
-- Отдельно проверяйте `include/visprog/core/Port.hpp`, `include/visprog/core/Node.hpp`, `src/core/Node.cpp`, сигнатуры соединений в `Graph.hpp`, а теперь ещё и `src/core/GraphSerializer.cpp` с `include/visprog/core/GraphSerializer.hpp`: CI жёстко валится на `-Wclang-format-violations`, если руками поправить отступы или перенести аргументы без `clang-format`.
+- Перед коммитом прогоняйте `clang-format` по своим `*.hpp`/`*.cpp`, но не трогайте `third_party`: `git ls-files '*.hpp' '*.cpp' | grep -v third_party | xargs /usr/bin/clang-format -i`.
+- Отдельно проверяйте `include/visprog/core/Port.hpp`, `include/visprog/core/Node.hpp`, `include/visprog/core/NodeFactory.hpp`, `src/core/Node.cpp`, `src/core/Port.cpp`, `src/core/Types.cpp`, `src/core/Graph.cpp`, сигнатуры соединений в `Graph.hpp`, а также `src/core/GraphSerializer.cpp` с `include/visprog/core/GraphSerializer.hpp`: CI жёстко валится на `-Wclang-format-violations`, если руками поправить отступы или перенести аргументы без `clang-format`.
 - Документация уже очищена; держим её в том же духе: только факты, только проверенные концепции или чётко помеченные TODO.

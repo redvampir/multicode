@@ -55,9 +55,12 @@ struct TypeExpression {
 
 [[nodiscard]] constexpr auto is_identifier_char(char ch) noexcept -> bool {
     const auto code = static_cast<unsigned char>(ch);
-    const bool is_digit = code >= static_cast<unsigned char>('0') && code <= static_cast<unsigned char>('9');
-    const bool is_upper = code >= static_cast<unsigned char>('A') && code <= static_cast<unsigned char>('Z');
-    const bool is_lower = code >= static_cast<unsigned char>('a') && code <= static_cast<unsigned char>('z');
+    const bool is_digit =
+        code >= static_cast<unsigned char>('0') && code <= static_cast<unsigned char>('9');
+    const bool is_upper =
+        code >= static_cast<unsigned char>('A') && code <= static_cast<unsigned char>('Z');
+    const bool is_lower =
+        code >= static_cast<unsigned char>('a') && code <= static_cast<unsigned char>('z');
     return is_digit || is_upper || is_lower || ch == '_' || ch == '.';
 }
 
@@ -191,8 +194,7 @@ struct TypeExpression {
 
 class TypeNameParser {
 public:
-    explicit TypeNameParser(std::vector<Token> tokens) noexcept
-        : tokens_(std::move(tokens)) {}
+    explicit TypeNameParser(std::vector<Token> tokens) noexcept : tokens_(std::move(tokens)) {}
 
     [[nodiscard]] auto parse() -> std::vector<TypeSegment> {
         return parse_segments(std::string_view{});
@@ -261,9 +263,9 @@ private:
             const auto symbol = tokens_[index_].value;
             if (symbol == "<" || symbol == "(" || symbol == "[") {
                 ++index_;
-                const auto closing_symbol = symbol == "<" ? std::string_view{">"}
-                                        : symbol == "(" ? std::string_view{")"}
-                                                         : std::string_view{"]"};
+                const auto closing_symbol = symbol == "<"   ? std::string_view{">"}
+                                            : symbol == "(" ? std::string_view{")"}
+                                                            : std::string_view{"]"};
                 expression->arguments = parse_segments(closing_symbol);
             }
         }
@@ -272,7 +274,8 @@ private:
     }
 
     [[nodiscard]] auto is_symbol(std::string_view value) const noexcept -> bool {
-        return index_ < tokens_.size() && tokens_[index_].kind == TokenKind::Symbol && tokens_[index_].value == value;
+        return index_ < tokens_.size() && tokens_[index_].kind == TokenKind::Symbol &&
+               tokens_[index_].value == value;
     }
 
     std::vector<Token> tokens_;
@@ -299,7 +302,8 @@ private:
     return serialize_segments(segments);
 }
 
-[[nodiscard]] auto are_type_names_compatible(std::string_view lhs, std::string_view rhs) noexcept -> bool {
+[[nodiscard]] auto are_type_names_compatible(std::string_view lhs,
+                                             std::string_view rhs) noexcept -> bool {
     const auto lhs_trimmed = trim(lhs);
     const auto rhs_trimmed = trim(rhs);
 
@@ -371,7 +375,8 @@ private:
 }
 
 [[nodiscard]] constexpr auto is_integral(DataType type) noexcept -> bool {
-    return is_signed_integral(type) || is_unsigned_integral(type) || type == DataType::Bool || type == DataType::Char;
+    return is_signed_integral(type) || is_unsigned_integral(type) || type == DataType::Bool ||
+           type == DataType::Char;
 }
 
 [[nodiscard]] constexpr auto is_floating_point(DataType type) noexcept -> bool {
@@ -438,9 +443,9 @@ private:
 }
 
 [[nodiscard]] auto is_pointer_compatible(DataType from_type,
-                                          std::string_view from_name,
-                                          DataType to_type,
-                                          std::string_view to_name) noexcept -> bool {
+                                         std::string_view from_name,
+                                         DataType to_type,
+                                         std::string_view to_name) noexcept -> bool {
     if (!is_pointer_like(from_type) || !is_pointer_like(to_type)) {
         return false;
     }
@@ -449,9 +454,9 @@ private:
 }
 
 [[nodiscard]] auto is_container_compatible(DataType from_type,
-                                            std::string_view from_name,
-                                            DataType to_type,
-                                            std::string_view to_name) noexcept -> bool {
+                                           std::string_view from_name,
+                                           DataType to_type,
+                                           std::string_view to_name) noexcept -> bool {
     if (!is_container(from_type) || !is_container(to_type)) {
         return false;
     }
@@ -492,31 +497,19 @@ auto Port::synchronize_id_counter(PortId max_id) noexcept -> void {
 
     while (current < desired &&
            !next_id_.compare_exchange_weak(
-               current,
-               desired,
-               std::memory_order_relaxed,
-               std::memory_order_relaxed
-           )) {
+               current, desired, std::memory_order_relaxed, std::memory_order_relaxed)) {
         // retry until the counter catches up
     }
 }
 
-Port::Port(PortId id,
-           PortDirection direction,
-           DataType data_type,
-           std::string name) noexcept
-    : id_(id)
-    , direction_(direction)
-    , data_type_(data_type)
-    , name_(std::move(name))
-    , type_name_() {
-}
+Port::Port(PortId id, PortDirection direction, DataType data_type, std::string name) noexcept
+    : id_(id), direction_(direction), data_type_(data_type), name_(std::move(name)), type_name_() {}
 
 auto Port::set_type_name(std::string type_name) -> bool {
     if (!requires_type_name(data_type_)) {
-        throw std::invalid_argument(
-            "Port::set_type_name: data type '" + std::string(to_string(data_type_)) +
-            "' does not support custom type names");
+        throw std::invalid_argument("Port::set_type_name: data type '" +
+                                    std::string(to_string(data_type_)) +
+                                    "' does not support custom type names");
     }
 
     const auto trimmed = trim(type_name);
@@ -532,9 +525,9 @@ auto Port::set_type_name(std::string type_name) -> bool {
     }
 
     if (is_generic_type_name(normalized) && !allows_generic_type_name(data_type_)) {
-        throw std::invalid_argument(
-            "Port::set_type_name: universal marker '" + normalized +
-            "' is not allowed for data type '" + std::string(to_string(data_type_)) + "'");
+        throw std::invalid_argument("Port::set_type_name: universal marker '" + normalized +
+                                    "' is not allowed for data type '" +
+                                    std::string(to_string(data_type_)) + "'");
     }
 
     type_name_ = std::move(normalized);
@@ -546,18 +539,16 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
     if (id_ == other.id_) {
         return false;
     }
-    
+
     // Direction check: Output → Input or InOut ↔ any
-    const bool direction_ok = 
-        (is_output() && other.is_input()) ||
-        (is_input() && other.is_output()) ||
-        (direction_ == PortDirection::InOut) ||
-        (other.direction_ == PortDirection::InOut);
-    
+    const bool direction_ok =
+        (is_output() && other.is_input()) || (is_input() && other.is_output()) ||
+        (direction_ == PortDirection::InOut) || (other.direction_ == PortDirection::InOut);
+
     if (!direction_ok) {
         return false;
     }
-    
+
     // Type compatibility check
 
     // Execution ports can only connect to execution ports
@@ -569,12 +560,12 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
     if (data_type_ == DataType::Any || other.data_type_ == DataType::Any) {
         return true;
     }
-    
+
     // Auto type can connect to anything
     if (data_type_ == DataType::Auto || other.data_type_ == DataType::Auto) {
         return true;
     }
-    
+
     // Void ports can only connect to void ports
     if (data_type_ == DataType::Void || other.data_type_ == DataType::Void) {
         return data_type_ == other.data_type_;

@@ -48,5 +48,5 @@
 - Pull Request должен компилироваться и проходить `ctest`.
 - Новая функциональность => новые тесты в `tests/core`.
 - Перед коммитом прогоняйте `clang-format` по всем `*.hpp`/`*.cpp`, чтобы CI не падал на форматировании: `clang-format -i $(git ls-files '*.hpp' '*.cpp')`.
-- Отдельно проверяйте `include/visprog/core/Port.hpp`, `include/visprog/core/Node.hpp` и сигнатуры соединений в `Graph.hpp`: CI жёстко валится на `-Wclang-format-violations`, если руками поправить отступы или перенести аргументы без `clang-format`.
+- Отдельно проверяйте `include/visprog/core/Port.hpp`, `include/visprog/core/Node.hpp`, сигнатуры соединений в `Graph.hpp`, а теперь ещё и `src/core/GraphSerializer.cpp` с `include/visprog/core/GraphSerializer.hpp`: CI жёстко валится на `-Wclang-format-violations`, если руками поправить отступы или перенести аргументы без `clang-format`.
 - Документация уже очищена; держим её в том же духе: только факты, только проверенные концепции или чётко помеченные TODO.

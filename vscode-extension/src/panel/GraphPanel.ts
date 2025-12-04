@@ -388,9 +388,10 @@ export class GraphPanel {
     const { webview } = this.panel;
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
     const nonce = getNonce();
+    const initialState = JSON.stringify(this.graphState).replace(/</g, '\\u003c');
 
     this.panel.webview.html = /* html */ `<!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy"
@@ -408,241 +409,171 @@ export class GraphPanel {
         padding: 0;
         margin: 0;
         font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        background: var(--vscode-editor-background);
-        color: var(--vscode-editor-foreground);
+        background: #0b1021;
+        color: #e2e8f0;
         min-height: 100vh;
+      }
+      #root {
+        height: 100vh;
+      }
+      .app-shell {
         display: flex;
         flex-direction: column;
+        height: 100%;
       }
-      header {
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--vscode-editorWidget-border);
-      }
-      #toolbar {
+      .toolbar {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-top: 12px;
+        padding: 14px 18px;
+        background: linear-gradient(135deg, rgba(12, 20, 36, 0.95), rgba(22, 30, 48, 0.95));
+        border-bottom: 1px solid rgba(96, 165, 250, 0.35);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
       }
-      #toolbar button {
-        margin: 0;
+      .toolbar-title {
+        font-size: 16px;
+        font-weight: 700;
       }
-      #toolbar select {
-        min-width: 80px;
+      .toolbar-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
       }
-      .toolbar-right {
+      .toolbar-actions {
         display: flex;
         gap: 8px;
-        align-items: center;
       }
-      #unsaved-indicator {
-        font-size: 12px;
-        color: var(--vscode-descriptionForeground);
-        display: none;
-      }
-      #unsaved-indicator.visible {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-      }
-      #toolbar-spinner {
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        border: 2px solid rgba(255,255,255,0.3);
-        border-top-color: var(--vscode-button-foreground);
-        animation: spin 1s linear infinite;
-        display: none;
-      }
-      #toolbar-spinner.visible {
-        display: inline-block;
-      }
-      main {
-        flex: 1;
-        display: grid;
-        grid-template-columns: minmax(360px, 1fr) 320px;
-        gap: 16px;
-        padding: 16px;
-      }
-      .canvas {
-        border: 1px solid var(--vscode-editorWidget-border);
+      .toolbar button {
+        background: #1e293b;
+        color: #e2e8f0;
+        border: 1px solid rgba(96, 165, 250, 0.4);
         border-radius: 6px;
-        padding: 0;
+        padding: 8px 12px;
+        cursor: pointer;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+        transition: transform 0.08s ease, box-shadow 0.08s ease;
+      }
+      .toolbar button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 5px 18px rgba(96, 165, 250, 0.25);
+      }
+      .toolbar button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 12px;
+        flex: 1;
+        padding: 12px;
+      }
+      .canvas-wrapper {
+        background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08), transparent 35%),
+          radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08), transparent 30%),
+          #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
         position: relative;
-        background: var(--vscode-editor-background);
         overflow: hidden;
       }
-      #graph-canvas {
+      .graph-canvas {
         width: 100%;
         height: 100%;
-        position: relative;
-        cursor: grab;
-      }
-      #graph-canvas.panning {
-        cursor: grabbing;
-      }
-      #graph-viewport {
-        position: absolute;
-        transform-origin: 0 0;
-      }
-      #graph-edges {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        overflow: visible;
-      }
-      #graph-nodes {
-        position: absolute;
-        inset: 0;
-      }
-      .graph-node {
-        position: absolute;
-        padding: 6px 12px;
-        border-radius: 6px;
-        background: #1e88e5;
-        color: #fff;
-        font-size: 13px;
-        border: 2px solid rgba(255,255,255,0.25);
-        transform: translate(-50%, -50%);
-        white-space: nowrap;
-      }
-      .graph-node.type-Start { background: #00897b; }
-      .graph-node.type-End { background: #c62828; }
-      .graph-node.type-Variable { background: #6a1b9a; }
-      .graph-node.type-Custom { background: #5d4037; }
-      #mini-map {
-        position: absolute;
-        bottom: 16px;
-        right: 16px;
-        border: 1px solid var(--vscode-editorWidget-border);
-        border-radius: 6px;
-        background: rgba(0,0,0,0.3);
       }
       .side-panel {
         display: flex;
         flex-direction: column;
         gap: 12px;
       }
-      .panel-block {
-        border: 1px solid var(--vscode-editorWidget-border);
-        border-radius: 6px;
+      .panel {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
         padding: 12px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 36px rgba(0, 0, 0, 0.3);
       }
-      #validation-summary {
-        margin-top: 12px;
-        font-size: 13px;
+      .panel-title {
+        font-weight: 700;
+        margin-bottom: 10px;
+        color: #93c5fd;
       }
-      button {
-        margin-right: 8px;
-        margin-bottom: 8px;
-        background: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-        border: none;
-        padding: 6px 12px;
-        border-radius: 4px;
-        cursor: pointer;
+      .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
       }
-      button:hover {
-        background: var(--vscode-button-hoverBackground);
+      .panel-label {
+        font-size: 12px;
+        color: #94a3b8;
       }
-      button:disabled {
-        opacity: 0.6;
-        cursor: progress;
+      .panel-value {
+        font-weight: 700;
+        font-size: 14px;
       }
-      ul {
-        padding-left: 20px;
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 20px;
+        font-size: 12px;
       }
-      label {
-        display: block;
+      .badge-ok {
+        background: rgba(34, 197, 94, 0.15);
+        color: #bbf7d0;
+        border: 1px solid rgba(34, 197, 94, 0.4);
+      }
+      .badge-warn {
+        background: rgba(251, 191, 36, 0.15);
+        color: #fef08a;
+        border: 1px solid rgba(251, 191, 36, 0.5);
+      }
+      .validation-list {
+        margin: 0;
+        padding-left: 16px;
+      }
+      .validation-list li {
         margin-bottom: 6px;
       }
-      input, select {
-        width: 100%;
-        margin-bottom: 8px;
-        padding: 6px;
-        background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        border: 1px solid var(--vscode-input-border);
-        border-radius: 4px;
-      }
-      .muted {
-        color: var(--vscode-descriptionForeground);
-      }
-      #toast-container {
+      .text-error { color: #fecdd3; }
+      .text-warn { color: #fef08a; }
+      .toast-container {
         position: fixed;
         top: 16px;
         right: 16px;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        z-index: 5;
+        z-index: 10;
       }
       .toast {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
         padding: 10px 14px;
-        border-radius: 6px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        border-radius: 10px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
         font-size: 13px;
-        animation: fade-in 0.2s ease;
+        border: 1px solid rgba(255, 255, 255, 0.05);
       }
-      .toast.success { background: #1b5e20; color: #fff; }
-      .toast.info { background: #1565c0; color: #fff; }
-      .toast.warning { background: #ef6c00; color: #fff; }
-      .toast.error { background: #b71c1c; color: #fff; }
-      @keyframes fade-in {
-        from { opacity: 0; transform: translateY(-8px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
+      .toast-info { background: #0ea5e9; color: #e0f2fe; }
+      .toast-success { background: #16a34a; color: #dcfce7; }
+      .toast-warning { background: #d97706; color: #fef3c7; }
+      .toast-error { background: #b91c1c; color: #fee2e2; }
+      .toast-close {
+        background: transparent;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        font-size: 16px;
       }
     </style>
   </head>
   <body>
-    <div id="toast-container"></div>
-    <header>
-      <h2 id='app-title'>MultiCode Visual Graph</h2>
-      <p id='app-subtitle' class='muted'>Visual graph prototyping workspace.</p>
-      <div id="toolbar">
-        <div id="toolbar-buttons"></div>
-        <div class="toolbar-right">
-          <span id="unsaved-indicator"></span>
-          <select id="locale-select">
-            <option value="ru">RU</option>
-            <option value="en">EN</option>
-          </select>
-          <span id="toolbar-spinner"></span>
-        </div>
-      </div>
-    </header>
-    <main>
-      <section class="canvas">
-        <div id="graph-canvas">
-          <div id="graph-viewport">
-            <svg id="graph-edges"></svg>
-            <div id="graph-nodes"></div>
-          </div>
-          <canvas id="mini-map" width="160" height="120"></canvas>
-        </div>
-      </section>
-      <section class="side-panel">
-        <div class="panel-block">
-          <h3 id="overview-title">Graph Overview</h3>
-          <div id="graph-info"></div>
-        </div>
-        <div class="panel-block">
-          <h3 id="actions-title">Form</h3>
-          <div id="graph-actions"></div>
-        </div>
-        <div class="panel-block">
-          <h3 id="inspector-title">Inspector</h3>
-          <div id="inspector"></div>
-          <div id="validation-summary"></div>
-        </div>
-      </section>
-    </main>
+    <div id="root"></div>
+    <script nonce="${nonce}">const initialGraphState = ${initialState};</script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;

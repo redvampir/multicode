@@ -92,9 +92,10 @@ export class GraphPanel {
     private readonly extensionUri: vscode.Uri,
     private readonly outputChannel: vscode.OutputChannel
   ) {
-    this.locale = (vscode.workspace
+    const configuredLocale = vscode.workspace
       .getConfiguration('multicode')
-      .get<string>('displayLanguage', 'ru') ?? 'ru') as GraphDisplayLanguage;
+      .get<string>('displayLanguage', 'ru');
+    this.locale = configuredLocale === 'en' ? 'en' : 'ru';
     this.graphState = this.normalizeState({
       ...createDefaultGraphState(),
       displayLanguage: this.locale
@@ -300,7 +301,8 @@ export class GraphPanel {
       type: 'themeChanged',
       payload: {
         preference: this.themePreference,
-        hostTheme: this.getHostTheme()
+        hostTheme: this.getHostTheme(),
+        displayLanguage: this.locale
       }
     });
   }
@@ -706,7 +708,8 @@ export class GraphPanel {
     <div id="root"></div>
     <script nonce="${nonce}">const initialGraphState = ${initialState}; const initialTheme = ${JSON.stringify({
       preference: this.themePreference,
-      hostTheme: this.getHostTheme()
+      hostTheme: this.getHostTheme(),
+      displayLanguage: this.locale
     })};</script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>

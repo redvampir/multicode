@@ -13,6 +13,13 @@ import { serializeGraphState, deserializeGraphState } from '../shared/serializer
 import { validateGraphState } from '../shared/validator';
 import { generateCodeFromGraph } from '../shared/codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
+import {
+  getThemeTokens,
+  resolveEffectiveTheme,
+  type EffectiveTheme,
+  type ThemeSetting,
+  type ThemeTokens
+} from '../webview/theme';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -78,7 +85,7 @@ export class GraphPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private graphState: GraphState;
   private locale: GraphDisplayLanguage;
-  private themePreference: 'dark' | 'light' | 'auto';
+  private themePreference: ThemeSetting;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -293,14 +300,48 @@ export class GraphPanel {
     };
   }
 
-  private readThemePreference(): 'dark' | 'light' | 'auto' {
-    return (
-      vscode.workspace.getConfiguration('multicode').get<string>('theme', 'auto') ?? 'auto'
-    ) as 'dark' | 'light' | 'auto';
+  private readThemePreference(): ThemeSetting {
+    const value = vscode.workspace.getConfiguration('multicode').get<string>('theme', 'auto');
+    if (value === 'dark' || value === 'light' || value === 'auto') {
+      return value;
+    }
+    return 'auto';
   }
 
-  private getHostTheme(): 'dark' | 'light' {
+  private getHostTheme(): EffectiveTheme {
     return vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ? 'light' : 'dark';
+  }
+
+  private buildRootCssVariables(tokens: ThemeTokens, effectiveTheme: EffectiveTheme): string {
+    return `
+        color-scheme: var(--mc-color-scheme, ${effectiveTheme});
+        --mc-color-scheme: ${effectiveTheme};
+        --mc-body-bg: ${tokens.ui.bodyBackground};
+        --mc-body-text: ${tokens.ui.bodyText};
+        --mc-muted: ${tokens.ui.mutedText};
+        --mc-toolbar-from: ${tokens.ui.toolbarFrom};
+        --mc-toolbar-to: ${tokens.ui.toolbarTo};
+        --mc-toolbar-border: ${tokens.ui.toolbarBorder};
+        --mc-surface: ${tokens.ui.surface};
+        --mc-surface-strong: ${tokens.ui.surfaceStrong};
+        --mc-surface-border: ${tokens.ui.surfaceBorder};
+        --mc-panel-title: ${tokens.ui.panelTitle};
+        --mc-badge-ok-bg: ${tokens.ui.badgeOkBg};
+        --mc-badge-ok-text: ${tokens.ui.badgeOkText};
+        --mc-badge-ok-border: ${tokens.ui.badgeOkBorder};
+        --mc-badge-warn-bg: ${tokens.ui.badgeWarnBg};
+        --mc-badge-warn-text: ${tokens.ui.badgeWarnText};
+        --mc-badge-warn-border: ${tokens.ui.badgeWarnBorder};
+        --mc-toast-info: ${tokens.ui.toastInfo};
+        --mc-toast-success: ${tokens.ui.toastSuccess};
+        --mc-toast-warning: ${tokens.ui.toastWarning};
+        --mc-toast-error: ${tokens.ui.toastError};
+        --mc-shadow: ${tokens.ui.shadow};
+        --mc-button-bg: ${tokens.ui.buttonBg};
+        --mc-button-border: ${tokens.ui.buttonBorder};
+        --mc-button-text: ${tokens.ui.buttonText};
+        --mc-button-hover-shadow: ${tokens.ui.buttonHoverShadow};
+    `;
   }
 
   private normalizeState(state: GraphState): GraphState {
@@ -422,6 +463,9 @@ export class GraphPanel {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
     const nonce = getNonce();
     const initialState = JSON.stringify(this.graphState).replace(/</g, '\\u003c');
+    const effectiveTheme = resolveEffectiveTheme(this.themePreference, this.getHostTheme());
+    const tokens = getThemeTokens(effectiveTheme);
+    const rootCss = this.buildRootCssVariables(tokens, effectiveTheme);
 
     this.panel.webview.html = /* html */ `<!DOCTYPE html>
 <html lang="ru">
@@ -433,32 +477,7 @@ export class GraphPanel {
     <title>MultiCode Graph</title>
     <style>
       :root {
-        color-scheme: var(--mc-color-scheme, dark);
-        --mc-body-bg: #0b1021;
-        --mc-body-text: #e2e8f0;
-        --mc-muted: #94a3b8;
-        --mc-toolbar-from: rgba(12, 20, 36, 0.95);
-        --mc-toolbar-to: rgba(22, 30, 48, 0.95);
-        --mc-toolbar-border: rgba(96, 165, 250, 0.35);
-        --mc-surface: rgba(15, 23, 42, 0.85);
-        --mc-surface-strong: #0f172a;
-        --mc-surface-border: rgba(148, 163, 184, 0.25);
-        --mc-panel-title: #93c5fd;
-        --mc-badge-ok-bg: rgba(34, 197, 94, 0.15);
-        --mc-badge-ok-text: #bbf7d0;
-        --mc-badge-ok-border: rgba(34, 197, 94, 0.4);
-        --mc-badge-warn-bg: rgba(251, 191, 36, 0.15);
-        --mc-badge-warn-text: #fef08a;
-        --mc-badge-warn-border: rgba(251, 191, 36, 0.5);
-        --mc-toast-info: #0ea5e9;
-        --mc-toast-success: #16a34a;
-        --mc-toast-warning: #d97706;
-        --mc-toast-error: #b91c1c;
-        --mc-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
-        --mc-button-bg: #1e293b;
-        --mc-button-border: rgba(96, 165, 250, 0.4);
-        --mc-button-text: #e2e8f0;
-        --mc-button-hover-shadow: 0 5px 18px rgba(96, 165, 250, 0.25);
+        ${rootCss}
       }
       * {
         box-sizing: border-box;

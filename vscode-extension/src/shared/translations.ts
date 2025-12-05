@@ -34,6 +34,7 @@ export type TranslationKey =
   | 'toasts.graphReset'
   | 'toasts.nodeAdded'
   | 'toasts.connectionCreated'
+  | 'toasts.nodesDeleted'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -77,6 +78,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.graphReset': 'Новый граф создан',
     'toasts.nodeAdded': 'Узел "{name}" добавлен',
     'toasts.connectionCreated': 'Соединение создано',
+    'toasts.nodesDeleted': '{count} узлов удалено',
     'errors.connectionExists': 'Такое соединение уже существует',
     'errors.connectionSelf': 'Нельзя соединить узел с самим собой',
     'errors.connectionMissing': 'Выберите существующие узлы',
@@ -117,6 +119,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.graphReset': 'New graph created',
     'toasts.nodeAdded': 'Node "{name}" added',
     'toasts.connectionCreated': 'Connection created',
+    'toasts.nodesDeleted': '{count} nodes removed',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',

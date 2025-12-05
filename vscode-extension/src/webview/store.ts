@@ -10,6 +10,8 @@ export interface GraphStore {
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   renameNode: (nodeId: string, label: string) => void;
   markDirty: (dirty?: boolean, origin?: ChangeOrigin) => void;
+  selectedNodeIds: string[];
+  setSelectedNodes: (nodeIds: string[]) => void;
 }
 
 const ensurePosition = (nodes: GraphNode[]): GraphNode[] =>
@@ -31,14 +33,22 @@ export const createGraphStore = (initialGraph: GraphState) =>
   create<GraphStore>((set, get) => ({
     graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
     lastChangeOrigin: 'remote',
-    setGraph: (graph, options) =>
+    setGraph: (graph, options) => {
+      const normalized = withTimestamp({
+        ...graph,
+        nodes: ensurePosition(graph.nodes)
+      });
+      const currentSelection = get().selectedNodeIds;
+      const allowedSelection = currentSelection.filter((id) =>
+        normalized.nodes.some((node) => node.id === id)
+      );
+
       set({
-        graph: withTimestamp({
-          ...graph,
-          nodes: ensurePosition(graph.nodes)
-        }),
-        lastChangeOrigin: options?.origin ?? 'local'
-      }),
+        graph: normalized,
+        lastChangeOrigin: options?.origin ?? 'local',
+        selectedNodeIds: allowedSelection
+      });
+    },
     updateNodePosition: (nodeId, position) => {
       const current = get().graph;
       set({
@@ -67,7 +77,9 @@ export const createGraphStore = (initialGraph: GraphState) =>
       set(({ graph }) => ({
         graph: { ...graph, dirty, updatedAt: new Date().toISOString() },
         lastChangeOrigin: origin
-      }))
+      })),
+    selectedNodeIds: [],
+    setSelectedNodes: (nodeIds) => set({ selectedNodeIds: [...nodeIds] })
   }));
 
 export type GraphStoreHook = ReturnType<typeof createGraphStore>;

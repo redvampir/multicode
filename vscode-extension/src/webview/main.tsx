@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createDefaultGraphState, type GraphState } from '../shared/graphState';
+import {
+  createDefaultGraphState,
+  type GraphEdge,
+  type GraphNode,
+  type GraphNodeType,
+  type GraphState
+} from '../shared/graphState';
 import type { ValidationResult } from '../shared/validator';
 import { GraphEditor } from './GraphEditor';
 import { createGraphStore, type GraphStoreHook } from './store';
@@ -20,7 +26,10 @@ type Message =
   | { type: 'setState'; payload: GraphState }
   | { type: 'toast'; payload: { kind: ToastKind; message: string } }
   | { type: 'validationResult'; payload: ValidationResult }
-  | { type: 'themeChanged'; payload: ThemeMessage };
+  | { type: 'themeChanged'; payload: ThemeMessage }
+  | { type: 'nodeAdded'; payload: { node: GraphNode } }
+  | { type: 'nodesConnected'; payload: { edge: GraphEdge } }
+  | { type: 'nodesDeleted'; payload: { nodeIds: string[] } };
 
 type Toast = { id: number; kind: ToastKind; message: string };
 
@@ -172,11 +181,147 @@ const ToastContainer: React.FC<{ toasts: Toast[]; onClose: (id: number) => void 
   </div>
 );
 
+const nodeTypeOptions: GraphNodeType[] = ['Start', 'Function', 'End', 'Variable', 'Custom'];
+
+interface NodeActionsProps {
+  onAddNode: (payload: { label?: string; nodeType?: GraphNodeType }) => void;
+  onConnectNodes: (payload: { sourceId?: string; targetId?: string }) => void;
+  lastNodeAddedToken?: number;
+  lastConnectionToken?: number;
+}
+
+const NodeActions: React.FC<NodeActionsProps> = ({
+  onAddNode,
+  onConnectNodes,
+  lastNodeAddedToken,
+  lastConnectionToken
+}) => {
+  const graph = useGraphStore((state) => state.graph);
+  const selected = useGraphStore((state) => state.selectedNodeIds);
+  const [label, setLabel] = useState('');
+  const [type, setType] = useState<GraphNodeType>('Function');
+  const [sourceId, setSourceId] = useState('');
+  const [targetId, setTargetId] = useState('');
+
+  const nodes = useMemo(
+    () =>
+      graph.nodes.map((node) => ({
+        id: node.id,
+        label: node.label || node.id
+      })),
+    [graph.nodes]
+  );
+
+  useEffect(() => {
+    if (!selected.length) {
+      return;
+    }
+    setSourceId((prev) => prev || selected[0]);
+    if (selected.length > 1) {
+      setTargetId((prev) => prev || selected[1]);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (sourceId && !nodes.some((node) => node.id === sourceId)) {
+      setSourceId('');
+    }
+    if (targetId && !nodes.some((node) => node.id === targetId)) {
+      setTargetId('');
+    }
+  }, [nodes, sourceId, targetId]);
+
+  useEffect(() => {
+    if (!lastNodeAddedToken) {
+      return;
+    }
+    setLabel('');
+  }, [lastNodeAddedToken]);
+
+  useEffect(() => {
+    if (!lastConnectionToken) {
+      return;
+    }
+    setSourceId('');
+    setTargetId('');
+  }, [lastConnectionToken]);
+
+  const handleAddNode = (event: React.FormEvent): void => {
+    event.preventDefault();
+    onAddNode({ label, nodeType: type });
+  };
+
+  const handleConnect = (event: React.FormEvent): void => {
+    event.preventDefault();
+    onConnectNodes({ sourceId: sourceId || undefined, targetId: targetId || undefined });
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-title">Управление графом</div>
+      <form className="panel-grid" onSubmit={handleAddNode}>
+        <label>
+          <div className="panel-label">Имя узла</div>
+          <input
+            type="text"
+            value={label}
+            placeholder="Новый узел"
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </label>
+        <label>
+          <div className="panel-label">Тип</div>
+          <select value={type} onChange={(event) => setType(event.target.value as GraphNodeType)}>
+            {nodeTypeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="panel-action" disabled={!type}>
+          Добавить узел
+        </button>
+      </form>
+
+      <form className="panel-grid" onSubmit={handleConnect}>
+        <label>
+          <div className="panel-label">Источник</div>
+          <select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
+            <option value="">—</option>
+            {nodes.map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.label} ({node.id})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <div className="panel-label">Цель</div>
+          <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+            <option value="">—</option>
+            {nodes.map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.label} ({node.id})
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="panel-action" disabled={!sourceId || !targetId}>
+          Соединить
+        </button>
+      </form>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [validation, setValidation] = useState<ValidationResult | undefined>(undefined);
   const [themeState, setThemeState] = useState<ThemeMessage>(initialThemeMessage);
+  const [lastNodeAddedToken, setLastNodeAddedToken] = useState<number | undefined>(undefined);
+  const [lastConnectionToken, setLastConnectionToken] = useState<number | undefined>(undefined);
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
@@ -210,6 +355,14 @@ const App: React.FC = () => {
         case 'themeChanged':
           setThemeState(event.data.payload);
           break;
+        case 'nodeAdded':
+          setLastNodeAddedToken(Date.now());
+          break;
+        case 'nodesConnected':
+          setLastConnectionToken(Date.now());
+          break;
+        case 'nodesDeleted':
+          break;
         default:
           break;
       }
@@ -221,33 +374,64 @@ const App: React.FC = () => {
   }, [setGraph]);
 
   useEffect(() => {
-    const unsubscribe = useGraphStore.subscribe((state) => {
-      vscode.setState({ graph: state.graph });
-      if (state.lastChangeOrigin === 'local') {
-        vscode.postMessage({
-          type: 'graphChanged',
-          payload: {
-            nodes: state.graph.nodes,
-            edges: state.graph.edges,
-            name: state.graph.name,
-            language: state.graph.language,
-            displayLanguage: state.graph.displayLanguage
-          }
-        });
-      }
-    });
+    const unsubscribe = useGraphStore.subscribe(
+      (state) => ({ graph: state.graph, origin: state.lastChangeOrigin }),
+      ({ graph, origin }) => {
+        vscode.setState({ graph });
+        if (origin === 'local') {
+          vscode.postMessage({
+            type: 'graphChanged',
+            payload: {
+              nodes: graph.nodes,
+              edges: graph.edges,
+              name: graph.name,
+              language: graph.language,
+              displayLanguage: graph.displayLanguage
+            }
+          });
+        }
+      },
+      { equalityFn: (prev, next) => prev.graph === next.graph && prev.origin === next.origin }
+    );
 
     return () => unsubscribe();
   }, []);
+
+  const handleAddNode = (payload: { label?: string; nodeType?: GraphNodeType }): void => {
+    vscode.postMessage({ type: 'addNode', payload });
+  };
+
+  const handleConnectNodes = (payload: { sourceId?: string; targetId?: string }): void => {
+    vscode.postMessage({ type: 'connectNodes', payload });
+  };
+
+  const handleDeleteNodes = (nodeIds: string[]): void => {
+    if (!nodeIds.length) {
+      return;
+    }
+    vscode.postMessage({ type: 'deleteNodes', payload: { nodeIds } });
+  };
 
   return (
     <div className="app-shell">
       <Toolbar />
       <div className="workspace">
         <div className="canvas-wrapper">
-          <GraphEditor graphStore={useGraphStore} theme={themeTokens} />
+          <GraphEditor
+            graphStore={useGraphStore}
+            theme={themeTokens}
+            onAddNode={handleAddNode}
+            onConnectNodes={handleConnectNodes}
+            onDeleteNodes={handleDeleteNodes}
+          />
         </div>
         <div className="side-panel">
+          <NodeActions
+            onAddNode={handleAddNode}
+            onConnectNodes={handleConnectNodes}
+            lastNodeAddedToken={lastNodeAddedToken}
+            lastConnectionToken={lastConnectionToken}
+          />
           <GraphFacts />
           <ValidationPanel validation={validation} />
         </div>

@@ -34,6 +34,7 @@ type WebviewMessage =
   | { type: 'ready' }
   | { type: 'addNode'; payload?: { label?: string; nodeType?: GraphNodeType } }
   | { type: 'connectNodes'; payload?: { sourceId?: string; targetId?: string; label?: string } }
+  | { type: 'deleteNodes'; payload: { nodeIds: string[] } }
   | { type: 'renameGraph'; payload: { name: string } }
   | { type: 'updateLanguage'; payload: { language: GraphLanguage } }
   | { type: 'changeDisplayLanguage'; payload: { locale: GraphDisplayLanguage } }
@@ -136,7 +137,7 @@ export class GraphPanel {
   }
 
   public addNode(label?: string, nodeType: GraphNodeType = 'Function'): void {
-    const nodeLabel = label?.trim() || `Node ${this.graphState.nodes.length + 1}`;
+    const nodeLabel = label?.trim() || `Узел ${this.graphState.nodes.length + 1}`;
     const newNode: GraphNode = {
       id: `node-${Date.now()}`,
       label: nodeLabel,
@@ -148,6 +149,7 @@ export class GraphPanel {
     });
     this.postState();
     this.postToast('success', this.translate('toasts.nodeAdded', { name: nodeLabel }));
+    this.panel.webview.postMessage({ type: 'nodeAdded', payload: { node: newNode } });
   }
 
   public connectNodes(sourceId?: string, targetId?: string, label?: string): void {
@@ -184,6 +186,30 @@ export class GraphPanel {
     });
     this.postState();
     this.postToast('success', this.translate('toasts.connectionCreated'));
+    this.panel.webview.postMessage({ type: 'nodesConnected', payload: { edge } });
+  }
+
+  public deleteNodes(nodeIds: string[]): void {
+    const ids = nodeIds.filter(Boolean);
+    if (!ids.length) {
+      return;
+    }
+    const nodesLeft = this.graphState.nodes.filter((node) => !ids.includes(node.id));
+    if (nodesLeft.length === this.graphState.nodes.length) {
+      this.postToast('warning', this.translate('errors.connectionMissing'));
+      return;
+    }
+    const edgesLeft = this.graphState.edges.filter(
+      (edge) => !ids.includes(edge.source) && !ids.includes(edge.target)
+    );
+
+    this.markState({
+      nodes: nodesLeft,
+      edges: edgesLeft
+    });
+    this.postState();
+    this.panel.webview.postMessage({ type: 'nodesDeleted', payload: { nodeIds: ids } });
+    this.postToast('success', this.translate('toasts.nodesDeleted', { count: ids.length.toString() }));
   }
 
   public async saveGraph(): Promise<void> {
@@ -386,6 +412,9 @@ export class GraphPanel {
       case 'connectNodes':
         this.connectNodes(message.payload?.sourceId, message.payload?.targetId, message.payload?.label);
         break;
+      case 'deleteNodes':
+        this.deleteNodes(message.payload.nodeIds);
+        break;
       case 'renameGraph':
         this.markState({
           name: message.payload.name || this.graphState.name
@@ -426,34 +455,34 @@ export class GraphPanel {
   }
 
   private applyGraphMutation(payload: GraphMutationPayload): void {
-    const { nodes, ...rest } = payload;
-    const updates: Partial<GraphState> = { ...rest };
-
-    if (nodes?.length) {
-      const incoming = new Map(nodes.map((node) => [node.id, node]));
-      updates.nodes = this.graphState.nodes.map((node) => {
-        const patch = incoming.get(node.id);
-        if (!patch) {
-          return node;
-        }
-        return {
+    const { nodes, edges, ...rest } = payload;
+    const nextNodes = nodes?.length
+      ? nodes.map((node, index) => ({
           ...node,
-          label: patch.label ?? node.label,
-          type: patch.type ?? node.type,
-          position: patch.position ?? node.position
-        };
-      });
+          type: node.type ?? 'Function',
+          position:
+            node.position ?? this.graphState.nodes[index]?.position ?? this.computeNextPosition()
+        }))
+      : undefined;
+
+    const nextEdges = edges?.map((edge) => ({
+      ...edge,
+      kind: edge.kind ?? 'execution'
+    }));
+
+    if (rest.displayLanguage && rest.displayLanguage !== this.locale) {
+      this.locale = rest.displayLanguage;
     }
 
-    if (updates.displayLanguage && updates.displayLanguage !== this.locale) {
-      this.locale = updates.displayLanguage;
-    }
-
-    if (!Object.keys(updates).length) {
+    if (!nextNodes && !nextEdges && !Object.keys(rest).length) {
       return;
     }
 
-    this.markState(updates);
+    this.markState({
+      ...rest,
+      nodes: nextNodes ?? this.graphState.nodes,
+      edges: nextEdges ?? this.graphState.edges
+    });
     this.postState();
   }
 
@@ -578,6 +607,32 @@ export class GraphPanel {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
+      }
+      .panel form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .panel input,
+      .panel select {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-body-bg);
+        color: var(--mc-body-text);
+      }
+      .panel-action {
+        grid-column: span 2;
+        justify-self: flex-start;
+        background: var(--mc-button-bg);
+        color: var(--mc-button-text);
+        border: 1px solid var(--mc-button-border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        box-shadow: var(--mc-shadow);
       }
       .panel-label {
         font-size: 12px;

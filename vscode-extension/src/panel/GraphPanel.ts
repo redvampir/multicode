@@ -13,6 +13,13 @@ import { serializeGraphState, deserializeGraphState } from '../shared/serializer
 import { validateGraphState } from '../shared/validator';
 import { generateCodeFromGraph } from '../shared/codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
+import {
+  getThemeTokens,
+  resolveEffectiveTheme,
+  type EffectiveTheme,
+  type ThemeSetting,
+  type ThemeTokens
+} from '../webview/theme';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -78,6 +85,7 @@ export class GraphPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private graphState: GraphState;
   private locale: GraphDisplayLanguage;
+  private themePreference: ThemeSetting;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -91,12 +99,23 @@ export class GraphPanel {
       ...createDefaultGraphState(),
       displayLanguage: this.locale
     });
+    this.themePreference = this.readThemePreference();
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewMessage) => this.handleMessage(message),
       undefined,
       this.disposables
+    );
+
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('multicode.theme')) {
+          this.themePreference = this.readThemePreference();
+          this.postTheme();
+        }
+      }),
+      vscode.window.onDidChangeActiveColorTheme(() => this.postTheme())
     );
   }
 
@@ -251,6 +270,16 @@ export class GraphPanel {
     });
   }
 
+  private postTheme(): void {
+    this.panel.webview.postMessage({
+      type: 'themeChanged',
+      payload: {
+        preference: this.themePreference,
+        hostTheme: this.getHostTheme()
+      }
+    });
+  }
+
   private postToast(kind: ToastKind, message: string): void {
     this.panel.webview.postMessage({
       type: 'toast',
@@ -269,6 +298,50 @@ export class GraphPanel {
       updatedAt: new Date().toISOString(),
       dirty: true
     };
+  }
+
+  private readThemePreference(): ThemeSetting {
+    const value = vscode.workspace.getConfiguration('multicode').get<string>('theme', 'auto');
+    if (value === 'dark' || value === 'light' || value === 'auto') {
+      return value;
+    }
+    return 'auto';
+  }
+
+  private getHostTheme(): EffectiveTheme {
+    return vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ? 'light' : 'dark';
+  }
+
+  private buildRootCssVariables(tokens: ThemeTokens, effectiveTheme: EffectiveTheme): string {
+    return `
+        color-scheme: var(--mc-color-scheme, ${effectiveTheme});
+        --mc-color-scheme: ${effectiveTheme};
+        --mc-body-bg: ${tokens.ui.bodyBackground};
+        --mc-body-text: ${tokens.ui.bodyText};
+        --mc-muted: ${tokens.ui.mutedText};
+        --mc-toolbar-from: ${tokens.ui.toolbarFrom};
+        --mc-toolbar-to: ${tokens.ui.toolbarTo};
+        --mc-toolbar-border: ${tokens.ui.toolbarBorder};
+        --mc-surface: ${tokens.ui.surface};
+        --mc-surface-strong: ${tokens.ui.surfaceStrong};
+        --mc-surface-border: ${tokens.ui.surfaceBorder};
+        --mc-panel-title: ${tokens.ui.panelTitle};
+        --mc-badge-ok-bg: ${tokens.ui.badgeOkBg};
+        --mc-badge-ok-text: ${tokens.ui.badgeOkText};
+        --mc-badge-ok-border: ${tokens.ui.badgeOkBorder};
+        --mc-badge-warn-bg: ${tokens.ui.badgeWarnBg};
+        --mc-badge-warn-text: ${tokens.ui.badgeWarnText};
+        --mc-badge-warn-border: ${tokens.ui.badgeWarnBorder};
+        --mc-toast-info: ${tokens.ui.toastInfo};
+        --mc-toast-success: ${tokens.ui.toastSuccess};
+        --mc-toast-warning: ${tokens.ui.toastWarning};
+        --mc-toast-error: ${tokens.ui.toastError};
+        --mc-shadow: ${tokens.ui.shadow};
+        --mc-button-bg: ${tokens.ui.buttonBg};
+        --mc-button-border: ${tokens.ui.buttonBorder};
+        --mc-button-text: ${tokens.ui.buttonText};
+        --mc-button-hover-shadow: ${tokens.ui.buttonHoverShadow};
+    `;
   }
 
   private normalizeState(state: GraphState): GraphState {
@@ -306,6 +379,7 @@ export class GraphPanel {
     switch (message.type) {
       case 'ready':
         this.postState();
+        this.postTheme();
         break;
       case 'addNode':
         this.addNode(message.payload?.label, message.payload?.nodeType ?? 'Function');
@@ -389,6 +463,9 @@ export class GraphPanel {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'));
     const nonce = getNonce();
     const initialState = JSON.stringify(this.graphState).replace(/</g, '\\u003c');
+    const effectiveTheme = resolveEffectiveTheme(this.themePreference, this.getHostTheme());
+    const tokens = getThemeTokens(effectiveTheme);
+    const rootCss = this.buildRootCssVariables(tokens, effectiveTheme);
 
     this.panel.webview.html = /* html */ `<!DOCTYPE html>
 <html lang="ru">
@@ -400,7 +477,7 @@ export class GraphPanel {
     <title>MultiCode Graph</title>
     <style>
       :root {
-        color-scheme: only dark;
+        ${rootCss}
       }
       * {
         box-sizing: border-box;
@@ -409,8 +486,8 @@ export class GraphPanel {
         padding: 0;
         margin: 0;
         font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        background: #0b1021;
-        color: #e2e8f0;
+        background: var(--mc-body-bg);
+        color: var(--mc-body-text);
         min-height: 100vh;
       }
       #root {
@@ -420,15 +497,17 @@ export class GraphPanel {
         display: flex;
         flex-direction: column;
         height: 100%;
+        background: var(--mc-body-bg);
+        color: var(--mc-body-text);
       }
       .toolbar {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 14px 18px;
-        background: linear-gradient(135deg, rgba(12, 20, 36, 0.95), rgba(22, 30, 48, 0.95));
-        border-bottom: 1px solid rgba(96, 165, 250, 0.35);
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+        background: linear-gradient(135deg, var(--mc-toolbar-from), var(--mc-toolbar-to));
+        border-bottom: 1px solid var(--mc-toolbar-border);
+        box-shadow: var(--mc-shadow);
       }
       .toolbar-title {
         font-size: 16px;
@@ -436,25 +515,25 @@ export class GraphPanel {
       }
       .toolbar-subtitle {
         font-size: 12px;
-        color: #94a3b8;
+        color: var(--mc-muted);
       }
       .toolbar-actions {
         display: flex;
         gap: 8px;
       }
       .toolbar button {
-        background: #1e293b;
-        color: #e2e8f0;
-        border: 1px solid rgba(96, 165, 250, 0.4);
+        background: var(--mc-button-bg);
+        color: var(--mc-button-text);
+        border: 1px solid var(--mc-button-border);
         border-radius: 6px;
         padding: 8px 12px;
         cursor: pointer;
-        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+        box-shadow: var(--mc-shadow);
         transition: transform 0.08s ease, box-shadow 0.08s ease;
       }
       .toolbar button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 5px 18px rgba(96, 165, 250, 0.25);
+        box-shadow: var(--mc-button-hover-shadow);
       }
       .toolbar button:disabled {
         opacity: 0.6;
@@ -468,12 +547,10 @@ export class GraphPanel {
         padding: 12px;
       }
       .canvas-wrapper {
-        background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08), transparent 35%),
-          radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08), transparent 30%),
-          #0f172a;
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: var(--mc-surface-strong);
+        border: 1px solid var(--mc-surface-border);
         border-radius: 12px;
-        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+        box-shadow: var(--mc-shadow);
         position: relative;
         overflow: hidden;
       }
@@ -487,16 +564,16 @@ export class GraphPanel {
         gap: 12px;
       }
       .panel {
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: var(--mc-surface);
+        border: 1px solid var(--mc-surface-border);
         border-radius: 12px;
         padding: 12px;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 36px rgba(0, 0, 0, 0.3);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--mc-shadow);
       }
       .panel-title {
         font-weight: 700;
         margin-bottom: 10px;
-        color: #93c5fd;
+        color: var(--mc-panel-title);
       }
       .panel-grid {
         display: grid;
@@ -505,7 +582,7 @@ export class GraphPanel {
       }
       .panel-label {
         font-size: 12px;
-        color: #94a3b8;
+        color: var(--mc-muted);
       }
       .panel-value {
         font-weight: 700;
@@ -520,14 +597,14 @@ export class GraphPanel {
         font-size: 12px;
       }
       .badge-ok {
-        background: rgba(34, 197, 94, 0.15);
-        color: #bbf7d0;
-        border: 1px solid rgba(34, 197, 94, 0.4);
+        background: var(--mc-badge-ok-bg);
+        color: var(--mc-badge-ok-text);
+        border: 1px solid var(--mc-badge-ok-border);
       }
       .badge-warn {
-        background: rgba(251, 191, 36, 0.15);
-        color: #fef08a;
-        border: 1px solid rgba(251, 191, 36, 0.5);
+        background: var(--mc-badge-warn-bg);
+        color: var(--mc-badge-warn-text);
+        border: 1px solid var(--mc-badge-warn-border);
       }
       .validation-list {
         margin: 0;
@@ -536,8 +613,8 @@ export class GraphPanel {
       .validation-list li {
         margin-bottom: 6px;
       }
-      .text-error { color: #fecdd3; }
-      .text-warn { color: #fef08a; }
+      .text-error { color: var(--mc-toast-error); }
+      .text-warn { color: var(--mc-toast-warning); }
       .toast-container {
         position: fixed;
         top: 16px;
@@ -554,14 +631,14 @@ export class GraphPanel {
         gap: 12px;
         padding: 10px 14px;
         border-radius: 10px;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+        box-shadow: var(--mc-shadow);
         font-size: 13px;
         border: 1px solid rgba(255, 255, 255, 0.05);
       }
-      .toast-info { background: #0ea5e9; color: #e0f2fe; }
-      .toast-success { background: #16a34a; color: #dcfce7; }
-      .toast-warning { background: #d97706; color: #fef3c7; }
-      .toast-error { background: #b91c1c; color: #fee2e2; }
+      .toast-info { background: var(--mc-toast-info); color: #e0f2fe; }
+      .toast-success { background: var(--mc-toast-success); color: #dcfce7; }
+      .toast-warning { background: var(--mc-toast-warning); color: #fef3c7; }
+      .toast-error { background: var(--mc-toast-error); color: #fee2e2; }
       .toast-close {
         background: transparent;
         border: none;
@@ -573,7 +650,10 @@ export class GraphPanel {
   </head>
   <body>
     <div id="root"></div>
-    <script nonce="${nonce}">const initialGraphState = ${initialState};</script>
+    <script nonce="${nonce}">const initialGraphState = ${initialState}; const initialTheme = ${JSON.stringify({
+      preference: this.themePreference,
+      hostTheme: this.getHostTheme()
+    })};</script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;

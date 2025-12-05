@@ -6,7 +6,6 @@ import {
   GraphEdge,
   GraphDisplayLanguage,
   GraphNodeType,
-  GraphEdgeKind,
   createDefaultGraphState
 } from '../shared/graphState';
 import { serializeGraphState, deserializeGraphState } from '../shared/serializer';

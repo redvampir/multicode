@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import type { GraphState } from '../shared/graphState';
+import type { GraphNodeType, GraphState } from '../shared/graphState';
 import type { GraphStoreHook } from './store';
 import type { ThemeTokens } from './theme';
 
@@ -140,15 +140,25 @@ const buildStyles = (tokens: ThemeTokens): Stylesheet[] => [
   }
 ];
 
-export const GraphEditor: React.FC<{ graphStore: GraphStoreHook; theme: ThemeTokens }> = ({
-  graphStore,
-  theme
-}) => {
+export const GraphEditor: React.FC<{
+  graphStore: GraphStoreHook;
+  theme: ThemeTokens;
+  onAddNode: (payload: { label?: string; nodeType?: GraphNodeType }) => void;
+  onConnectNodes: (payload: { sourceId?: string; targetId?: string }) => void;
+  onDeleteNodes: (nodeIds: string[]) => void;
+}> = ({ graphStore, theme, onAddNode, onConnectNodes, onDeleteNodes }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
   const graph = graphStore((state) => state.graph);
+  const selectedNodeIds = graphStore((state) => state.selectedNodeIds);
+  const setSelectedNodes = graphStore((state) => state.setSelectedNodes);
   const updateNodePosition = graphStore((state) => state.updateNodePosition);
   const styles = useMemo(() => buildStyles(theme), [theme]);
+  const selectionRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -189,6 +199,16 @@ export const GraphEditor: React.FC<{ graphStore: GraphStoreHook; theme: ThemeTok
       event.target.removeClass('edge--active');
     });
 
+    cyRef.current.on('select', 'node', () => {
+      const selected = cyRef.current?.nodes(':selected').map((node) => node.id()) ?? [];
+      setSelectedNodes(selected);
+    });
+
+    cyRef.current.on('unselect', 'node', () => {
+      const selected = cyRef.current?.nodes(':selected').map((node) => node.id()) ?? [];
+      setSelectedNodes(selected);
+    });
+
     return () => {
       cyRef.current?.destroy();
       cyRef.current = null;
@@ -226,6 +246,49 @@ export const GraphEditor: React.FC<{ graphStore: GraphStoreHook; theme: ThemeTok
     cy.style().fromJson(styles).update();
   }, [styles]);
 
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.nodes().unselect();
+    selectedNodeIds.forEach((id) => {
+      cy.$id(id).select();
+    });
+    selectionRef.current = [...selectedNodeIds];
+  }, [selectedNodeIds]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const selected = selectionRef.current;
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selected.length) {
+        event.preventDefault();
+        onDeleteNodes([...selected]);
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'c' && selected.length === 2) {
+        event.preventDefault();
+        onConnectNodes({ sourceId: selected[0], targetId: selected[1] });
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        const nextIndex = graph.nodes.length + 1;
+        onAddNode({ label: `Узел ${nextIndex}`, nodeType: 'Function' });
+      }
+    };
+
+    element.addEventListener('keydown', handleKeyDown);
+    return () => element.removeEventListener('keydown', handleKeyDown);
+  }, [graph.nodes.length, onAddNode, onConnectNodes, onDeleteNodes]);
+
   return (
     <div
       className="graph-canvas"
@@ -237,6 +300,7 @@ export const GraphEditor: React.FC<{ graphStore: GraphStoreHook; theme: ThemeTok
         borderStyle: 'solid',
         borderWidth: 1
       }}
+      tabIndex={0}
     />
   );
 };

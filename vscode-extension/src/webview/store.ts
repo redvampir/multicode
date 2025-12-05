@@ -69,3 +69,5 @@ export const createGraphStore = (initialGraph: GraphState) =>
         lastChangeOrigin: origin
       }))
   }));
+
+export type GraphStoreHook = ReturnType<typeof createGraphStore>;

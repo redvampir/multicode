@@ -26,6 +26,7 @@
 - `CMakeLists.txt` содержит только library+tests, без сторонних сценариев.
 - `cmake -S . -B build && cmake --build build` - собрать ядро.
 - `ctest --test-dir build` - прогнать тесты.
+- Быстрый прогон lint + сборки + VS Code тестов: `scripts/vscode-test-i-sborka.sh` (используйте флаги `--skip-lint`/`--skip-tests`, если нужно ускорить). Артефакты после скрипта: бандлы webview в `vscode-extension/dist/`, собранное расширение и тесты в `vscode-extension/out/`.
 - Никаких скриптов автоформатирования/генерации - clang-format конфиг лежит в корне.
 
 ### VS Code extension (`vscode-extension`)

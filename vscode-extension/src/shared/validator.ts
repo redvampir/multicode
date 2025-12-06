@@ -1,10 +1,7 @@
 import type { GraphEdge, GraphEdgeKind, GraphState } from './graphState';
+import type { ValidationResult } from './messages';
 
-export interface ValidationResult {
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
-}
+export type { ValidationResult } from './messages';
 
 export const validateGraphState = (state: GraphState): ValidationResult => {
   const errors: string[] = [];

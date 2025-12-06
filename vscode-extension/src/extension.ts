@@ -30,7 +30,20 @@ export function activate(context: vscode.ExtensionContext): void {
     void panel.handleGenerateCode();
   });
 
-  context.subscriptions.push(openEditor, newGraph, saveGraph, loadGraph, generateCode, outputChannel);
+  const translateGraph = vscode.commands.registerCommand('multicode.translateGraph', () => {
+    const panel = ensurePanel();
+    void panel.translateGraphLabels();
+  });
+
+  context.subscriptions.push(
+    openEditor,
+    newGraph,
+    saveGraph,
+    loadGraph,
+    generateCode,
+    translateGraph,
+    outputChannel
+  );
 }
 
 export function deactivate(): void {

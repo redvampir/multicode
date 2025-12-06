@@ -31,6 +31,7 @@
 | `multicode.newGraph` | MultiCode: New Graph | — | Создать новый граф |
 | `multicode.saveGraph` | MultiCode: Save Graph | — | Сохранить граф в JSON |
 | `multicode.loadGraph` | MultiCode: Load Graph | — | Загрузить граф из JSON |
+| `multicode.translateGraph` | MultiCode: Translate Graph (Marian) | — | Запустить офлайн-перевод подписей графа |
 | `multicode.generateCode` | MultiCode: Generate Code | `Ctrl+Shift+G` | Генерация кода из графа |
 
 ### Планируемые настройки
@@ -38,6 +39,9 @@
 - `multicode.language` — язык по умолчанию (`cpp`, `rust`, `asm`)
 - `multicode.displayLanguage` — язык интерфейса (`ru`, `en`, `bilingual`)
 - `multicode.theme` — тема редактора (`dark`, `light`, `auto`)
+- `multicode.translation.engine` — движок перевода (`none`, `marian`)
+- `multicode.translation.model.ruEn` / `multicode.translation.model.enRu` — модели MarianMT для RU→EN и EN→RU
+- `multicode.translation.cacheLimit` — размер кэша переводов
 - `multicode.aiNaming.enabled` — AI-именование узлов (экспериментальная функция)
 - `multicode.codegen.autoGenerate` — автоматическая генерация при изменении графа
 
@@ -142,6 +146,13 @@ scripts/vscode-test-i-sborka.sh
 4. **Генерация кода**:
    - Интеграция с будущим CodeGenerator
    - Вывод результатов в редактор и Output
+
+## MarianMT-перевод
+
+- Команда `multicode.translateGraph` запускает перевод всех подписей графа (имя, узлы, связи) через MarianMT с кэшированием в сессии.
+- В настройках `multicode.translation.*` можно включить движок (`marian`) и переопределить модели для направлений RU→EN и EN→RU.
+- По умолчанию команда выключена (`engine = none`), чтобы не тянуть модели без запроса пользователя.
+- В боковой панели webview есть выбор направления и кнопка «Перевести», позволяющие запускать Marian без перехода к палитре команд.
 
 ## Зависимости
 

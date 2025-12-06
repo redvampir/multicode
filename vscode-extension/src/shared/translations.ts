@@ -15,6 +15,7 @@ export type TranslationKey =
   | 'toolbar.loadGraph'
   | 'toolbar.saveGraph'
   | 'toolbar.validateGraph'
+  | 'toolbar.calculateLayout'
   | 'toolbar.generateGraph'
   | 'overview.title'
   | 'overview.nodes'
@@ -74,6 +75,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.loadGraph': 'Загрузить',
     'toolbar.saveGraph': 'Сохранить',
     'toolbar.validateGraph': 'Проверить',
+    'toolbar.calculateLayout': 'Рассчитать',
     'toolbar.generateGraph': 'Генерировать код',
     'overview.title': 'Сводка графа',
     'overview.nodes': 'Узлы',
@@ -130,6 +132,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.loadGraph': 'Load',
     'toolbar.saveGraph': 'Save',
     'toolbar.validateGraph': 'Validate',
+    'toolbar.calculateLayout': 'Recalculate layout',
     'toolbar.generateGraph': 'Generate code',
     'overview.title': 'Graph summary',
     'overview.nodes': 'Nodes',

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
@@ -11,6 +11,15 @@ type Stylesheet = cytoscape.StylesheetStyle;
 type DagreLayoutOptions = LayoutOptions & { rankDir?: 'LR' | 'TB' | 'BT' | 'RL'; padding?: number };
 
 const defaultLayout: DagreLayoutOptions = { name: 'dagre', rankDir: 'LR', padding: 30 };
+
+type ContextMenuKind = 'node' | 'edge' | 'canvas';
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  kind: ContextMenuKind;
+  targetId?: string;
+};
 
 const buildElements = (graph: GraphState): ElementDefinition[] => {
   const nodes: ElementDefinition[] = graph.nodes.map((node) => ({
@@ -145,16 +154,29 @@ export const GraphEditor: React.FC<{
   theme: ThemeTokens;
   onAddNode: (payload: { label?: string; nodeType?: GraphNodeType }) => void;
   onConnectNodes: (payload: { sourceId?: string; targetId?: string }) => void;
-  onDeleteNodes: (nodeIds: string[]) => void;
-}> = ({ graphStore, theme, onAddNode, onConnectNodes, onDeleteNodes }) => {
+  onLayoutReady?: (runner: () => void) => void;
+}> = ({ graphStore, theme, onAddNode, onConnectNodes, onLayoutReady }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
   const graph = graphStore((state) => state.graph);
   const selectedNodeIds = graphStore((state) => state.selectedNodeIds);
+  const selectedEdgeIds = graphStore((state) => state.selectedEdgeIds);
+  const hasClipboard = graphStore((state) => Boolean(state.clipboard));
   const setSelectedNodes = graphStore((state) => state.setSelectedNodes);
+  const setSelectedEdges = graphStore((state) => state.setSelectedEdges);
   const updateNodePosition = graphStore((state) => state.updateNodePosition);
+  const deleteNodes = graphStore((state) => state.deleteNodes);
+  const deleteEdges = graphStore((state) => state.deleteEdges);
+  const undo = graphStore((state) => state.undo);
+  const redo = graphStore((state) => state.redo);
+  const copySelection = graphStore((state) => state.copySelection);
+  const pasteClipboard = graphStore((state) => state.pasteClipboard);
+  const duplicateSelection = graphStore((state) => state.duplicateSelection);
   const styles = useMemo(() => buildStyles(theme), [theme]);
   const selectionRef = useRef<string[]>([]);
+  const edgeSelectionRef = useRef<string[]>([]);
+  const layoutRunnerRef = useRef<() => void>(() => {});
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
     containerRef.current?.focus();
@@ -209,6 +231,71 @@ export const GraphEditor: React.FC<{
       setSelectedNodes(selected);
     });
 
+    cyRef.current.on('select', 'edge', () => {
+      const selected = cyRef.current?.edges(':selected').map((edge) => edge.id()) ?? [];
+      setSelectedEdges(selected);
+    });
+
+    cyRef.current.on('unselect', 'edge', () => {
+      const selected = cyRef.current?.edges(':selected').map((edge) => edge.id()) ?? [];
+      setSelectedEdges(selected);
+    });
+
+    cyRef.current.on('cxttap', 'node', (event) => {
+      const nodeId = event.target.id();
+      if (!selectionRef.current.includes(nodeId)) {
+        event.target.select();
+      }
+      const rect = containerRef.current?.getBoundingClientRect();
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (!rect || !originalEvent) {
+        return;
+      }
+      originalEvent.preventDefault();
+      setContextMenu({
+        x: originalEvent.clientX - rect.left,
+        y: originalEvent.clientY - rect.top,
+        kind: 'node',
+        targetId: nodeId
+      });
+    });
+
+    cyRef.current.on('cxttap', 'edge', (event) => {
+      const edgeId = event.target.id();
+      if (!edgeSelectionRef.current.includes(edgeId)) {
+        event.target.select();
+      }
+      const rect = containerRef.current?.getBoundingClientRect();
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (!rect || !originalEvent) {
+        return;
+      }
+      originalEvent.preventDefault();
+      setContextMenu({
+        x: originalEvent.clientX - rect.left,
+        y: originalEvent.clientY - rect.top,
+        kind: 'edge',
+        targetId: edgeId
+      });
+    });
+
+    cyRef.current.on('cxttap', (event) => {
+      if (event.target !== cyRef.current) {
+        return;
+      }
+      const rect = containerRef.current?.getBoundingClientRect();
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (!rect || !originalEvent) {
+        return;
+      }
+      originalEvent.preventDefault();
+      setContextMenu({
+        x: originalEvent.clientX - rect.left,
+        y: originalEvent.clientY - rect.top,
+        kind: 'canvas'
+      });
+    });
+
     return () => {
       cyRef.current?.destroy();
       cyRef.current = null;
@@ -259,6 +346,18 @@ export const GraphEditor: React.FC<{
   }, [selectedNodeIds]);
 
   useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.edges().unselect();
+    selectedEdgeIds.forEach((id) => {
+      cy.$id(id).select();
+    });
+    edgeSelectionRef.current = [...selectedEdgeIds];
+  }, [selectedEdgeIds]);
+
+  useEffect(() => {
     const element = containerRef.current;
     if (!element) {
       return;
@@ -266,9 +365,48 @@ export const GraphEditor: React.FC<{
 
     const handleKeyDown = (event: KeyboardEvent): void => {
       const selected = selectionRef.current;
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selected.length) {
+      const selectedEdges = edgeSelectionRef.current;
+      const isCtrl = event.ctrlKey || event.metaKey;
+      if ((event.key === 'Delete' || event.key === 'Backspace') && (selected.length || selectedEdges.length)) {
         event.preventDefault();
-        onDeleteNodes([...selected]);
+        deleteEdges([...selectedEdges]);
+        deleteNodes([...selected]);
+        return;
+      }
+
+      if (isCtrl && !event.shiftKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (isCtrl && event.shiftKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      if (isCtrl && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        copySelection();
+        return;
+      }
+
+      if (isCtrl && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+      }
+
+      if (isCtrl && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateSelection();
+        return;
+      }
+
+      if (isCtrl && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        layoutRunnerRef.current();
         return;
       }
 
@@ -287,7 +425,100 @@ export const GraphEditor: React.FC<{
 
     element.addEventListener('keydown', handleKeyDown);
     return () => element.removeEventListener('keydown', handleKeyDown);
-  }, [graph.nodes.length, onAddNode, onConnectNodes, onDeleteNodes]);
+  }, [graph.nodes.length, onAddNode, onConnectNodes, deleteEdges, deleteNodes, copySelection, pasteClipboard, duplicateSelection, undo, redo]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    const runLayout = (): void => {
+      const layout = cy.layout({ ...defaultLayout });
+      layout.run();
+      layout.once('layoutstop', () => {
+        const positions: Record<string, { x: number; y: number }> = {};
+        cy.nodes().forEach((node) => {
+          const pos = node.position();
+          positions[node.id()] = { x: pos.x, y: pos.y };
+        });
+        const currentGraph = graphStore.getState().graph;
+        const updatedGraph: GraphState = {
+          ...currentGraph,
+          nodes: currentGraph.nodes.map((node) => ({
+            ...node,
+            position: positions[node.id] ?? node.position
+          })),
+          dirty: true,
+          updatedAt: new Date().toISOString()
+        };
+        graphStore.getState().setGraph(updatedGraph, { origin: 'local' });
+      });
+    };
+    layoutRunnerRef.current = runLayout;
+    onLayoutReady?.(runLayout);
+  }, [graphStore, onLayoutReady]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+    const close = (): void => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [contextMenu]);
+
+  const handleDeleteContext = (): void => {
+    if (!contextMenu) {
+      return;
+    }
+    if (contextMenu.kind === 'node' && contextMenu.targetId) {
+      deleteNodes([contextMenu.targetId]);
+      setContextMenu(null);
+      return;
+    }
+    if (contextMenu.kind === 'edge' && contextMenu.targetId) {
+      deleteEdges([contextMenu.targetId]);
+      setContextMenu(null);
+    }
+  };
+
+  const handleCopyContext = (): void => {
+    copySelection();
+    setContextMenu(null);
+  };
+
+  const handleDuplicateContext = (): void => {
+    duplicateSelection();
+    setContextMenu(null);
+  };
+
+  const handlePasteContext = (): void => {
+    pasteClipboard();
+    setContextMenu(null);
+  };
+
+  const renderContextMenu = (): React.ReactNode => {
+    if (!contextMenu) {
+      return null;
+    }
+    const items: Array<{ label: string; action: () => void; hidden?: boolean }> = [
+      { label: 'Копировать', action: handleCopyContext, hidden: contextMenu.kind === 'canvas' },
+      { label: 'Дублировать', action: handleDuplicateContext, hidden: contextMenu.kind === 'canvas' },
+      { label: 'Вставить', action: handlePasteContext, hidden: !hasClipboard },
+      { label: 'Удалить', action: handleDeleteContext, hidden: contextMenu.kind === 'canvas' }
+    ];
+    return (
+      <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
+        {items
+          .filter((item) => !item.hidden)
+          .map((item) => (
+            <button key={item.label} type="button" onClick={item.action} className="context-menu__item">
+              {item.label}
+            </button>
+          ))}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -301,6 +532,8 @@ export const GraphEditor: React.FC<{
         borderWidth: 1
       }}
       tabIndex={0}
-    />
+    >
+      {renderContextMenu()}
+    </div>
   );
 };

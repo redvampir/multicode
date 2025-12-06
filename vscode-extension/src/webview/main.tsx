@@ -99,7 +99,8 @@ const Toolbar: React.FC<{
   locale: GraphDisplayLanguage;
   onLocaleChange: (locale: GraphDisplayLanguage) => void;
   translate: (key: TranslationKey, fallback: string, replacements?: Record<string, string>) => string;
-}> = ({ locale, onLocaleChange, translate }) => {
+  onCalculate: () => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -141,6 +142,9 @@ const Toolbar: React.FC<{
         </button>
         <button onClick={() => send('requestValidate')} disabled={pending}>
           {translate('toolbar.validateGraph', 'Проверить')}
+        </button>
+        <button onClick={onCalculate} disabled={pending}>
+          {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
         <button onClick={() => send('requestGenerate')} disabled={pending}>
           {translate('toolbar.generateGraph', 'Генерировать код')}
@@ -425,6 +429,7 @@ const App: React.FC = () => {
     graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru'
   );
   const [translationPending, setTranslationPending] = useState(false);
+  const layoutRunnerRef = useRef<() => void>(() => {});
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
@@ -556,13 +561,6 @@ const App: React.FC = () => {
     sendToExtension({ type: 'connectNodes', payload });
   };
 
-  const handleDeleteNodes = (nodeIds: string[]): void => {
-    if (!nodeIds.length) {
-      return;
-    }
-    sendToExtension({ type: 'deleteNodes', payload: { nodeIds } });
-  };
-
   const handleTranslate = (): void => {
     setTranslationPending(true);
     sendToExtension({ type: 'requestTranslate', payload: { direction: translationDirection } });
@@ -572,9 +570,18 @@ const App: React.FC = () => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
   }, [graph.displayLanguage]);
 
+  const handleCalculateLayout = (): void => {
+    layoutRunnerRef.current();
+  };
+
   return (
     <div className="app-shell">
-      <Toolbar locale={locale} onLocaleChange={handleLocaleChange} translate={translate} />
+      <Toolbar
+        locale={locale}
+        onLocaleChange={handleLocaleChange}
+        translate={translate}
+        onCalculate={handleCalculateLayout}
+      />
       <div className="workspace">
         <div className="canvas-wrapper">
           <GraphEditor
@@ -582,7 +589,9 @@ const App: React.FC = () => {
             theme={themeTokens}
             onAddNode={handleAddNode}
             onConnectNodes={handleConnectNodes}
-            onDeleteNodes={handleDeleteNodes}
+            onLayoutReady={(runner) => {
+              layoutRunnerRef.current = runner;
+            }}
           />
         </div>
         <div className="side-panel">

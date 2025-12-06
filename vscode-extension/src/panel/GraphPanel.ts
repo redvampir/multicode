@@ -13,39 +13,23 @@ import { validateGraphState } from '../shared/validator';
 import { generateCodeFromGraph } from '../shared/codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import {
+  extensionToWebviewMessageSchema,
+  parseWebviewMessage,
+  type ExtensionToWebviewMessage,
+  type GraphMutationPayload,
+  type TranslationDirection,
+  type WebviewToExtensionMessage
+} from '../shared/messages';
+import {
   getThemeTokens,
   resolveEffectiveTheme,
   type EffectiveTheme,
   type ThemeSetting,
   type ThemeTokens
 } from '../webview/theme';
-import { MarianTranslator, type TranslationDirection } from './marianTranslator';
+import { MarianTranslator } from './marianTranslator';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
-
-type GraphMutationPayload = {
-  nodes?: Array<Pick<GraphNode, 'id' | 'label' | 'type' | 'position'>>;
-  edges?: GraphEdge[];
-  name?: string;
-  language?: GraphLanguage;
-  displayLanguage?: GraphDisplayLanguage;
-};
-
-type WebviewMessage =
-  | { type: 'ready' }
-  | { type: 'addNode'; payload?: { label?: string; nodeType?: GraphNodeType } }
-  | { type: 'connectNodes'; payload?: { sourceId?: string; targetId?: string; label?: string } }
-  | { type: 'deleteNodes'; payload: { nodeIds: string[] } }
-  | { type: 'renameGraph'; payload: { name: string } }
-  | { type: 'updateLanguage'; payload: { language: GraphLanguage } }
-  | { type: 'changeDisplayLanguage'; payload: { locale: GraphDisplayLanguage } }
-  | { type: 'requestTranslate'; payload?: { direction?: TranslationDirection } }
-  | { type: 'requestSave' }
-  | { type: 'requestLoad' }
-  | { type: 'requestNewGraph' }
-  | { type: 'requestGenerate' }
-  | { type: 'requestValidate' }
-  | { type: 'graphChanged'; payload: GraphMutationPayload };
 
 export class GraphPanel {
   private static currentPanel: GraphPanel | undefined;
@@ -115,7 +99,7 @@ export class GraphPanel {
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
-      (message: WebviewMessage) => this.handleMessage(message),
+      (message: unknown) => this.handleIncomingMessage(message),
       undefined,
       this.disposables
     );
@@ -168,7 +152,7 @@ export class GraphPanel {
     });
     this.postState();
     this.postToast('success', this.translate('toasts.nodeAdded', { name: nodeLabel }));
-    this.panel.webview.postMessage({ type: 'nodeAdded', payload: { node: newNode } });
+    this.sendToWebview({ type: 'nodeAdded', payload: { node: newNode } });
   }
 
   public connectNodes(sourceId?: string, targetId?: string, label?: string): void {
@@ -205,7 +189,7 @@ export class GraphPanel {
     });
     this.postState();
     this.postToast('success', this.translate('toasts.connectionCreated'));
-    this.panel.webview.postMessage({ type: 'nodesConnected', payload: { edge } });
+    this.sendToWebview({ type: 'nodesConnected', payload: { edge } });
   }
 
   public async translateGraphLabels(direction?: TranslationDirection): Promise<void> {
@@ -216,11 +200,11 @@ export class GraphPanel {
     const translator = this.getTranslator();
     if (!translator) {
       this.postToast('warning', 'Перевод отключён: включите Marian в настройках multicode.translation.engine');
-      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success: false } });
+      this.sendToWebview({ type: 'translationFinished', payload: { success: false } });
       return;
     }
 
-    this.panel.webview.postMessage({ type: 'translationStarted', payload: { direction: targetDirection } });
+    this.sendToWebview({ type: 'translationStarted', payload: { direction: targetDirection } });
 
     const uniqueTexts = new Set<string>();
     if (this.graphState.name) {
@@ -235,7 +219,7 @@ export class GraphPanel {
 
     if (!uniqueTexts.size) {
       this.postToast('info', 'Нет текстов для перевода');
-      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success: false } });
+      this.sendToWebview({ type: 'translationFinished', payload: { success: false } });
       return;
     }
 
@@ -267,7 +251,7 @@ export class GraphPanel {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
       this.postToast('error', `Перевод не выполнен: ${message}`);
     } finally {
-      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success } });
+      this.sendToWebview({ type: 'translationFinished', payload: { success } });
     }
   }
 
@@ -290,7 +274,7 @@ export class GraphPanel {
       edges: edgesLeft
     });
     this.postState();
-    this.panel.webview.postMessage({ type: 'nodesDeleted', payload: { nodeIds: ids } });
+    this.sendToWebview({ type: 'nodesDeleted', payload: { nodeIds: ids } });
     this.postToast('success', this.translate('toasts.nodesDeleted', { count: ids.length.toString() }));
   }
 
@@ -364,21 +348,21 @@ export class GraphPanel {
       this.postToast('success', this.translate('toasts.validationOk'));
     }
     result.warnings.forEach((warning) => this.postToast('warning', warning));
-    this.panel.webview.postMessage({
+    this.sendToWebview({
       type: 'validationResult',
       payload: result
     });
   }
 
   private postState(): void {
-    this.panel.webview.postMessage({
+    this.sendToWebview({
       type: 'setState',
       payload: this.graphState
     });
   }
 
   private postTheme(): void {
-    this.panel.webview.postMessage({
+    this.sendToWebview({
       type: 'themeChanged',
       payload: {
         preference: this.themePreference,
@@ -389,7 +373,7 @@ export class GraphPanel {
   }
 
   private postToast(kind: ToastKind, message: string): void {
-    this.panel.webview.postMessage({
+    this.sendToWebview({
       type: 'toast',
       payload: { kind, message }
     });
@@ -527,7 +511,61 @@ export class GraphPanel {
     return { x, y };
   }
 
-  private handleMessage(message: WebviewMessage): void {
+  private handleIncomingMessage(message: unknown): void {
+    const parsed = parseWebviewMessage(message);
+    if (!parsed.success) {
+      this.handleMessageError('Некорректное сообщение от webview', parsed.error);
+      return;
+    }
+    this.handleMessage(parsed.data);
+  }
+
+  private handleMessageError(context: string, error: unknown): void {
+    const details = this.extractErrorDetails(error);
+    const composed = `${context}: ${details}`;
+    this.outputChannel.appendLine(composed);
+    void vscode.window.showErrorMessage(composed);
+    this.postLog('error', composed);
+  }
+
+  private extractErrorDetails(error: unknown): string {
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error && typeof error === 'object' && 'issues' in error) {
+      const issues = (error as { issues?: Array<{ message: string }> }).issues ?? [];
+      if (issues.length) {
+        return issues.map((issue) => issue.message).join('; ');
+      }
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return 'Неизвестная ошибка валидации сообщения';
+  }
+
+  private postLog(level: 'info' | 'warn' | 'error', message: string): void {
+    const parsed = extensionToWebviewMessageSchema.safeParse({
+      type: 'log',
+      payload: { level, message }
+    });
+    if (!parsed.success) {
+      this.outputChannel.appendLine(`Не удалось подготовить лог для webview: ${message}`);
+      return;
+    }
+    void this.panel.webview.postMessage(parsed.data);
+  }
+
+  private sendToWebview(message: ExtensionToWebviewMessage): void {
+    const parsed = extensionToWebviewMessageSchema.safeParse(message);
+    if (!parsed.success) {
+      this.handleMessageError('Сообщение для webview не прошло схему', parsed.error);
+      return;
+    }
+    void this.panel.webview.postMessage(parsed.data);
+  }
+
+  private handleMessage(message: WebviewToExtensionMessage): void {
     switch (message.type) {
       case 'ready':
         this.postState();
@@ -578,6 +616,9 @@ export class GraphPanel {
         break;
       case 'graphChanged':
         this.applyGraphMutation(message.payload);
+        break;
+      case 'reportWebviewError':
+        this.handleMessageError('Ошибка в webview', new Error(message.payload.message));
         break;
       default:
         break;

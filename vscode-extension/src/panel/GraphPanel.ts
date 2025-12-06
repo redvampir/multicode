@@ -39,6 +39,7 @@ type WebviewMessage =
   | { type: 'renameGraph'; payload: { name: string } }
   | { type: 'updateLanguage'; payload: { language: GraphLanguage } }
   | { type: 'changeDisplayLanguage'; payload: { locale: GraphDisplayLanguage } }
+  | { type: 'requestTranslate'; payload?: { direction?: TranslationDirection } }
   | { type: 'requestSave' }
   | { type: 'requestLoad' }
   | { type: 'requestNewGraph' }
@@ -215,8 +216,11 @@ export class GraphPanel {
     const translator = this.getTranslator();
     if (!translator) {
       this.postToast('warning', 'Перевод отключён: включите Marian в настройках multicode.translation.engine');
+      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success: false } });
       return;
     }
+
+    this.panel.webview.postMessage({ type: 'translationStarted', payload: { direction: targetDirection } });
 
     const uniqueTexts = new Set<string>();
     if (this.graphState.name) {
@@ -231,9 +235,11 @@ export class GraphPanel {
 
     if (!uniqueTexts.size) {
       this.postToast('info', 'Нет текстов для перевода');
+      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success: false } });
       return;
     }
 
+    let success = false;
     try {
       const translations = await translator.translateBatch(Array.from(uniqueTexts), targetDirection);
       const updatedNodes = this.graphState.nodes.map((node) => ({
@@ -256,9 +262,12 @@ export class GraphPanel {
       });
       this.postState();
       this.postToast('success', `Тексты графа переведены (${targetDirection})`);
+      success = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
       this.postToast('error', `Перевод не выполнен: ${message}`);
+    } finally {
+      this.panel.webview.postMessage({ type: 'translationFinished', payload: { success } });
     }
   }
 
@@ -560,6 +569,9 @@ export class GraphPanel {
         break;
       case 'requestGenerate':
         void this.handleGenerateCode();
+        break;
+      case 'requestTranslate':
+        void this.translateGraphLabels(message.payload?.direction);
         break;
       case 'requestValidate':
         void this.handleValidateGraph();

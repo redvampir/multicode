@@ -35,7 +35,9 @@ type Message =
   | { type: 'themeChanged'; payload: ThemeMessage }
   | { type: 'nodeAdded'; payload: { node: GraphNode } }
   | { type: 'nodesConnected'; payload: { edge: GraphEdge } }
-  | { type: 'nodesDeleted'; payload: { nodeIds: string[] } };
+  | { type: 'nodesDeleted'; payload: { nodeIds: string[] } }
+  | { type: 'translationStarted'; payload: { direction: 'ru-en' | 'en-ru' } }
+  | { type: 'translationFinished'; payload: { success: boolean } };
 
 type Toast = { id: number; kind: ToastKind; message: string };
 
@@ -226,6 +228,10 @@ const ToastContainer: React.FC<{
 );
 
 const nodeTypeOptions: GraphNodeType[] = ['Start', 'Function', 'End', 'Variable', 'Custom'];
+const translationDirections: Array<{ value: 'ru-en' | 'en-ru'; label: string }> = [
+  { value: 'ru-en', label: 'RU → EN' },
+  { value: 'en-ru', label: 'EN → RU' }
+];
 
 interface NodeActionsProps {
   onAddNode: (payload: { label?: string; nodeType?: GraphNodeType }) => void;
@@ -364,15 +370,54 @@ const NodeActions: React.FC<NodeActionsProps> = ({
   );
 };
 
+interface TranslationActionsProps {
+  direction: 'ru-en' | 'en-ru';
+  pending: boolean;
+  onDirectionChange: (direction: 'ru-en' | 'en-ru') => void;
+  onTranslate: () => void;
+}
+
+const TranslationActions: React.FC<TranslationActionsProps> = ({
+  direction,
+  pending,
+  onDirectionChange,
+  onTranslate
+}) => (
+  <div className="panel">
+    <div className="panel-title">Перевод графа</div>
+    <div className="panel-grid">
+      <label>
+        <div className="panel-label">Направление</div>
+        <select
+          value={direction}
+          onChange={(event) => onDirectionChange(event.target.value as 'ru-en' | 'en-ru')}
+        >
+          {translationDirections.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="button" className="panel-action" onClick={onTranslate} disabled={pending}>
+        {pending ? 'Перевод...' : 'Перевести'}
+      </button>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
+  const graph = useGraphStore((state) => state.graph);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [validation, setValidation] = useState<ValidationResult | undefined>(undefined);
   const [themeState, setThemeState] = useState<ThemeMessage>(initialThemeMessage);
   const [lastNodeAddedToken, setLastNodeAddedToken] = useState<number | undefined>(undefined);
   const [lastConnectionToken, setLastConnectionToken] = useState<number | undefined>(undefined);
-  const [locale, setLocale] = useState<GraphDisplayLanguage>(bootLocale);
-  const localeRef = useRef<GraphDisplayLanguage>(bootLocale);
+  const [translationDirection, setTranslationDirection] = useState<'ru-en' | 'en-ru'>(
+    graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru'
+  );
+  const [translationPending, setTranslationPending] = useState(false);
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
@@ -426,6 +471,13 @@ const App: React.FC = () => {
           break;
         case 'nodesDeleted':
           break;
+        case 'translationStarted':
+          setTranslationPending(true);
+          setTranslationDirection(event.data.payload.direction);
+          break;
+        case 'translationFinished':
+          setTranslationPending(false);
+          break;
         default:
           break;
       }
@@ -475,11 +527,14 @@ const App: React.FC = () => {
     vscode.postMessage({ type: 'deleteNodes', payload: { nodeIds } });
   };
 
-  const handleLocaleChange = (nextLocale: GraphDisplayLanguage): void => {
-    setLocale(nextLocale);
-    localeRef.current = nextLocale;
-    vscode.postMessage({ type: 'changeDisplayLanguage', payload: { locale: nextLocale } });
+  const handleTranslate = (): void => {
+    setTranslationPending(true);
+    vscode.postMessage({ type: 'requestTranslate', payload: { direction: translationDirection } });
   };
+
+  useEffect(() => {
+    setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
+  }, [graph.displayLanguage]);
 
   return (
     <div className="app-shell">
@@ -495,6 +550,12 @@ const App: React.FC = () => {
           />
         </div>
         <div className="side-panel">
+          <TranslationActions
+            direction={translationDirection}
+            pending={translationPending}
+            onDirectionChange={setTranslationDirection}
+            onTranslate={handleTranslate}
+          />
           <NodeActions
             onAddNode={handleAddNode}
             onConnectNodes={handleConnectNodes}

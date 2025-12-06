@@ -1,17 +1,34 @@
 import { create } from 'zustand';
-import type { GraphNode, GraphState } from '../shared/graphState';
+import type { GraphEdge, GraphNode, GraphState } from '../shared/graphState';
 
 export type ChangeOrigin = 'local' | 'remote';
+
+type GraphClipboard = { nodes: GraphNode[]; edges: GraphEdge[] } | null;
 
 export interface GraphStore {
   graph: GraphState;
   lastChangeOrigin: ChangeOrigin;
-  setGraph: (graph: GraphState, options?: { origin?: ChangeOrigin }) => void;
+  historyPast: GraphState[];
+  historyFuture: GraphState[];
+  clipboard: GraphClipboard;
+  setGraph: (
+    graph: GraphState,
+    options?: { origin?: ChangeOrigin; pushHistory?: boolean }
+  ) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   renameNode: (nodeId: string, label: string) => void;
   markDirty: (dirty?: boolean, origin?: ChangeOrigin) => void;
   selectedNodeIds: string[];
+  selectedEdgeIds: string[];
   setSelectedNodes: (nodeIds: string[]) => void;
+  setSelectedEdges: (edgeIds: string[]) => void;
+  deleteNodes: (nodeIds: string[]) => void;
+  deleteEdges: (edgeIds: string[]) => void;
+  undo: () => void;
+  redo: () => void;
+  copySelection: () => void;
+  pasteClipboard: () => void;
+  duplicateSelection: () => void;
 }
 
 const ensurePosition = (nodes: GraphNode[]): GraphNode[] =>
@@ -29,49 +46,82 @@ const withTimestamp = (graph: GraphState): GraphState => ({
   updatedAt: graph.updatedAt ?? new Date().toISOString()
 });
 
+const cloneGraph = (graph: GraphState): GraphState => ({
+  ...graph,
+  nodes: graph.nodes.map((node) => ({
+    ...node,
+    position: node.position ? { ...node.position } : undefined
+  })),
+  edges: graph.edges.map((edge) => ({ ...edge })),
+  dirty: graph.dirty ?? false,
+  updatedAt: graph.updatedAt
+});
+
+const sanitizeSelection = (
+  graph: GraphState,
+  selection: string[]
+): string[] => selection.filter((id) => graph.nodes.some((node) => node.id === id));
+
+const sanitizeEdgeSelection = (
+  graph: GraphState,
+  selection: string[]
+): string[] => selection.filter((id) => graph.edges.some((edge) => edge.id === id));
+
 export const createGraphStore = (initialGraph: GraphState) =>
   create<GraphStore>((set, get) => ({
     graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
     lastChangeOrigin: 'remote',
+    historyPast: [],
+    historyFuture: [],
+    clipboard: null,
     setGraph: (graph, options) => {
       const normalized = withTimestamp({
         ...graph,
         nodes: ensurePosition(graph.nodes)
       });
       const currentSelection = get().selectedNodeIds;
-      const allowedSelection = currentSelection.filter((id) =>
-        normalized.nodes.some((node) => node.id === id)
-      );
+      const currentEdgeSelection = get().selectedEdgeIds;
+
+      const allowedSelection = sanitizeSelection(normalized, currentSelection);
+      const allowedEdges = sanitizeEdgeSelection(normalized, currentEdgeSelection);
+
+      const shouldPushHistory = options?.pushHistory ?? true;
+      if (shouldPushHistory) {
+        const snapshot = cloneGraph(get().graph);
+        set(({ historyPast }) => ({
+          historyPast: [...historyPast.slice(-49), snapshot],
+          historyFuture: []
+        }));
+      }
+
+      const dirty = options?.origin === 'remote' ? normalized.dirty ?? false : true;
 
       set({
-        graph: normalized,
+        graph: { ...normalized, dirty },
         lastChangeOrigin: options?.origin ?? 'local',
-        selectedNodeIds: allowedSelection
+        selectedNodeIds: allowedSelection,
+        selectedEdgeIds: allowedEdges
       });
     },
     updateNodePosition: (nodeId, position) => {
       const current = get().graph;
-      set({
-        graph: {
-          ...current,
-          nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)),
-          dirty: true,
-          updatedAt: new Date().toISOString()
-        },
-        lastChangeOrigin: 'local'
-      });
+      const nextGraph: GraphState = {
+        ...current,
+        nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)),
+        dirty: true,
+        updatedAt: new Date().toISOString()
+      };
+      get().setGraph(nextGraph, { origin: 'local' });
     },
     renameNode: (nodeId, label) => {
       const current = get().graph;
-      set({
-        graph: {
-          ...current,
-          nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, label } : node)),
-          dirty: true,
-          updatedAt: new Date().toISOString()
-        },
-        lastChangeOrigin: 'local'
-      });
+      const nextGraph: GraphState = {
+        ...current,
+        nodes: current.nodes.map((node) => (node.id === nodeId ? { ...node, label } : node)),
+        dirty: true,
+        updatedAt: new Date().toISOString()
+      };
+      get().setGraph(nextGraph, { origin: 'local' });
     },
     markDirty: (dirty = true, origin: ChangeOrigin = 'local') =>
       set(({ graph }) => ({
@@ -79,7 +129,168 @@ export const createGraphStore = (initialGraph: GraphState) =>
         lastChangeOrigin: origin
       })),
     selectedNodeIds: [],
-    setSelectedNodes: (nodeIds) => set({ selectedNodeIds: [...nodeIds] })
+    selectedEdgeIds: [],
+    setSelectedNodes: (nodeIds) => set({ selectedNodeIds: [...nodeIds] }),
+    setSelectedEdges: (edgeIds) => set({ selectedEdgeIds: [...edgeIds] }),
+    deleteNodes: (nodeIds) => {
+      if (!nodeIds.length) {
+        return;
+      }
+      const graph = get().graph;
+      const setGraph = get().setGraph;
+      const allowedNodes = graph.nodes.filter((node) => !nodeIds.includes(node.id));
+      const remainingNodeIds = new Set(allowedNodes.map((node) => node.id));
+      const allowedEdges = graph.edges.filter(
+        (edge) =>
+          remainingNodeIds.has(edge.source) && remainingNodeIds.has(edge.target) &&
+          !nodeIds.includes(edge.source) &&
+          !nodeIds.includes(edge.target)
+      );
+      setGraph(
+        {
+          ...graph,
+          nodes: allowedNodes,
+          edges: allowedEdges,
+          dirty: true,
+          updatedAt: new Date().toISOString()
+        },
+        { origin: 'local' }
+      );
+    },
+    deleteEdges: (edgeIds) => {
+      if (!edgeIds.length) {
+        return;
+      }
+      const graph = get().graph;
+      const setGraph = get().setGraph;
+      const allowedEdges = graph.edges.filter((edge) => !edgeIds.includes(edge.id));
+      setGraph(
+        {
+          ...graph,
+          edges: allowedEdges,
+          dirty: true,
+          updatedAt: new Date().toISOString()
+        },
+        { origin: 'local' }
+      );
+    },
+    undo: () => {
+      const past = get().historyPast;
+      if (!past.length) {
+        return;
+      }
+      const current = get().graph;
+      const previous = past[past.length - 1];
+      set(({ historyFuture }) => ({
+        graph: cloneGraph(previous),
+        lastChangeOrigin: 'local',
+        historyPast: past.slice(0, -1),
+        historyFuture: [cloneGraph(current), ...historyFuture],
+        selectedNodeIds: sanitizeSelection(previous, get().selectedNodeIds),
+        selectedEdgeIds: sanitizeEdgeSelection(previous, get().selectedEdgeIds)
+      }));
+    },
+    redo: () => {
+      const future = get().historyFuture;
+      if (!future.length) {
+        return;
+      }
+      const current = get().graph;
+      const next = future[0];
+      set(({ historyPast }) => ({
+        graph: cloneGraph(next),
+        lastChangeOrigin: 'local',
+        historyPast: [...historyPast, cloneGraph(current)].slice(-50),
+        historyFuture: future.slice(1),
+        selectedNodeIds: sanitizeSelection(next, get().selectedNodeIds),
+        selectedEdgeIds: sanitizeEdgeSelection(next, get().selectedEdgeIds)
+      }));
+    },
+    copySelection: () => {
+      const graph = get().graph;
+      const selectedNodes = get().selectedNodeIds;
+      const selectedEdges = get().selectedEdgeIds;
+      if (!selectedNodes.length && !selectedEdges.length) {
+        return;
+      }
+      const nodeIdSet = new Set(selectedNodes);
+      const nodes = graph.nodes.filter((node) => nodeIdSet.has(node.id));
+      const edges = graph.edges.filter(
+        (edge) =>
+          (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) ||
+          selectedEdges.includes(edge.id)
+      );
+      set({
+        clipboard: {
+          nodes: nodes.map((node) => ({
+            ...node,
+            position: node.position ? { ...node.position } : undefined
+          })),
+          edges: edges.map((edge) => ({ ...edge }))
+        }
+      });
+    },
+    pasteClipboard: () => {
+      const clipboard = get().clipboard;
+      if (!clipboard) {
+        return;
+      }
+      const graph = get().graph;
+      const timestamp = Date.now();
+      const idMap = new Map<string, string>();
+      const nodesToAdd = clipboard.nodes.map((node, index) => {
+        const newId = `${node.id}-copy-${timestamp}-${index}`;
+        idMap.set(node.id, newId);
+        return {
+          ...node,
+          id: newId,
+          label: node.label ? `${node.label} (копия)` : node.label,
+          position: node.position
+            ? { x: node.position.x + 40, y: node.position.y + 40 }
+            : undefined
+        } satisfies GraphNode;
+      });
+      const edgesToAdd = clipboard.edges
+        .map((edge, index) => {
+          const sourceId = idMap.get(edge.source);
+          const targetId = idMap.get(edge.target);
+          if (!sourceId || !targetId) {
+            return undefined;
+          }
+          return {
+            ...edge,
+            id: `${edge.id}-copy-${timestamp}-${index}`,
+            source: sourceId,
+            target: targetId
+          } satisfies GraphEdge;
+        })
+        .filter((edge): edge is GraphEdge => Boolean(edge));
+
+      if (!nodesToAdd.length && !edgesToAdd.length) {
+        return;
+      }
+
+      const setGraph = get().setGraph;
+      const nextGraph: GraphState = {
+        ...graph,
+        nodes: [...graph.nodes, ...nodesToAdd],
+        edges: [...graph.edges, ...edgesToAdd],
+        dirty: true,
+        updatedAt: new Date().toISOString()
+      };
+
+      setGraph(nextGraph, { origin: 'local' });
+      set({ selectedNodeIds: nodesToAdd.map((node) => node.id), selectedEdgeIds: [] });
+    },
+    duplicateSelection: () => {
+      const selection = get().selectedNodeIds;
+      const edgeSelection = get().selectedEdgeIds;
+      if (!selection.length && !edgeSelection.length) {
+        return;
+      }
+      get().copySelection();
+      get().pasteClipboard();
+    }
   }));
 
 export type GraphStoreHook = ReturnType<typeof createGraphStore>;

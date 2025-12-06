@@ -756,6 +756,7 @@ export class GraphPanel {
       .graph-canvas {
         width: 100%;
         height: 100%;
+        position: relative;
       }
       .side-panel {
         display: flex;
@@ -870,6 +871,32 @@ export class GraphPanel {
         color: inherit;
         cursor: pointer;
         font-size: 16px;
+      }
+      .context-menu {
+        position: absolute;
+        min-width: 160px;
+        background: var(--mc-surface);
+        border: 1px solid var(--mc-surface-border);
+        border-radius: 8px;
+        box-shadow: var(--mc-shadow);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        z-index: 5;
+      }
+      .context-menu__item {
+        background: transparent;
+        border: none;
+        color: var(--mc-body-text);
+        text-align: left;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .context-menu__item:hover {
+        background: var(--mc-toolbar-from);
+        color: var(--mc-panel-title);
       }
     </style>
   </head>

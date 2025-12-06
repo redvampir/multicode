@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { type GraphState } from './graphState';
-import type { ValidationResult } from './validator';
 
 const positionSchema = z.object({
   x: z.number(),
@@ -73,10 +72,16 @@ const logPayloadSchema = z.object({
   message: z.string()
 });
 
+export const validationResultSchema = z.object({
+  ok: z.boolean(),
+  errors: z.array(z.string()),
+  warnings: z.array(z.string())
+});
+
 export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setState'), payload: graphStateSchema }),
   z.object({ type: z.literal('toast'), payload: toastPayloadSchema }),
-  z.object({ type: z.literal('validationResult'), payload: z.custom<ValidationResult>() }),
+  z.object({ type: z.literal('validationResult'), payload: validationResultSchema }),
   z.object({ type: z.literal('themeChanged'), payload: themeMessageSchema }),
   z.object({ type: z.literal('nodeAdded'), payload: z.object({ node: graphNodeSchema }) }),
   z.object({ type: z.literal('nodesConnected'), payload: z.object({ edge: graphEdgeSchema }) }),
@@ -146,6 +151,7 @@ export type GraphNodeTypeSchema = typeof graphNodeTypeSchema;
 export type GraphLanguageSchema = typeof graphLanguageSchema;
 export type GraphDisplayLanguageSchema = typeof graphDisplayLanguageSchema;
 export type GraphEdgeKindSchema = typeof graphEdgeKindSchema;
+export type ValidationResult = z.infer<typeof validationResultSchema>;
 
 export const isExtensionMessage = (data: unknown): data is ExtensionToWebviewMessage =>
   extensionToWebviewMessageSchema.safeParse(data).success;

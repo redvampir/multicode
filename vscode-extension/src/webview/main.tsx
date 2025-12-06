@@ -447,6 +447,21 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handler = (event: MessageEvent<unknown>): void => {
+      if (event.source !== window) {
+        console.warn('Игнорируем сообщение из неизвестного окна', event);
+        return;
+      }
+
+      const origin = event.origin ?? '';
+      const isTrustedOrigin =
+        origin === '' || origin.startsWith('vscode-file://') || origin.startsWith('vscode-webview://');
+
+      if (!isTrustedOrigin) {
+        console.warn('Игнорируем сообщение с неподдерживаемым origin', origin, event);
+        return;
+      }
+
+      // В webview origin обычно пустой или начинается с "vscode-file://" (локальное превью)
       const parsed = parseExtensionMessage(event.data);
       if (!parsed.success) {
         reportWebviewError(

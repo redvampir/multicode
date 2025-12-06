@@ -31,7 +31,8 @@
   ],
   "activationEvents": [
     "onLanguage:cpp",
-    "onLanguage:rust"
+    "onLanguage:rust",
+    "onCommand:multicode.translateGraph"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -60,6 +61,11 @@
         "command": "multicode.loadGraph",
         "title": "МультиКод: Load Graph",
         "icon": "$(folder-opened)"
+      },
+      {
+        "command": "multicode.translateGraph",
+        "title": "МультиКод: Перевести граф (Marian)",
+        "icon": "$(globe)"
       }
     ],
     "keybindings": [
@@ -138,6 +144,31 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically generate code on graph change"
+        },
+        "multicode.translation.engine": {
+          "type": "string",
+          "enum": [
+            "none",
+            "marian"
+          ],
+          "default": "none",
+          "description": "Включить офлайн-перевод через MarianMT"
+        },
+        "multicode.translation.model.ruEn": {
+          "type": "string",
+          "default": "Helsinki-NLP/opus-mt-ru-en",
+          "description": "Модель MarianMT для перевода RU→EN"
+        },
+        "multicode.translation.model.enRu": {
+          "type": "string",
+          "default": "Helsinki-NLP/opus-mt-en-ru",
+          "description": "Модель MarianMT для перевода EN→RU"
+        },
+        "multicode.translation.cacheLimit": {
+          "type": "number",
+          "default": 200,
+          "minimum": 50,
+          "description": "Размер кэша переводов MarianMT"
         }
       }
     }
@@ -174,6 +205,7 @@
     "mocha": "^10.2.0"
   },
   "dependencies": {
+    "@xenova/transformers": "^2.17.2",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "cytoscape": "^3.26.0",
     "cytoscape-dagre": "^2.5.0",

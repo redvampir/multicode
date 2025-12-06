@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   createDefaultGraphState,
-  type GraphEdge,
   type GraphNode,
   type GraphNodeType,
   type GraphDisplayLanguage,
@@ -19,25 +18,16 @@ import {
   type ThemeSetting,
   type ThemeTokens
 } from './theme';
+import {
+  parseExtensionMessage,
+  webviewToExtensionMessageSchema,
+  type ExtensionToWebviewMessage,
+  type ThemeMessage,
+  type TranslationDirection,
+  type WebviewToExtensionMessage
+} from '../shared/messages';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
-
-type ThemeMessage = {
-  preference: ThemeSetting;
-  hostTheme: EffectiveTheme;
-  displayLanguage?: GraphDisplayLanguage;
-};
-
-type Message =
-  | { type: 'setState'; payload: GraphState }
-  | { type: 'toast'; payload: { kind: ToastKind; message: string } }
-  | { type: 'validationResult'; payload: ValidationResult }
-  | { type: 'themeChanged'; payload: ThemeMessage }
-  | { type: 'nodeAdded'; payload: { node: GraphNode } }
-  | { type: 'nodesConnected'; payload: { edge: GraphEdge } }
-  | { type: 'nodesDeleted'; payload: { nodeIds: string[] } }
-  | { type: 'translationStarted'; payload: { direction: 'ru-en' | 'en-ru' } }
-  | { type: 'translationFinished'; payload: { success: boolean } };
 
 type Toast = { id: number; kind: ToastKind; message: string };
 
@@ -88,6 +78,23 @@ const applyUiTheme = (tokens: ThemeTokens, effective: EffectiveTheme): void => {
   style.setProperty('--mc-button-hover-shadow', tokens.ui.buttonHoverShadow);
 };
 
+const formatIssues = (issues: Array<{ message: string }> = []): string =>
+  issues.map((issue) => issue.message).join('; ');
+
+const sendToExtension = (message: WebviewToExtensionMessage): void => {
+  const parsed = webviewToExtensionMessageSchema.safeParse(message);
+  if (!parsed.success) {
+    console.error(`Невозможно отправить сообщение в расширение: ${formatIssues(parsed.error.issues)}`);
+    return;
+  }
+  vscode.postMessage(parsed.data);
+};
+
+const reportWebviewError = (message: string): void => {
+  console.error(message);
+  sendToExtension({ type: 'reportWebviewError', payload: { message } });
+};
+
 const Toolbar: React.FC<{
   locale: GraphDisplayLanguage;
   onLocaleChange: (locale: GraphDisplayLanguage) => void;
@@ -98,7 +105,7 @@ const Toolbar: React.FC<{
 
   const send = (type: 'requestNewGraph' | 'requestSave' | 'requestLoad' | 'requestGenerate' | 'requestValidate') => {
     setPending(true);
-    vscode.postMessage({ type });
+    sendToExtension({ type });
     setTimeout(() => setPending(false), 200);
   };
 
@@ -414,7 +421,7 @@ const App: React.FC = () => {
   const [themeState, setThemeState] = useState<ThemeMessage>(initialThemeMessage);
   const [lastNodeAddedToken, setLastNodeAddedToken] = useState<number | undefined>(undefined);
   const [lastConnectionToken, setLastConnectionToken] = useState<number | undefined>(undefined);
-  const [translationDirection, setTranslationDirection] = useState<'ru-en' | 'en-ru'>(
+  const [translationDirection, setTranslationDirection] = useState<TranslationDirection>(
     graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru'
   );
   const [translationPending, setTranslationPending] = useState(false);
@@ -439,28 +446,33 @@ const App: React.FC = () => {
   }, [themeTokens, effectiveTheme]);
 
   useEffect(() => {
-    const handler = (event: MessageEvent<Message>): void => {
-      if (!event.data) {
+    const handler = (event: MessageEvent<unknown>): void => {
+      const parsed = parseExtensionMessage(event.data);
+      if (!parsed.success) {
+        reportWebviewError(
+          `Некорректное сообщение от расширения: ${formatIssues(parsed.error.issues)}`
+        );
         return;
       }
-      switch (event.data.type) {
+      const message = parsed.data;
+      switch (message.type) {
         case 'setState':
-          setGraph(event.data.payload, { origin: 'remote' });
-          setLocale(event.data.payload.displayLanguage ?? 'ru');
-          localeRef.current = event.data.payload.displayLanguage ?? 'ru';
-          vscode.setState({ graph: event.data.payload, locale: localeRef.current });
+          setGraph(message.payload, { origin: 'remote' });
+          setLocale(message.payload.displayLanguage ?? 'ru');
+          localeRef.current = message.payload.displayLanguage ?? 'ru';
+          vscode.setState({ graph: message.payload, locale: localeRef.current });
           break;
         case 'toast':
-          pushToast(event.data.payload.kind, event.data.payload.message);
+          pushToast(message.payload.kind, message.payload.message);
           break;
         case 'validationResult':
-          setValidation(event.data.payload);
+          setValidation(message.payload);
           break;
         case 'themeChanged':
-          setThemeState(event.data.payload);
-          if (event.data.payload.displayLanguage) {
-            setLocale(event.data.payload.displayLanguage);
-            localeRef.current = event.data.payload.displayLanguage;
+          setThemeState(message.payload);
+          if (message.payload.displayLanguage) {
+            setLocale(message.payload.displayLanguage);
+            localeRef.current = message.payload.displayLanguage;
           }
           break;
         case 'nodeAdded':
@@ -473,10 +485,19 @@ const App: React.FC = () => {
           break;
         case 'translationStarted':
           setTranslationPending(true);
-          setTranslationDirection(event.data.payload.direction);
+          setTranslationDirection(message.payload.direction);
           break;
         case 'translationFinished':
           setTranslationPending(false);
+          break;
+        case 'log':
+          if (message.payload.level === 'error') {
+            console.error(message.payload.message);
+          } else if (message.payload.level === 'warn') {
+            console.warn(message.payload.message);
+          } else {
+            console.info(message.payload.message);
+          }
           break;
         default:
           break;
@@ -484,7 +505,7 @@ const App: React.FC = () => {
     };
 
     window.addEventListener('message', handler);
-    vscode.postMessage({ type: 'ready' });
+    sendToExtension({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
   }, [setGraph]);
 
@@ -494,7 +515,7 @@ const App: React.FC = () => {
       ({ graph, origin }) => {
         vscode.setState({ graph, locale: localeRef.current });
         if (origin === 'local') {
-          vscode.postMessage({
+          sendToExtension({
             type: 'graphChanged',
             payload: {
               nodes: graph.nodes,
@@ -513,23 +534,23 @@ const App: React.FC = () => {
   }, []);
 
   const handleAddNode = (payload: { label?: string; nodeType?: GraphNodeType }): void => {
-    vscode.postMessage({ type: 'addNode', payload });
+    sendToExtension({ type: 'addNode', payload });
   };
 
   const handleConnectNodes = (payload: { sourceId?: string; targetId?: string }): void => {
-    vscode.postMessage({ type: 'connectNodes', payload });
+    sendToExtension({ type: 'connectNodes', payload });
   };
 
   const handleDeleteNodes = (nodeIds: string[]): void => {
     if (!nodeIds.length) {
       return;
     }
-    vscode.postMessage({ type: 'deleteNodes', payload: { nodeIds } });
+    sendToExtension({ type: 'deleteNodes', payload: { nodeIds } });
   };
 
   const handleTranslate = (): void => {
     setTranslationPending(true);
-    vscode.postMessage({ type: 'requestTranslate', payload: { direction: translationDirection } });
+    sendToExtension({ type: 'requestTranslate', payload: { direction: translationDirection } });
   };
 
   useEffect(() => {

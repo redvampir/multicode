@@ -1,6 +1,5 @@
 import { env, pipeline, type TranslationPipeline } from '@xenova/transformers';
-
-export type TranslationDirection = 'ru-en' | 'en-ru';
+import type { TranslationDirection } from '../shared/messages';
 
 type TranslationCacheKey = `${TranslationDirection}:${string}`;
 

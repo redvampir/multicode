@@ -19,6 +19,7 @@ import {
   type ThemeSetting,
   type ThemeTokens
 } from '../webview/theme';
+import { MarianTranslator, type TranslationDirection } from './marianTranslator';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -86,6 +87,10 @@ export class GraphPanel {
   private graphState: GraphState;
   private locale: GraphDisplayLanguage;
   private themePreference: ThemeSetting;
+  private translationEngine: 'none' | 'marian';
+  private translationModels: Partial<Record<TranslationDirection, string>>;
+  private translationCacheLimit: number;
+  private translator: MarianTranslator | undefined;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -100,6 +105,11 @@ export class GraphPanel {
       displayLanguage: this.locale
     });
     this.themePreference = this.readThemePreference();
+    const translationConfig = this.readTranslationConfig();
+    this.translationEngine = translationConfig.engine;
+    this.translationModels = translationConfig.models;
+    this.translationCacheLimit = translationConfig.cacheLimit;
+    this.translator = undefined;
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
@@ -113,6 +123,13 @@ export class GraphPanel {
         if (event.affectsConfiguration('multicode.theme')) {
           this.themePreference = this.readThemePreference();
           this.postTheme();
+        }
+        if (event.affectsConfiguration('multicode.translation')) {
+          const config = this.readTranslationConfig();
+          this.translationEngine = config.engine;
+          this.translationModels = config.models;
+          this.translationCacheLimit = config.cacheLimit;
+          this.translator = undefined;
         }
       }),
       vscode.window.onDidChangeActiveColorTheme(() => this.postTheme())
@@ -187,6 +204,61 @@ export class GraphPanel {
     this.postState();
     this.postToast('success', this.translate('toasts.connectionCreated'));
     this.panel.webview.postMessage({ type: 'nodesConnected', payload: { edge } });
+  }
+
+  public async translateGraphLabels(direction?: TranslationDirection): Promise<void> {
+    const targetDirection = direction ?? (await this.pickTranslationDirection());
+    if (!targetDirection) {
+      return;
+    }
+    const translator = this.getTranslator();
+    if (!translator) {
+      this.postToast('warning', 'Перевод отключён: включите Marian в настройках multicode.translation.engine');
+      return;
+    }
+
+    const uniqueTexts = new Set<string>();
+    if (this.graphState.name) {
+      uniqueTexts.add(this.graphState.name);
+    }
+    this.graphState.nodes.forEach((node) => uniqueTexts.add(node.label));
+    this.graphState.edges.forEach((edge) => {
+      if (edge.label) {
+        uniqueTexts.add(edge.label);
+      }
+    });
+
+    if (!uniqueTexts.size) {
+      this.postToast('info', 'Нет текстов для перевода');
+      return;
+    }
+
+    try {
+      const translations = await translator.translateBatch(Array.from(uniqueTexts), targetDirection);
+      const updatedNodes = this.graphState.nodes.map((node) => ({
+        ...node,
+        label: translations.get(node.label) ?? node.label
+      }));
+      const updatedEdges = this.graphState.edges.map((edge) => ({
+        ...edge,
+        label: edge.label ? translations.get(edge.label) ?? edge.label : edge.label
+      }));
+      const translatedName = this.graphState.name
+        ? translations.get(this.graphState.name) ?? this.graphState.name
+        : this.graphState.name;
+
+      this.markState({
+        nodes: updatedNodes,
+        edges: updatedEdges,
+        name: translatedName ?? this.graphState.name,
+        displayLanguage: targetDirection === 'ru-en' ? 'en' : 'ru'
+      });
+      this.postState();
+      this.postToast('success', `Тексты графа переведены (${targetDirection})`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      this.postToast('error', `Перевод не выполнен: ${message}`);
+    }
   }
 
   public deleteNodes(nodeIds: string[]): void {
@@ -316,6 +388,30 @@ export class GraphPanel {
     return getTranslation(this.locale, key, replacements);
   }
 
+  private pickTranslationDirection(): Promise<TranslationDirection | undefined> {
+    return vscode.window.showQuickPick<
+      { label: string; value: TranslationDirection; description: string }
+    >(
+      [
+        { label: 'RU → EN', value: 'ru-en', description: 'Перевести русские подписи на английский' },
+        { label: 'EN → RU', value: 'en-ru', description: 'Перевести английские подписи на русский' }
+      ],
+      {
+        placeHolder: 'Направление перевода для Marian MT'
+      }
+    ).then((selection) => selection?.value);
+  }
+
+  private getTranslator(): MarianTranslator | undefined {
+    if (this.translationEngine !== 'marian') {
+      return undefined;
+    }
+    if (!this.translator) {
+      this.translator = new MarianTranslator(this.translationModels, this.translationCacheLimit);
+    }
+    return this.translator;
+  }
+
   private markState(partial: Partial<GraphState>): void {
     this.graphState = {
       ...this.graphState,
@@ -335,6 +431,26 @@ export class GraphPanel {
 
   private getHostTheme(): EffectiveTheme {
     return vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ? 'light' : 'dark';
+  }
+
+  private readTranslationConfig(): {
+    engine: 'none' | 'marian';
+    models: Partial<Record<TranslationDirection, string>>;
+    cacheLimit: number;
+  } {
+    const config = vscode.workspace.getConfiguration('multicode.translation');
+    const engine = config.get<'none' | 'marian'>('engine', 'none');
+    const ruEnModel = config.get<string>('model.ruEn', 'Helsinki-NLP/opus-mt-ru-en');
+    const enRuModel = config.get<string>('model.enRu', 'Helsinki-NLP/opus-mt-en-ru');
+    const cacheLimit = Math.max(50, config.get<number>('cacheLimit', 200));
+    return {
+      engine,
+      models: {
+        'ru-en': ruEnModel,
+        'en-ru': enRuModel
+      },
+      cacheLimit
+    };
   }
 
   private buildRootCssVariables(tokens: ThemeTokens, effectiveTheme: EffectiveTheme): string {

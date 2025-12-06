@@ -9,7 +9,18 @@ export type TranslationKey =
   | 'toolbar.generate'
   | 'toolbar.validate'
   | 'toolbar.unsaved'
+  | 'toolbar.languageSwitch'
+  | 'toolbar.targetPlatform'
+  | 'toolbar.newGraph'
+  | 'toolbar.loadGraph'
+  | 'toolbar.saveGraph'
+  | 'toolbar.validateGraph'
+  | 'toolbar.generateGraph'
   | 'overview.title'
+  | 'overview.nodes'
+  | 'overview.edges'
+  | 'overview.language'
+  | 'overview.synced'
   | 'inspector.title'
   | 'graph.id'
   | 'graph.name'
@@ -24,8 +35,11 @@ export type TranslationKey =
   | 'form.connection'
   | 'form.addNode'
   | 'form.connect'
+  | 'form.source'
+  | 'form.target'
   | 'form.placeholder.graph'
   | 'form.placeholder.node'
+  | 'form.placeholder.newNode'
   | 'form.placeholder.edge'
   | 'toasts.saved'
   | 'toasts.loaded'
@@ -35,6 +49,7 @@ export type TranslationKey =
   | 'toasts.nodeAdded'
   | 'toasts.connectionCreated'
   | 'toasts.nodesDeleted'
+  | 'toast.close'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -53,7 +68,18 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.generate': 'Сгенерировать код',
     'toolbar.validate': 'Валидировать',
     'toolbar.unsaved': 'Есть несохранённые изменения',
-    'overview.title': 'Обзор графа',
+    'toolbar.languageSwitch': 'Язык интерфейса',
+    'toolbar.targetPlatform': 'Целевая платформа: {language}',
+    'toolbar.newGraph': 'Новый граф',
+    'toolbar.loadGraph': 'Загрузить',
+    'toolbar.saveGraph': 'Сохранить',
+    'toolbar.validateGraph': 'Проверить',
+    'toolbar.generateGraph': 'Генерировать код',
+    'overview.title': 'Сводка графа',
+    'overview.nodes': 'Узлы',
+    'overview.edges': 'Связи',
+    'overview.language': 'Язык',
+    'overview.synced': 'Синхронизировано',
     'inspector.title': 'Инспектор',
     'graph.id': 'ID',
     'graph.name': 'Имя',
@@ -68,8 +94,11 @@ const translations: Record<Locale, TranslationMap> = {
     'form.connection': 'Создать соединение',
     'form.addNode': 'Добавить узел',
     'form.connect': 'Соединить',
+    'form.source': 'Источник',
+    'form.target': 'Цель',
     'form.placeholder.graph': 'Без имени',
     'form.placeholder.node': 'Имя узла',
+    'form.placeholder.newNode': 'Новый узел',
     'form.placeholder.edge': 'Метка соединения',
     'toasts.saved': 'Граф сохранён',
     'toasts.loaded': 'Граф загружен',
@@ -79,6 +108,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.nodeAdded': 'Узел "{name}" добавлен',
     'toasts.connectionCreated': 'Соединение создано',
     'toasts.nodesDeleted': '{count} узлов удалено',
+    'toast.close': 'Закрыть уведомление',
     'errors.connectionExists': 'Такое соединение уже существует',
     'errors.connectionSelf': 'Нельзя соединить узел с самим собой',
     'errors.connectionMissing': 'Выберите существующие узлы',
@@ -94,7 +124,18 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.generate': 'Generate Code',
     'toolbar.validate': 'Validate',
     'toolbar.unsaved': 'Unsaved changes',
-    'overview.title': 'Graph Overview',
+    'toolbar.languageSwitch': 'Interface language',
+    'toolbar.targetPlatform': 'Target platform: {language}',
+    'toolbar.newGraph': 'New graph',
+    'toolbar.loadGraph': 'Load',
+    'toolbar.saveGraph': 'Save',
+    'toolbar.validateGraph': 'Validate',
+    'toolbar.generateGraph': 'Generate code',
+    'overview.title': 'Graph summary',
+    'overview.nodes': 'Nodes',
+    'overview.edges': 'Edges',
+    'overview.language': 'Language',
+    'overview.synced': 'Synced',
     'inspector.title': 'Inspector',
     'graph.id': 'ID',
     'graph.name': 'Name',
@@ -109,8 +150,11 @@ const translations: Record<Locale, TranslationMap> = {
     'form.connection': 'Create connection',
     'form.addNode': 'Add node',
     'form.connect': 'Connect',
+    'form.source': 'Source',
+    'form.target': 'Target',
     'form.placeholder.graph': 'Untitled',
     'form.placeholder.node': 'Node name',
+    'form.placeholder.newNode': 'New node',
     'form.placeholder.edge': 'Connection label',
     'toasts.saved': 'Graph saved',
     'toasts.loaded': 'Graph loaded',
@@ -120,6 +164,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.nodeAdded': 'Node "{name}" added',
     'toasts.connectionCreated': 'Connection created',
     'toasts.nodesDeleted': '{count} nodes removed',
+    'toast.close': 'Close notification',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',
@@ -128,9 +173,14 @@ const translations: Record<Locale, TranslationMap> = {
   }
 };
 
-export const getTranslation = (locale: Locale, key: TranslationKey, replacements?: Record<string, string>): string => {
+export const getTranslation = (
+  locale: Locale,
+  key: TranslationKey,
+  replacements?: Record<string, string>,
+  fallbackText?: string
+): string => {
   const lang = translations[locale] ?? translations.ru;
-  let text = lang[key];
+  let text = lang[key] ?? translations.ru[key] ?? fallbackText ?? key;
   if (replacements) {
     Object.entries(replacements).forEach(([token, value]) => {
       text = text.replace(`{${token}}`, value);

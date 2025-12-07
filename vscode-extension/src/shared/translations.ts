@@ -63,6 +63,15 @@ export type TranslationKey =
   | 'toasts.connectionCreated'
   | 'toasts.nodesDeleted'
   | 'toast.close'
+  | 'search.placeholder'
+  | 'search.hint'
+  | 'search.results'
+  | 'search.noResults'
+  | 'search.prev'
+  | 'search.next'
+  | 'search.clear'
+  | 'search.type.node'
+  | 'search.type.edge'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -135,6 +144,15 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Соединение создано',
     'toasts.nodesDeleted': '{count} узлов удалено',
     'toast.close': 'Закрыть уведомление',
+    'search.placeholder': 'Поиск по узлам и связям',
+    'search.hint': 'Ctrl+F — фокус на поиске, Enter — следующее, Shift+Enter — предыдущее',
+    'search.results': 'Совпадения: {count}',
+    'search.noResults': 'Нет совпадений',
+    'search.prev': 'Назад',
+    'search.next': 'Вперёд',
+    'search.clear': 'Очистить',
+    'search.type.node': 'Узел',
+    'search.type.edge': 'Ребро',
     'errors.connectionExists': 'Такое соединение уже существует',
     'errors.connectionSelf': 'Нельзя соединить узел с самим собой',
     'errors.connectionMissing': 'Выберите существующие узлы',
@@ -204,6 +222,15 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Connection created',
     'toasts.nodesDeleted': '{count} nodes removed',
     'toast.close': 'Close notification',
+    'search.placeholder': 'Search nodes and edges',
+    'search.hint': 'Ctrl+F — focus search, Enter — next, Shift+Enter — previous',
+    'search.results': 'Matches: {count}',
+    'search.noResults': 'No matches',
+    'search.prev': 'Previous',
+    'search.next': 'Next',
+    'search.clear': 'Clear',
+    'search.type.node': 'Node',
+    'search.type.edge': 'Edge',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',

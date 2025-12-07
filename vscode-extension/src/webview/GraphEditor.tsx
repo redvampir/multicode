@@ -3,7 +3,8 @@ import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from
 import dagre from 'cytoscape-dagre';
 import klay from 'cytoscape-klay';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
-import type { GraphStoreHook, LayoutSettings } from './store';
+import { getTranslation } from '../shared/translations';
+import type { GraphStoreHook, LayoutSettings, SearchResult } from './store';
 import type { ThemeTokens } from './theme';
 
 cytoscape.use(dagre);
@@ -168,6 +169,29 @@ const buildStyles = (tokens: ThemeTokens): Stylesheet[] => [
       'border-width': tokens.nodes.borderWidth + 1,
       'box-shadow': `0 0 18px ${tokens.edges.activeGlow}`
     } as cytoscape.Css.Node
+  },
+  {
+    selector: 'node.search-hit',
+    style: {
+      'border-color': tokens.edges.activeGlow,
+      'border-width': tokens.nodes.borderWidth + 1,
+      'box-shadow': `0 0 12px ${tokens.edges.activeGlow}`,
+      'background-opacity': 1
+    } as cytoscape.Css.Node
+  },
+  {
+    selector: 'edge.search-hit',
+    style: {
+      'line-color': tokens.edges.activeGlow,
+      'target-arrow-color': tokens.edges.activeGlow,
+      width: tokens.edges.width * tokens.geometry.arrowThickness + 1
+    } as cytoscape.Css.Edge
+  },
+  {
+    selector: '.search-dim',
+    style: {
+      opacity: 0.25
+    }
   }
 ];
 
@@ -216,6 +240,9 @@ export const GraphEditor: React.FC<{
   const selectedNodeIds = graphStore((state) => state.selectedNodeIds);
   const selectedEdgeIds = graphStore((state) => state.selectedEdgeIds);
   const layoutSettings = graphStore((state) => state.layout);
+  const searchQuery = graphStore((state) => state.searchQuery);
+  const searchResults = graphStore((state) => state.searchResults);
+  const searchIndex = graphStore((state) => state.searchIndex);
   const hasClipboard = graphStore((state) => Boolean(state.clipboard));
   const setSelectedNodes = graphStore((state) => state.setSelectedNodes);
   const setSelectedEdges = graphStore((state) => state.setSelectedEdges);
@@ -227,11 +254,23 @@ export const GraphEditor: React.FC<{
   const copySelection = graphStore((state) => state.copySelection);
   const pasteClipboard = graphStore((state) => state.pasteClipboard);
   const duplicateSelection = graphStore((state) => state.duplicateSelection);
+  const setSearchQuery = graphStore((state) => state.setSearchQuery);
+  const setSearchIndex = graphStore((state) => state.setSearchIndex);
+  const selectNextSearchResult = graphStore((state) => state.selectNextSearchResult);
+  const selectPreviousSearchResult = graphStore((state) => state.selectPreviousSearchResult);
   const styles = useMemo(() => buildStyles(theme), [theme]);
   const selectionRef = useRef<string[]>([]);
   const edgeSelectionRef = useRef<string[]>([]);
   const layoutRunnerRef = useRef<() => void>(() => {});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const translate = useMemo(
+    () =>
+      (key: string, fallback: string, replacements?: Record<string, string>) =>
+        getTranslation(graph.displayLanguage, key as never, replacements, fallback),
+    [graph.displayLanguage]
+  );
 
   useEffect(() => {
     containerRef.current?.focus();
@@ -413,6 +452,60 @@ export const GraphEditor: React.FC<{
   }, [selectedEdgeIds]);
 
   useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.nodes().removeClass('search-hit search-dim');
+    cy.edges().removeClass('search-hit search-dim');
+
+    if (!searchQuery.trim()) {
+      return;
+    }
+
+    const hitIds = new Set(searchResults.map((item) => item.id));
+    cy.nodes().forEach((node) => {
+      if (hitIds.has(node.id())) {
+        node.addClass('search-hit');
+      } else {
+        node.addClass('search-dim');
+      }
+    });
+
+    cy.edges().forEach((edge) => {
+      if (hitIds.has(edge.id())) {
+        edge.addClass('search-hit');
+      } else {
+        edge.addClass('search-dim');
+      }
+    });
+  }, [searchQuery, searchResults]);
+
+  const focusOnElement = (result?: SearchResult): void => {
+    const cy = cyRef.current;
+    if (!cy || !result) {
+      return;
+    }
+    const element = cy.$id(result.id);
+    if (element.empty()) {
+      return;
+    }
+    cy.nodes().unselect();
+    cy.edges().unselect();
+    element.select();
+
+    cy.animate({
+      fit: { eles: element, padding: 80 },
+      duration: 280,
+      easing: 'ease-in-out'
+    });
+  };
+
+  useEffect(() => {
+    focusOnElement(searchResults[searchIndex]);
+  }, [searchIndex, searchResults]);
+
+  useEffect(() => {
     const element = containerRef.current;
     if (!element) {
       return;
@@ -422,6 +515,21 @@ export const GraphEditor: React.FC<{
       const selected = selectionRef.current;
       const selectedEdges = edgeSelectionRef.current;
       const isCtrl = event.ctrlKey || event.metaKey;
+      const target = event.target as HTMLElement | null;
+      const isInput =
+        target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable;
+
+      if (isInput && !(isCtrl && event.key.toLowerCase() === 'f')) {
+        return;
+      }
+
+      if (isCtrl && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
       if ((event.key === 'Delete' || event.key === 'Backspace') && (selected.length || selectedEdges.length)) {
         event.preventDefault();
         deleteEdges([...selectedEdges]);
@@ -552,6 +660,145 @@ export const GraphEditor: React.FC<{
     setContextMenu(null);
   };
 
+  const renderSearchItem = (item: SearchResult, index: number): React.ReactNode => {
+    const isActive = index === searchIndex;
+    return (
+      <li
+        key={`${item.kind}-${item.id}`}
+        className={`graph-search__item${isActive ? ' graph-search__item--active' : ''}`}
+        onClick={() => setSearchIndex(index)}
+        style={{
+          padding: '8px 10px',
+          borderRadius: 6,
+          border: isActive ? `1px solid ${theme.edges.activeGlow}` : `1px solid ${theme.canvas.stroke}`,
+          backgroundColor: isActive ? theme.canvas.background : 'transparent',
+          cursor: 'pointer',
+          display: 'grid',
+          gap: 4
+        }}
+      >
+        <div className="graph-search__item-title">{item.label}</div>
+        <div className="graph-search__item-meta">
+          {translate(item.kind === 'node' ? 'search.type.node' : 'search.type.edge', item.kind)} · {item.meta}
+        </div>
+      </li>
+    );
+  };
+
+  const renderSearchPanel = (): React.ReactNode => {
+    const hasResults = Boolean(searchResults.length);
+
+    const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          selectPreviousSearchResult();
+          return;
+        }
+        selectNextSearchResult();
+        return;
+      }
+      if (event.key === 'Escape') {
+        setSearchQuery('');
+      }
+    };
+
+    const clearSearch = (): void => setSearchQuery('');
+
+    return (
+      <div
+        className="graph-search"
+        style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 5,
+          width: 320,
+          padding: 10,
+          border: `1px solid ${theme.canvas.stroke}`,
+          borderRadius: 10,
+          backgroundColor: theme.canvas.surface,
+          boxShadow: '0 8px 20px rgba(0, 0, 0, 0.25)',
+          color: theme.nodes.textColor
+        }}
+      >
+        <div className="graph-search__controls" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={translate('search.placeholder', 'Поиск по узлам и связям')}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: `1px solid ${theme.canvas.stroke}`,
+                backgroundColor: theme.canvas.background,
+                color: theme.nodes.textColor
+              }}
+            />
+            <button
+              type="button"
+              onClick={clearSearch}
+              disabled={!searchQuery}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: `1px solid ${theme.canvas.stroke}`,
+                backgroundColor: theme.canvas.background,
+                color: theme.nodes.textColor,
+                cursor: searchQuery ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {translate('search.clear', 'Очистить')}
+            </button>
+          </div>
+          <div
+            className="graph-search__nav"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button type="button" onClick={selectPreviousSearchResult} disabled={!hasResults}>
+                {translate('search.prev', 'Назад')}
+              </button>
+              <button type="button" onClick={selectNextSearchResult} disabled={!hasResults}>
+                {translate('search.next', 'Вперёд')}
+              </button>
+            </div>
+            <span className="graph-search__counter" style={{ fontSize: 12, opacity: 0.8 }}>
+              {hasResults
+                ? `${searchIndex + 1}/${searchResults.length}`
+                : translate('search.noResults', 'Нет совпадений')}
+            </span>
+          </div>
+        </div>
+        <div className="graph-search__hint" style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+          {translate('search.hint', 'Ctrl+F — фокус на поиске')}
+        </div>
+        <div className="graph-search__results-title" style={{ marginTop: 10, fontWeight: 600 }}>
+          {translate('search.results', 'Совпадения: {count}', { count: String(searchResults.length) })}
+        </div>
+        <ul
+          className="graph-search__results"
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: '8px 0 0',
+            maxHeight: 220,
+            overflowY: 'auto',
+            gap: 4,
+            display: 'grid'
+          }}
+        >
+          {hasResults ? searchResults.map(renderSearchItem) : null}
+        </ul>
+      </div>
+    );
+  };
+
   const renderContextMenu = (): React.ReactNode => {
     if (!contextMenu) {
       return null;
@@ -584,10 +831,12 @@ export const GraphEditor: React.FC<{
         backgroundImage: theme.canvas.accents,
         borderColor: theme.canvas.stroke,
         borderStyle: 'solid',
-        borderWidth: 1
+        borderWidth: 1,
+        position: 'relative'
       }}
       tabIndex={0}
     >
+      {renderSearchPanel()}
       {renderContextMenu()}
     </div>
   );

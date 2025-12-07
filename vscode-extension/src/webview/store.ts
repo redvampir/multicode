@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import type { GraphEdge, GraphNode, GraphState } from '../shared/graphState';
 
+export type SearchResult = {
+  id: string;
+  kind: 'node' | 'edge';
+  label: string;
+  meta: string;
+};
+
 export type ChangeOrigin = 'local' | 'remote';
 
 export type LayoutAlgorithm = 'dagre' | 'klay';
@@ -60,6 +67,9 @@ export interface GraphStore {
   historyPast: GraphState[];
   historyFuture: GraphState[];
   clipboard: GraphClipboard;
+  searchQuery: string;
+  searchResults: SearchResult[];
+  searchIndex: number;
   setGraph: (
     graph: GraphState,
     options?: { origin?: ChangeOrigin; pushHistory?: boolean }
@@ -79,6 +89,10 @@ export interface GraphStore {
   copySelection: () => void;
   pasteClipboard: () => void;
   duplicateSelection: () => void;
+  setSearchQuery: (query: string) => void;
+  setSearchIndex: (index: number) => void;
+  selectNextSearchResult: () => void;
+  selectPreviousSearchResult: () => void;
 }
 
 const ensurePosition = (nodes: GraphNode[]): GraphNode[] =>
@@ -117,6 +131,49 @@ const sanitizeEdgeSelection = (
   selection: string[]
 ): string[] => selection.filter((id) => graph.edges.some((edge) => edge.id === id));
 
+const normalizeText = (value?: string): string => value?.toLowerCase() ?? '';
+
+const isMatch = (haystack: string, query: string): boolean => normalizeText(haystack).includes(query);
+
+const buildSearchResults = (graph: GraphState, query: string): SearchResult[] => {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const nodeResults: SearchResult[] = graph.nodes
+    .filter(
+      (node) =>
+        isMatch(node.label, normalizedQuery) ||
+        isMatch(node.id, normalizedQuery) ||
+        isMatch(node.type, normalizedQuery)
+    )
+    .map((node) => ({
+      id: node.id,
+      kind: 'node',
+      label: node.label,
+      meta: node.type
+    }));
+
+  const edgeResults: SearchResult[] = graph.edges
+    .filter(
+      (edge) =>
+        isMatch(edge.label ?? '', normalizedQuery) ||
+        isMatch(edge.id, normalizedQuery) ||
+        isMatch(edge.source, normalizedQuery) ||
+        isMatch(edge.target, normalizedQuery) ||
+        isMatch(edge.kind ?? '', normalizedQuery)
+    )
+    .map((edge) => ({
+      id: edge.id,
+      kind: 'edge',
+      label: edge.label ?? edge.id,
+      meta: `${edge.source} → ${edge.target}`
+    }));
+
+  return [...nodeResults, ...edgeResults];
+};
+
 export const createGraphStore = (initialGraph: GraphState, initialLayout?: Partial<LayoutSettings>) =>
   create<GraphStore>((set, get) => ({
     graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
@@ -125,6 +182,9 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
     historyPast: [],
     historyFuture: [],
     clipboard: null,
+    searchQuery: '',
+    searchResults: [],
+    searchIndex: -1,
     setGraph: (graph, options) => {
       const normalized = withTimestamp({
         ...graph,
@@ -135,6 +195,12 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
 
       const allowedSelection = sanitizeSelection(normalized, currentSelection);
       const allowedEdges = sanitizeEdgeSelection(normalized, currentEdgeSelection);
+
+      const searchQuery = get().searchQuery;
+      const searchResults = buildSearchResults(normalized, searchQuery);
+      const nextSearchIndex = searchResults.length
+        ? Math.min(Math.max(get().searchIndex, 0), searchResults.length - 1)
+        : -1;
 
       const shouldPushHistory = options?.pushHistory ?? true;
       if (shouldPushHistory) {
@@ -151,7 +217,9 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
         graph: { ...normalized, dirty },
         lastChangeOrigin: options?.origin ?? 'local',
         selectedNodeIds: allowedSelection,
-        selectedEdgeIds: allowedEdges
+        selectedEdgeIds: allowedEdges,
+        searchResults,
+        searchIndex: nextSearchIndex
       });
     },
     setLayout: (settings) =>
@@ -345,6 +413,32 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
       }
       get().copySelection();
       get().pasteClipboard();
+    },
+    setSearchQuery: (query) => {
+      const graph = get().graph;
+      const results = buildSearchResults(graph, query);
+      set({
+        searchQuery: query,
+        searchResults: results,
+        searchIndex: results.length ? 0 : -1
+      });
+    },
+    setSearchIndex: (index) => {
+      const results = get().searchResults;
+      if (!results.length) {
+        set({ searchIndex: -1 });
+        return;
+      }
+      const normalizedIndex = ((index % results.length) + results.length) % results.length;
+      set({ searchIndex: normalizedIndex });
+    },
+    selectNextSearchResult: () => {
+      const current = get().searchIndex;
+      get().setSearchIndex(current + 1);
+    },
+    selectPreviousSearchResult: () => {
+      const current = get().searchIndex;
+      get().setSearchIndex(current - 1);
     }
   }));
 

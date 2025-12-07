@@ -3,10 +3,59 @@ import type { GraphEdge, GraphNode, GraphState } from '../shared/graphState';
 
 export type ChangeOrigin = 'local' | 'remote';
 
+export type LayoutAlgorithm = 'dagre' | 'klay';
+
+export interface LayoutSettings {
+  algorithm: LayoutAlgorithm;
+  rankDir: 'LR' | 'TB' | 'BT' | 'RL';
+  nodeSep: number;
+  edgeSep: number;
+  spacing: number;
+}
+
+export const layoutBounds = {
+  nodeSep: { min: 20, max: 400 },
+  edgeSep: { min: 10, max: 400 },
+  spacing: { min: 0.2, max: 4 }
+} as const;
+
+export const defaultLayoutSettings: LayoutSettings = {
+  algorithm: 'dagre',
+  rankDir: 'LR',
+  nodeSep: 80,
+  edgeSep: 32,
+  spacing: 1
+};
+
+const clamp = (value: number, min: number, max: number): number => {
+  if (Number.isNaN(value)) {
+    return min;
+  }
+  return Math.min(Math.max(value, min), max);
+};
+
+const normalizeRankDir = (value: string | undefined): LayoutSettings['rankDir'] => {
+  if (value === 'LR' || value === 'TB' || value === 'BT' || value === 'RL') {
+    return value;
+  }
+  return defaultLayoutSettings.rankDir;
+};
+
+export const normalizeLayoutSettings = (
+  settings?: Partial<LayoutSettings>
+): LayoutSettings => ({
+  algorithm: settings?.algorithm === 'klay' ? 'klay' : 'dagre',
+  rankDir: normalizeRankDir(settings?.rankDir),
+  nodeSep: clamp(settings?.nodeSep ?? defaultLayoutSettings.nodeSep, layoutBounds.nodeSep.min, layoutBounds.nodeSep.max),
+  edgeSep: clamp(settings?.edgeSep ?? defaultLayoutSettings.edgeSep, layoutBounds.edgeSep.min, layoutBounds.edgeSep.max),
+  spacing: clamp(settings?.spacing ?? defaultLayoutSettings.spacing, layoutBounds.spacing.min, layoutBounds.spacing.max)
+});
+
 type GraphClipboard = { nodes: GraphNode[]; edges: GraphEdge[] } | null;
 
 export interface GraphStore {
   graph: GraphState;
+  layout: LayoutSettings;
   lastChangeOrigin: ChangeOrigin;
   historyPast: GraphState[];
   historyFuture: GraphState[];
@@ -15,6 +64,7 @@ export interface GraphStore {
     graph: GraphState,
     options?: { origin?: ChangeOrigin; pushHistory?: boolean }
   ) => void;
+  setLayout: (settings: Partial<LayoutSettings>) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   renameNode: (nodeId: string, label: string) => void;
   markDirty: (dirty?: boolean, origin?: ChangeOrigin) => void;
@@ -67,9 +117,10 @@ const sanitizeEdgeSelection = (
   selection: string[]
 ): string[] => selection.filter((id) => graph.edges.some((edge) => edge.id === id));
 
-export const createGraphStore = (initialGraph: GraphState) =>
+export const createGraphStore = (initialGraph: GraphState, initialLayout?: Partial<LayoutSettings>) =>
   create<GraphStore>((set, get) => ({
     graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
+    layout: normalizeLayoutSettings(initialLayout),
     lastChangeOrigin: 'remote',
     historyPast: [],
     historyFuture: [],
@@ -103,6 +154,10 @@ export const createGraphStore = (initialGraph: GraphState) =>
         selectedEdgeIds: allowedEdges
       });
     },
+    setLayout: (settings) =>
+      set(({ layout }) => ({
+        layout: normalizeLayoutSettings({ ...layout, ...settings })
+      })),
     updateNodePosition: (nodeId, position) => {
       const current = get().graph;
       const nextGraph: GraphState = {

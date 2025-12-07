@@ -42,6 +42,18 @@ export type TranslationKey =
   | 'form.placeholder.node'
   | 'form.placeholder.newNode'
   | 'form.placeholder.edge'
+  | 'layout.title'
+  | 'layout.algorithm'
+  | 'layout.algorithm.dagre'
+  | 'layout.algorithm.klay'
+  | 'layout.rankDir'
+  | 'layout.rank.lr'
+  | 'layout.rank.rl'
+  | 'layout.rank.tb'
+  | 'layout.rank.bt'
+  | 'layout.nodeSep'
+  | 'layout.edgeSep'
+  | 'layout.spacing'
   | 'toasts.saved'
   | 'toasts.loaded'
   | 'toasts.generated'
@@ -102,6 +114,18 @@ const translations: Record<Locale, TranslationMap> = {
     'form.placeholder.node': 'Имя узла',
     'form.placeholder.newNode': 'Новый узел',
     'form.placeholder.edge': 'Метка соединения',
+    'layout.title': 'Настройки лэйаута',
+    'layout.algorithm': 'Алгоритм',
+    'layout.algorithm.dagre': 'Dagre (иерархический)',
+    'layout.algorithm.klay': 'Klay (слоистый)',
+    'layout.rankDir': 'Направление рангов',
+    'layout.rank.lr': 'Слева направо',
+    'layout.rank.rl': 'Справа налево',
+    'layout.rank.tb': 'Сверху вниз',
+    'layout.rank.bt': 'Снизу вверх',
+    'layout.nodeSep': 'Отступ между узлами',
+    'layout.edgeSep': 'Отступ между рёбрами',
+    'layout.spacing': 'Масштаб расстояний',
     'toasts.saved': 'Граф сохранён',
     'toasts.loaded': 'Граф загружен',
     'toasts.generated': 'Код отправлен в Output',
@@ -159,6 +183,18 @@ const translations: Record<Locale, TranslationMap> = {
     'form.placeholder.node': 'Node name',
     'form.placeholder.newNode': 'New node',
     'form.placeholder.edge': 'Connection label',
+    'layout.title': 'Layout settings',
+    'layout.algorithm': 'Algorithm',
+    'layout.algorithm.dagre': 'Dagre (hierarchical)',
+    'layout.algorithm.klay': 'Klay (layered)',
+    'layout.rankDir': 'Rank direction',
+    'layout.rank.lr': 'Left to right',
+    'layout.rank.rl': 'Right to left',
+    'layout.rank.tb': 'Top to bottom',
+    'layout.rank.bt': 'Bottom to top',
+    'layout.nodeSep': 'Node separation',
+    'layout.edgeSep': 'Edge separation',
+    'layout.spacing': 'Spacing scale',
     'toasts.saved': 'Graph saved',
     'toasts.loaded': 'Graph loaded',
     'toasts.generated': 'Code sent to Output',

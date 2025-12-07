@@ -99,6 +99,10 @@ export type TranslationKey =
   | 'palette.node.sequence'
   | 'palette.node.variable'
   | 'palette.node.comment'
+  | 'palette.category.controlFlow'
+  | 'palette.category.data'
+  | 'palette.category.utilities'
+  | 'palette.search'
   | 'translation.title'
   | 'translation.direction'
   | 'translation.translate'
@@ -221,6 +225,10 @@ const translations: Record<Locale, TranslationMap> = {
     'palette.node.sequence': 'Последовательность',
     'palette.node.variable': 'Переменная',
     'palette.node.comment': 'Комментарий',
+    'palette.category.controlFlow': 'Управление потоком',
+    'palette.category.data': 'Данные',
+    'palette.category.utilities': 'Утилиты',
+    'palette.search': 'Поиск узла...',
     'translation.title': 'Перевод графа',
     'translation.direction': 'Направление',
     'translation.translate': 'Перевести',
@@ -340,6 +348,10 @@ const translations: Record<Locale, TranslationMap> = {
     'palette.node.sequence': 'Sequence',
     'palette.node.variable': 'Variable',
     'palette.node.comment': 'Comment',
+    'palette.category.controlFlow': 'Control Flow',
+    'palette.category.data': 'Data',
+    'palette.category.utilities': 'Utilities',
+    'palette.search': 'Search node...',
     'translation.title': 'Graph Translation',
     'translation.direction': 'Direction',
     'translation.translate': 'Translate',

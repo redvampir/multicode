@@ -1227,20 +1227,49 @@ export const GraphEditor: React.FC<{
     if (!paletteAnchor) {
       return null;
     }
-    const items: Array<{ key: string; translationKey: TranslationKey; type: GraphNodeType }> = [
-      { key: 'function', translationKey: 'palette.node.function', type: 'Function' },
-      { key: 'branch', translationKey: 'palette.node.branch', type: 'Custom' },
-      { key: 'switch', translationKey: 'palette.node.switch', type: 'Custom' },
-      { key: 'sequence', translationKey: 'palette.node.sequence', type: 'Custom' },
-      { key: 'variable', translationKey: 'palette.node.variable', type: 'Variable' },
-      { key: 'comment', translationKey: 'palette.node.comment', type: 'Custom' }
+
+    const [paletteQuery, setPaletteQuery] = React.useState('');
+
+    type PaletteItem = { key: string; translationKey: TranslationKey; type: GraphNodeType };
+    type PaletteCategory = { categoryKey: TranslationKey; items: PaletteItem[] };
+
+    const categories: PaletteCategory[] = [
+      {
+        categoryKey: 'palette.category.controlFlow',
+        items: [
+          { key: 'function', translationKey: 'palette.node.function', type: 'Function' },
+          { key: 'branch', translationKey: 'palette.node.branch', type: 'Custom' },
+          { key: 'switch', translationKey: 'palette.node.switch', type: 'Custom' },
+          { key: 'sequence', translationKey: 'palette.node.sequence', type: 'Custom' }
+        ]
+      },
+      {
+        categoryKey: 'palette.category.data',
+        items: [{ key: 'variable', translationKey: 'palette.node.variable', type: 'Variable' }]
+      },
+      {
+        categoryKey: 'palette.category.utilities',
+        items: [{ key: 'comment', translationKey: 'palette.node.comment', type: 'Custom' }]
+      }
     ];
 
-    const handlePick = (entry: (typeof items)[number]): void => {
+    const handlePick = (entry: PaletteItem): void => {
       const label = translate(entry.translationKey, '');
       onAddNode({ label, nodeType: entry.type });
       closePalette();
     };
+
+    // Фильтруем категории по поисковому запросу
+    const filteredCategories = paletteQuery.trim()
+      ? categories
+          .map((cat) => ({
+            ...cat,
+            items: cat.items.filter((item) =>
+              translate(item.translationKey, '').toLowerCase().includes(paletteQuery.toLowerCase())
+            )
+          }))
+          .filter((cat) => cat.items.length > 0)
+      : categories;
 
     const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
       const target = event.target as HTMLElement;
@@ -1281,24 +1310,58 @@ export const GraphEditor: React.FC<{
         <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>
           {translate('palette.title', 'Быстрое добавление')} {translate('palette.hint', '(A / двойной клик)')}
         </div>
-        {items.map((item, index) => (
-          <button
-            key={item.key}
-            type="button"
-            className="palette__item"
-            onClick={() => handlePick(item)}
-            autoFocus={index === 0}
-            style={{
-              textAlign: 'left',
-              padding: '8px 10px',
-              borderRadius: 8,
-              border: `1px solid ${theme.canvas.stroke}`,
-              background: theme.canvas.background,
-              color: theme.nodes.textColor
-            }}
-          >
-            {translate(item.translationKey, '')}
-          </button>
+        <input
+          type="text"
+          value={paletteQuery}
+          onChange={(e) => setPaletteQuery(e.target.value)}
+          placeholder={translate('palette.search', 'Поиск узла...')}
+          style={{
+            padding: '6px 8px',
+            borderRadius: 6,
+            border: `1px solid ${theme.canvas.stroke}`,
+            backgroundColor: theme.canvas.background,
+            color: theme.nodes.textColor,
+            fontSize: 12,
+            width: '100%'
+          }}
+        />
+        {filteredCategories.map((category, categoryIndex) => (
+          <div key={category.categoryKey} style={{ display: 'grid', gap: 4 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: theme.ui.mutedText,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                marginTop: categoryIndex > 0 ? 4 : 0
+              }}
+            >
+              {translate(category.categoryKey, '')}
+            </div>
+            {category.items.map((item, itemIndex) => {
+              const isFirstItem = categoryIndex === 0 && itemIndex === 0;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="palette__item"
+                  onClick={() => handlePick(item)}
+                  autoFocus={isFirstItem}
+                  style={{
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border: `1px solid ${theme.canvas.stroke}`,
+                    background: theme.canvas.background,
+                    color: theme.nodes.textColor
+                  }}
+                >
+                  {translate(item.translationKey, '')}
+                </button>
+              );
+            })}
+          </div>
         ))}
         <button
           type="button"

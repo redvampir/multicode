@@ -85,7 +85,28 @@ export type TranslationKey =
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
   | 'errors.graphSave'
-  | 'errors.graphLoad';
+  | 'errors.graphLoad'
+  | 'palette.title'
+  | 'palette.hint'
+  | 'palette.close'
+  | 'palette.node.function'
+  | 'palette.node.branch'
+  | 'palette.node.switch'
+  | 'palette.node.sequence'
+  | 'palette.node.variable'
+  | 'palette.node.comment'
+  | 'translation.title'
+  | 'translation.direction'
+  | 'translation.translate'
+  | 'translation.translating'
+  | 'minimap.alt'
+  | 'node.copySuffix'
+  | 'node.defaultName'
+  | 'nodeType.Start'
+  | 'nodeType.End'
+  | 'nodeType.Function'
+  | 'nodeType.Variable'
+  | 'nodeType.Custom';
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -175,7 +196,28 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.connectionSelf': 'Связь с самим собой запрещена',
     'errors.connectionMissing': 'Укажите оба узла для связи',
     'errors.graphSave': 'Не удалось сохранить граф',
-    'errors.graphLoad': 'Не удалось загрузить граф'
+    'errors.graphLoad': 'Не удалось загрузить граф',
+    'palette.title': 'Быстрое добавление',
+    'palette.hint': '(A / двойной клик)',
+    'palette.close': 'Закрыть',
+    'palette.node.function': 'Функция',
+    'palette.node.branch': 'Ветвление',
+    'palette.node.switch': 'Переключатель',
+    'palette.node.sequence': 'Последовательность',
+    'palette.node.variable': 'Переменная',
+    'palette.node.comment': 'Комментарий',
+    'translation.title': 'Перевод графа',
+    'translation.direction': 'Направление',
+    'translation.translate': 'Перевести',
+    'translation.translating': 'Перевод...',
+    'minimap.alt': 'Миникарта',
+    'node.copySuffix': '(копия)',
+    'node.defaultName': 'Узел {number}',
+    'nodeType.Start': 'Начало',
+    'nodeType.End': 'Конец',
+    'nodeType.Function': 'Функция',
+    'nodeType.Variable': 'Переменная',
+    'nodeType.Custom': 'Пользовательский'
   },
   en: {
     'app.title': 'MultiCode · Visual Graph',
@@ -262,7 +304,28 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',
     'errors.graphSave': 'Failed to save graph',
-    'errors.graphLoad': 'Failed to load graph'
+    'errors.graphLoad': 'Failed to load graph',
+    'palette.title': 'Quick Add',
+    'palette.hint': '(A / double-click)',
+    'palette.close': 'Close',
+    'palette.node.function': 'Function',
+    'palette.node.branch': 'Branch',
+    'palette.node.switch': 'Switch',
+    'palette.node.sequence': 'Sequence',
+    'palette.node.variable': 'Variable',
+    'palette.node.comment': 'Comment',
+    'translation.title': 'Graph Translation',
+    'translation.direction': 'Direction',
+    'translation.translate': 'Translate',
+    'translation.translating': 'Translating...',
+    'minimap.alt': 'Minimap',
+    'node.copySuffix': '(copy)',
+    'node.defaultName': 'Node {number}',
+    'nodeType.Start': 'Start',
+    'nodeType.End': 'End',
+    'nodeType.Function': 'Function',
+    'nodeType.Variable': 'Variable',
+    'nodeType.Custom': 'Custom'
   }
 };
 

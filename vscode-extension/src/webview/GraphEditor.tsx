@@ -4,7 +4,7 @@ import dagre from 'cytoscape-dagre';
 import klay from 'cytoscape-klay';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
 import type { ValidationIssue, ValidationResult } from '../shared/validator';
-import { getTranslation } from '../shared/translations';
+import { getTranslation, type TranslationKey } from '../shared/translations';
 import type { GraphStoreHook, LayoutSettings, SearchResult } from './store';
 import type { ThemeTokens } from './theme';
 
@@ -1203,17 +1203,18 @@ export const GraphEditor: React.FC<{
     if (!paletteAnchor) {
       return null;
     }
-    const items: Array<{ key: string; label: string; type: GraphNodeType; presetLabel: string }> = [
-      { key: 'function', label: 'Функция', type: 'Function', presetLabel: 'Функция' },
-      { key: 'branch', label: 'Ветвление', type: 'Custom', presetLabel: 'Branch / Ветвление' },
-      { key: 'switch', label: 'Switch', type: 'Custom', presetLabel: 'Switch / Переключатель' },
-      { key: 'sequence', label: 'Последовательность', type: 'Custom', presetLabel: 'Sequence' },
-      { key: 'variable', label: 'Переменная', type: 'Variable', presetLabel: 'Переменная' },
-      { key: 'comment', label: 'Комментарий', type: 'Custom', presetLabel: 'Комментарий' }
+    const items: Array<{ key: string; translationKey: TranslationKey; type: GraphNodeType }> = [
+      { key: 'function', translationKey: 'palette.node.function', type: 'Function' },
+      { key: 'branch', translationKey: 'palette.node.branch', type: 'Custom' },
+      { key: 'switch', translationKey: 'palette.node.switch', type: 'Custom' },
+      { key: 'sequence', translationKey: 'palette.node.sequence', type: 'Custom' },
+      { key: 'variable', translationKey: 'palette.node.variable', type: 'Variable' },
+      { key: 'comment', translationKey: 'palette.node.comment', type: 'Custom' }
     ];
 
     const handlePick = (entry: (typeof items)[number]): void => {
-      onAddNode({ label: entry.presetLabel, nodeType: entry.type });
+      const label = translate(entry.translationKey, '');
+      onAddNode({ label, nodeType: entry.type });
       closePalette();
     };
 
@@ -1236,7 +1237,9 @@ export const GraphEditor: React.FC<{
           minWidth: 220
         }}
       >
-        <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>Быстрое добавление (A / двойной клик)</div>
+        <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>
+          {translate('palette.title', 'Быстрое добавление')} {translate('palette.hint', '(A / двойной клик)')}
+        </div>
         {items.map((item) => (
           <button
             key={item.key}
@@ -1252,7 +1255,7 @@ export const GraphEditor: React.FC<{
               color: theme.nodes.textColor
             }}
           >
-            {item.label}
+            {translate(item.translationKey, '')}
           </button>
         ))}
         <button
@@ -1266,7 +1269,7 @@ export const GraphEditor: React.FC<{
             color: theme.nodes.textColor
           }}
         >
-          Закрыть
+          {translate('palette.close', 'Закрыть')}
         </button>
       </div>
     );
@@ -1390,7 +1393,7 @@ export const GraphEditor: React.FC<{
           });
         }}
       >
-        <img src={miniMap.src} alt="Миникарта" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={miniMap.src} alt={translate('minimap.alt', 'Миникарта')} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
     );
   };

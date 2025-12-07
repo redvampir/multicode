@@ -69,14 +69,13 @@ export class MarianTranslator {
     translator: TranslationPipeline,
     text: string
   ): Promise<string> {
-    const output = await translator(text, { return_full_text: false });
-    if (Array.isArray(output) && output.length > 0 && 'translation_text' in output[0]) {
-      return output[0].translation_text.trim();
-    }
-    if (!Array.isArray(output) && 'translation_text' in output) {
-      return output.translation_text.trim();
-    }
-    return text;
+    const output = await translator(text);
+    const firstResult = Array.isArray(output) ? output[0] : output;
+    const translated =
+      typeof firstResult === 'object' && firstResult && 'translation_text' in firstResult
+        ? (firstResult as { translation_text?: string }).translation_text
+        : undefined;
+    return translated?.trim() ?? text;
   }
 
   private buildCacheKey(direction: TranslationDirection, text: string): TranslationCacheKey {

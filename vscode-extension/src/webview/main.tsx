@@ -6,7 +6,7 @@ import {
   type GraphDisplayLanguage,
   type GraphState
 } from '../shared/graphState';
-import type { ValidationResult } from '../shared/validator';
+import type { ValidationIssue, ValidationResult } from '../shared/validator';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import { GraphEditor } from './GraphEditor';
 import {
@@ -123,7 +123,8 @@ const Toolbar: React.FC<{
   onLocaleChange: (locale: GraphDisplayLanguage) => void;
   translate: (key: TranslationKey, fallback: string, replacements?: Record<string, string>) => string;
   onCalculate: () => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate }) => {
+  onCopyGraphId: () => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -165,6 +166,9 @@ const Toolbar: React.FC<{
         </button>
         <button onClick={() => send('requestValidate')} disabled={pending}>
           {translate('toolbar.validateGraph', 'Проверить')}
+        </button>
+        <button onClick={onCopyGraphId} disabled={pending}>
+          {translate('toolbar.copyId' as TranslationKey, 'ID графа в буфер')}
         </button>
         <button onClick={onCalculate} disabled={pending}>
           {translate('toolbar.calculateLayout', 'Рассчитать')}
@@ -218,11 +222,21 @@ const ValidationPanel: React.FC<{
     return null;
   }
 
-  const issues = validation.issues?.length
+  const issues: ValidationIssue[] = validation.issues?.length
     ? validation.issues
     : [
-        ...validation.errors.map((message) => ({ severity: 'error' as const, message })),
-        ...validation.warnings.map((message) => ({ severity: 'warning' as const, message }))
+        ...validation.errors.map((message) => ({
+          severity: 'error' as const,
+          message,
+          nodes: undefined,
+          edges: undefined
+        })),
+        ...validation.warnings.map((message) => ({
+          severity: 'warning' as const,
+          message,
+          nodes: undefined,
+          edges: undefined
+        }))
       ];
 
   const hasProblems = issues.length > 0;
@@ -530,6 +544,8 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
+  const [locale, setLocale] = useState<GraphDisplayLanguage>(bootLocale);
+  const localeRef = useRef<GraphDisplayLanguage>(bootLocale);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [validation, setValidation] = useState<ValidationResult | undefined>(undefined);
   const [themeState, setThemeState] = useState<ThemeMessage>(initialThemeMessage);
@@ -548,13 +564,26 @@ const App: React.FC = () => {
     key: TranslationKey,
     fallback: string,
     replacements?: Record<string, string>
-  ): string => getTranslation(locale, key, replacements, fallback);
+  ): string => getTranslation(localeRef.current, key, replacements, fallback);
 
   const pushToast = (kind: ToastKind, message: string): void => {
     const id = Date.now() + Math.round(Math.random() * 1000);
     setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 3200);
   };
+
+  const handleLocaleChange = (nextLocale: GraphDisplayLanguage): void => {
+    setLocale(nextLocale);
+    localeRef.current = nextLocale;
+    const currentGraph = useGraphStore.getState().graph;
+    setGraph({ ...currentGraph, displayLanguage: nextLocale }, { origin: 'local', pushHistory: false });
+    vscode.setState({ graph: currentGraph, locale: nextLocale, layout: useGraphStore.getState().layout });
+  };
+
+  useEffect(() => {
+    localeRef.current = graph.displayLanguage;
+    setLocale(graph.displayLanguage);
+  }, [graph.displayLanguage]);
 
   useEffect(() => {
     applyUiTheme(themeTokens, effectiveTheme);
@@ -641,27 +670,23 @@ const App: React.FC = () => {
   }, [setGraph]);
 
   useEffect(() => {
-    const unsubscribe = useGraphStore.subscribe(
-      (state) => ({ graph: state.graph, origin: state.lastChangeOrigin }),
-      ({ graph, origin }) => {
-        const layout = useGraphStore.getState().layout;
-        vscode.setState({ graph, locale: localeRef.current, layout });
-        if (origin === 'local') {
-          setValidation(undefined);
-          sendToExtension({
-            type: 'graphChanged',
-            payload: {
-              nodes: graph.nodes,
-              edges: graph.edges,
-              name: graph.name,
-              language: graph.language,
-              displayLanguage: graph.displayLanguage
-            }
-          });
-        }
-      },
-      { equalityFn: (prev, next) => prev.graph === next.graph && prev.origin === next.origin }
-    );
+    const unsubscribe = useGraphStore.subscribe((state) => {
+      const { graph: graphState, lastChangeOrigin: origin, layout } = state;
+      vscode.setState({ graph: graphState, locale: localeRef.current, layout });
+      if (origin === 'local') {
+        setValidation(undefined);
+        sendToExtension({
+          type: 'graphChanged',
+          payload: {
+            nodes: graphState.nodes,
+            edges: graphState.edges,
+            name: graphState.name,
+            language: graphState.language,
+            displayLanguage: graphState.displayLanguage
+          }
+        });
+      }
+    });
 
     return () => unsubscribe();
   }, []);
@@ -696,6 +721,23 @@ const App: React.FC = () => {
     sendToExtension({ type: 'requestTranslate', payload: { direction: translationDirection } });
   };
 
+  const handleCopyGraphId = (): void => {
+    const snippet = `// multicode-graph:${graph.id}`;
+    const write = async (): Promise<void> => {
+      try {
+        await navigator.clipboard.writeText(snippet);
+        pushToast('success', translate('toolbar.copyId.ok' as TranslationKey, 'ID графа скопирован'));
+      } catch (error) {
+        console.warn('Clipboard error', error);
+        pushToast(
+          'warning',
+          translate('toolbar.copyId.fallback' as TranslationKey, 'Не удалось записать в буфер')
+        );
+      }
+    };
+    void write();
+  };
+
   useEffect(() => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
   }, [graph.displayLanguage]);
@@ -711,6 +753,7 @@ const App: React.FC = () => {
         onLocaleChange={handleLocaleChange}
         translate={translate}
         onCalculate={handleCalculateLayout}
+        onCopyGraphId={handleCopyGraphId}
       />
       <div className="workspace">
         <div className="canvas-wrapper">

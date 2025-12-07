@@ -3,7 +3,7 @@ import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from
 import dagre from 'cytoscape-dagre';
 import klay from 'cytoscape-klay';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
-import type { ValidationResult } from '../shared/validator';
+import type { ValidationIssue, ValidationResult } from '../shared/validator';
 import { getTranslation } from '../shared/translations';
 import type { GraphStoreHook, LayoutSettings, SearchResult } from './store';
 import type { ThemeTokens } from './theme';
@@ -43,6 +43,11 @@ type ContextMenuState = {
   y: number;
   kind: ContextMenuKind;
   targetId?: string;
+};
+
+type MiniMapState = {
+  src: string;
+  bbox: cytoscape.BoundingBox12 | null;
 };
 
 const buildElements = (graph: GraphState): ElementDefinition[] => {
@@ -241,7 +246,6 @@ const buildLayoutOptions = (settings: LayoutSettings): EditorLayoutOptions => {
   if (settings.algorithm === 'klay') {
     return {
       name: 'klay',
-      padding: layoutPadding,
       nodeDimensionsIncludeLabels: true,
       klay: {
         spacing: settings.nodeSep,
@@ -299,12 +303,15 @@ export const GraphEditor: React.FC<{
   const edgeSelectionRef = useRef<string[]>([]);
   const layoutRunnerRef = useRef<() => void>(() => {});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [paletteAnchor, setPaletteAnchor] = useState<{ x: number; y: number } | null>(null);
   const [selectionBox, setSelectionBox] = useState<{
     x: number;
     y: number;
     width: number;
     height: number;
   } | null>(null);
+  const [miniMap, setMiniMap] = useState<MiniMapState>({ src: '', bbox: null });
+  const miniMapRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -327,6 +334,13 @@ export const GraphEditor: React.FC<{
     edgeSelectionRef.current = [];
   }, [setSelection]);
 
+  const closePalette = (): void => setPaletteAnchor(null);
+  const openPaletteAt = (point?: { x: number; y: number }): void => {
+    const fallbackPoint = { x: (containerRef.current?.clientWidth ?? 400) / 2, y: 120 };
+    setPaletteAnchor(point ?? fallbackPoint);
+    setContextMenu(null);
+  };
+
   useEffect(() => {
     containerRef.current?.focus();
   }, []);
@@ -335,6 +349,8 @@ export const GraphEditor: React.FC<{
     if (!containerRef.current) {
       return;
     }
+    let rightPanStart: { x: number; y: number } | null = null;
+    let rightPanOffset: { x: number; y: number } | null = null;
     const cy = cytoscape({
       container: containerRef.current,
       elements: buildElements(graph),
@@ -345,7 +361,9 @@ export const GraphEditor: React.FC<{
       maxZoom: 2,
       autoungrabify: false,
       boxSelectionEnabled: false,
-      motionBlur: true
+      motionBlur: true,
+      panningEnabled: true,
+      userPanningEnabled: true
     });
 
     cyRef.current = cy;
@@ -426,6 +444,12 @@ export const GraphEditor: React.FC<{
       const isShift = Boolean(originalEvent?.shiftKey);
       if (event.target === cy && !isShift) {
         clearSelection();
+        if (originalEvent && originalEvent.detail >= 2) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            openPaletteAt({ x: originalEvent.clientX - rect.left, y: originalEvent.clientY - rect.top });
+          }
+        }
       }
     });
 
@@ -503,7 +527,11 @@ export const GraphEditor: React.FC<{
           cy.elements().unselect();
         }
         nodesInBox.select();
-        const edgesToSelect = cy.edges().filter((edge) => edge.connectedNodes().every((node) => node.selected()));
+        const edgesToSelect = cy.edges().filter((edge) =>
+          edge
+            .connectedNodes()
+            .every((node) => (node as cytoscape.SingularElementReturnValue).selected())
+        );
         edgesToSelect.select();
         cy.edges().removeClass('edge--active');
         cy.edges(':selected').addClass('edge--active');
@@ -568,7 +596,47 @@ export const GraphEditor: React.FC<{
       openContextMenu(originalEvent.clientX - rect.left, originalEvent.clientY - rect.top, 'canvas');
     });
 
+    cy.on('mousedown', (event) => {
+      const mouse = event.originalEvent as MouseEvent | undefined;
+      if (event.target === cy && mouse?.button === 2) {
+        rightPanStart = { x: mouse.clientX, y: mouse.clientY };
+        rightPanOffset = cy.pan();
+        mouse.preventDefault();
+      }
+    });
+
+    cy.on('mouseup', (event) => {
+      const mouse = event.originalEvent as MouseEvent | undefined;
+      if (mouse?.button === 2) {
+        rightPanStart = null;
+        rightPanOffset = null;
+      }
+    });
+
+    cy.on('mousemove', (event) => {
+      if (!rightPanStart || !rightPanOffset) {
+        return;
+      }
+      const mouse = event.originalEvent as MouseEvent | undefined;
+      if (!mouse) {
+        return;
+      }
+      const dx = mouse.clientX - rightPanStart.x;
+      const dy = mouse.clientY - rightPanStart.y;
+      cy.pan({ x: rightPanOffset.x + dx, y: rightPanOffset.y + dy });
+    });
+
+    const updateMiniMap = (): void => {
+      const bbox = cy.elements().boundingBox();
+      const snapshot = cy.png({ scale: 0.15, full: true, bg: theme.canvas.background });
+      setMiniMap({ src: snapshot, bbox });
+    };
+
+    updateMiniMap();
+    cy.on('render zoom pan add remove position', updateMiniMap);
+
     return () => {
+      cy.off('render zoom pan add remove position', updateMiniMap);
       cy.destroy();
       cyRef.current = null;
     };
@@ -670,10 +738,20 @@ export const GraphEditor: React.FC<{
     cy.nodes().removeClass('validation-error validation-warning');
     cy.edges().removeClass('validation-error validation-warning');
 
-    const issues = validation
+    const issues: ValidationIssue[] = validation
       ? validation.issues ?? [
-          ...validation.errors.map((message) => ({ severity: 'error' as const, message })),
-          ...validation.warnings.map((message) => ({ severity: 'warning' as const, message }))
+          ...validation.errors.map((message) => ({
+            severity: 'error' as const,
+            message,
+            nodes: undefined,
+            edges: undefined
+          })),
+          ...validation.warnings.map((message) => ({
+            severity: 'warning' as const,
+            message,
+            nodes: undefined,
+            edges: undefined
+          }))
         ]
       : [];
     if (!issues.length) {
@@ -682,13 +760,13 @@ export const GraphEditor: React.FC<{
 
     issues.forEach((issue) => {
       const className = issue.severity === 'error' ? 'validation-error' : 'validation-warning';
-      issue.nodes?.forEach((nodeId) => {
+      issue.nodes?.forEach((nodeId: string) => {
         const node = cy.$id(nodeId);
         if (node) {
           node.addClass(className);
         }
       });
-      issue.edges?.forEach((edgeId) => {
+      issue.edges?.forEach((edgeId: string) => {
         const edge = cy.$id(edgeId);
         if (edge) {
           edge.addClass(className);
@@ -703,8 +781,8 @@ export const GraphEditor: React.FC<{
       if (!cy || !result) {
         return;
       }
-      const element = cy.$id(result.id);
-      if (element.empty()) {
+      const element = cy.$id(result.id).first();
+      if (!element || element.empty()) {
         return;
       }
       cy.nodes().unselect();
@@ -815,8 +893,7 @@ export const GraphEditor: React.FC<{
 
       if (event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        const nextIndex = graph.nodes.length + 1;
-        onAddNode({ label: `Узел ${nextIndex}`, nodeType: 'Function' });
+        openPaletteAt();
       }
     };
 
@@ -844,7 +921,7 @@ export const GraphEditor: React.FC<{
     const runLayout = (): void => {
       const layout = cy.layout(buildLayoutOptions(layoutSettings));
       layout.run();
-      layout.once('layoutstop', () => {
+      layout.one('layoutstop', () => {
         const positions: Record<string, { x: number; y: number }> = {};
         cy.nodes().forEach((node) => {
           const pos = node.position();
@@ -865,6 +942,15 @@ export const GraphEditor: React.FC<{
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!paletteAnchor) {
+      return;
+    }
+    const close = (): void => setPaletteAnchor(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [paletteAnchor]);
 
   const applyPositions = useCallback(
     (positions: Record<string, { x: number; y: number }>) => {
@@ -1031,7 +1117,7 @@ export const GraphEditor: React.FC<{
           padding: 10,
           border: `1px solid ${theme.canvas.stroke}`,
           borderRadius: 10,
-          backgroundColor: theme.canvas.surface,
+          backgroundColor: theme.ui.surface,
           boxShadow: '0 8px 20px rgba(0, 0, 0, 0.25)',
           color: theme.nodes.textColor
         }}
@@ -1113,6 +1199,79 @@ export const GraphEditor: React.FC<{
     );
   };
 
+  const renderPalette = (): React.ReactNode => {
+    if (!paletteAnchor) {
+      return null;
+    }
+    const items: Array<{ key: string; label: string; type: GraphNodeType; presetLabel: string }> = [
+      { key: 'function', label: 'Функция', type: 'Function', presetLabel: 'Функция' },
+      { key: 'branch', label: 'Ветвление', type: 'Custom', presetLabel: 'Branch / Ветвление' },
+      { key: 'switch', label: 'Switch', type: 'Custom', presetLabel: 'Switch / Переключатель' },
+      { key: 'sequence', label: 'Последовательность', type: 'Custom', presetLabel: 'Sequence' },
+      { key: 'variable', label: 'Переменная', type: 'Variable', presetLabel: 'Переменная' },
+      { key: 'comment', label: 'Комментарий', type: 'Custom', presetLabel: 'Комментарий' }
+    ];
+
+    const handlePick = (entry: (typeof items)[number]): void => {
+      onAddNode({ label: entry.presetLabel, nodeType: entry.type });
+      closePalette();
+    };
+
+    return (
+      <div
+        className="palette"
+        style={{
+          position: 'absolute',
+          left: paletteAnchor.x,
+          top: paletteAnchor.y,
+          transform: 'translate(-10px, 10px)',
+          backgroundColor: theme.ui.surface,
+          border: `1px solid ${theme.canvas.stroke}`,
+          boxShadow: theme.ui.shadow,
+          padding: 8,
+          borderRadius: 10,
+          display: 'grid',
+          gap: 6,
+          zIndex: 6,
+          minWidth: 220
+        }}
+      >
+        <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>Быстрое добавление (A / двойной клик)</div>
+        {items.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className="palette__item"
+            onClick={() => handlePick(item)}
+            style={{
+              textAlign: 'left',
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${theme.canvas.stroke}`,
+              background: theme.canvas.background,
+              color: theme.nodes.textColor
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={closePalette}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 8,
+            border: `1px solid ${theme.canvas.stroke}`,
+            background: theme.ui.surfaceStrong ?? theme.ui.surface,
+            color: theme.nodes.textColor
+          }}
+        >
+          Закрыть
+        </button>
+      </div>
+    );
+  };
+
   const renderContextMenu = (): React.ReactNode => {
     if (!contextMenu) {
       return null;
@@ -1187,20 +1346,81 @@ export const GraphEditor: React.FC<{
     );
   };
 
+  const renderMiniMap = (): React.ReactNode => {
+    if (!miniMap.src) {
+      return null;
+    }
+    return (
+      <div
+        ref={miniMapRef}
+        className="minimap"
+        style={{
+          position: 'absolute',
+          right: 12,
+          top: 12,
+          width: 180,
+          height: 120,
+          border: `1px solid ${theme.canvas.stroke}`,
+          borderRadius: 8,
+          overflow: 'hidden',
+          background: theme.ui.surface,
+          boxShadow: theme.ui.shadow,
+          zIndex: 3,
+          cursor: 'pointer'
+        }}
+        onClick={(event) => {
+          const cy = cyRef.current;
+          if (!cy || !miniMap.bbox || !miniMapRef.current) {
+            return;
+          }
+          const rect = miniMapRef.current.getBoundingClientRect();
+          const relX = (event.clientX - rect.left) / rect.width;
+          const relY = (event.clientY - rect.top) / rect.height;
+          const bbox = miniMap.bbox;
+          const targetX = bbox.x1 + relX * (bbox.x2 - bbox.x1 || 1);
+          const targetY = bbox.y1 + relY * (bbox.y2 - bbox.y1 || 1);
+          const zoom = cy.zoom();
+          const container = cy.container();
+          if (!container) {
+            return;
+          }
+          cy.pan({
+            x: -targetX * zoom + container.clientWidth / 2,
+            y: -targetY * zoom + container.clientHeight / 2
+          });
+        }}
+      >
+        <img src={miniMap.src} alt="Миникарта" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+    );
+  };
+
   return (
     <div
-    className="graph-canvas"
-    ref={containerRef}
-    style={{
-      backgroundColor: theme.canvas.background,
-      backgroundImage: theme.canvas.accents,
-        borderColor: theme.canvas.stroke,
-        borderStyle: 'solid',
-        borderWidth: 1,
-      position: 'relative'
-    }}
-    tabIndex={0}
-  >
+      className="graph-shell"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: 520,
+        pointerEvents: 'none'
+      }}
+      tabIndex={0}
+    >
+      <div
+        className="graph-canvas"
+        ref={containerRef}
+        style={{
+          backgroundColor: theme.canvas.background,
+          backgroundImage: theme.canvas.accents,
+          borderColor: theme.canvas.stroke,
+          borderStyle: 'solid',
+          borderWidth: 1,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'auto'
+        }}
+      />
       {selectionBox ? (
         <div
           className="graph-canvas__selection"
@@ -1217,6 +1437,8 @@ export const GraphEditor: React.FC<{
           }}
         />
       ) : null}
+      {renderMiniMap()}
+      {renderPalette()}
       {renderSearchPanel()}
       {renderContextMenu()}
     </div>

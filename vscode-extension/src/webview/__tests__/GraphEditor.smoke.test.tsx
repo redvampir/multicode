@@ -9,20 +9,34 @@ import { getThemeTokens } from '../theme';
 vi.mock('cytoscape-dagre', () => ({ default: vi.fn() }));
 vi.mock('cytoscape-klay', () => ({ default: vi.fn() }));
 
-const createMockCollection = (items: any[] = []) => {
-  const collection = {
+type MockCollection<T> = {
+  items: T[];
+  map: <U>(fn: (item: T) => U) => U[];
+  forEach: (fn: (item: T) => void) => void;
+  filter: (predicate: (item: T) => boolean) => MockCollection<T>;
+  unselect: () => MockCollection<T>;
+  removeClass: () => MockCollection<T>;
+  addClass: () => MockCollection<T>;
+  select: () => MockCollection<T>;
+  remove: () => MockCollection<T>;
+  every: (predicate: (item: T) => boolean) => boolean;
+  connectedNodes: () => MockCollection<T>;
+  length: number;
+};
+
+const createMockCollection = <T,>(items: T[] = []): MockCollection<T> => {
+  const collection: MockCollection<T> = {
     items,
-    map: (fn: (item: any) => any) => collection.items.map(fn),
-    forEach: (fn: (item: any) => void) => collection.items.forEach(fn),
-    filter: (predicate: (item: any) => boolean) =>
-      createMockCollection(collection.items.filter(predicate)),
+    map: (fn) => collection.items.map(fn),
+    forEach: (fn) => collection.items.forEach(fn),
+    filter: (predicate) => createMockCollection(collection.items.filter(predicate)),
     unselect: () => collection,
     removeClass: () => collection,
     addClass: () => collection,
     select: () => collection,
     remove: () => collection,
-    every: (predicate: (item: any) => boolean) => collection.items.every(predicate),
-    connectedNodes: () => createMockCollection(),
+    every: (predicate) => collection.items.every(predicate),
+    connectedNodes: () => createMockCollection<T>(),
     length: items.length
   };
   return collection;
@@ -41,10 +55,13 @@ const createMockElement = (id: string) => ({
   connectedNodes: () => createMockCollection()
 });
 
-const createMockCytoscape = (options?: { elements?: Array<{ data: { id: string } }> }) => {
-  const nodeElements = options?.elements?.filter((item) => !('source' in (item.data as any))) ?? [];
+type GraphElementData = { id: string; source?: string; target?: string };
+type GraphElement = { data: GraphElementData };
+
+const createMockCytoscape = (options?: { elements?: GraphElement[] }) => {
+  const nodeElements = options?.elements?.filter((item) => !item.data.source) ?? [];
   const nodes = createMockCollection(nodeElements.map((item) => createMockElement(item.data.id)));
-  const edges = createMockCollection();
+  const edges = createMockCollection<GraphElement>();
   const elements = createMockCollection(options?.elements ?? []);
 
   return {
@@ -71,8 +88,11 @@ const createMockCytoscape = (options?: { elements?: Array<{ data: { id: string }
 };
 
 vi.mock('cytoscape', () => {
-  const mockFactory = (options?: { elements?: Array<{ data: { id: string } }> }) => createMockCytoscape(options);
-  (mockFactory as any).use = vi.fn();
+  type CytoscapeFactory = ((options?: { elements?: GraphElement[] }) => ReturnType<typeof createMockCytoscape>) & {
+    use: ReturnType<typeof vi.fn>;
+  };
+  const mockFactory = ((options?: { elements?: GraphElement[] }) => createMockCytoscape(options)) as CytoscapeFactory;
+  mockFactory.use = vi.fn();
   return { default: mockFactory };
 });
 

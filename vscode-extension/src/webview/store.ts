@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { GraphEdge, GraphNode, GraphState } from '../shared/graphState';
 import { addNode, applyLayout as applyLayoutAction, connect, deleteItems } from './storeActions';
 import type { GraphStoreApi } from './storeActions';
@@ -184,14 +185,15 @@ const buildSearchResults = (graph: GraphState, query: string): SearchResult[] =>
 };
 
 export const createGraphStore = (initialGraph: GraphState, initialLayout?: Partial<LayoutSettings>) =>
-  create<GraphStore>((set, get) => {
-    const api: GraphStoreApi = {
-      getState: get,
-      setState: (partial) =>
-        set(partial as Partial<GraphStore> | ((state: GraphStore) => Partial<GraphStore>))
-    };
+  create<GraphStore>()(
+    subscribeWithSelector((set, get) => {
+      const api: GraphStoreApi = {
+        getState: get,
+        setState: (partial) =>
+          set(partial as Partial<GraphStore> | ((state: GraphStore) => Partial<GraphStore>))
+      };
 
-    return {
+      return {
       graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
       layout: normalizeLayoutSettings(initialLayout),
       lastChangeOrigin: 'remote',
@@ -459,7 +461,8 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
         const current = get().searchIndex;
         get().setSearchIndex(current - 1);
       }
-    };
-  });
+      };
+    })
+  );
 
 export type GraphStoreHook = ReturnType<typeof createGraphStore>;

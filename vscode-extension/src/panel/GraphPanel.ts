@@ -421,8 +421,8 @@ export class GraphPanel {
     return getTranslation(this.locale, key, replacements);
   }
 
-  private pickTranslationDirection(): Promise<TranslationDirection | undefined> {
-    return vscode.window.showQuickPick<
+  private async pickTranslationDirection(): Promise<TranslationDirection | undefined> {
+    const selection = await vscode.window.showQuickPick<
       { label: string; value: TranslationDirection; description: string }
     >(
       [
@@ -432,7 +432,8 @@ export class GraphPanel {
       {
         placeHolder: 'Направление перевода для Marian MT'
       }
-    ).then((selection) => selection?.value);
+    );
+    return selection?.value;
   }
 
   private getTranslator(): MarianTranslator | undefined {
@@ -669,6 +670,7 @@ export class GraphPanel {
       ? nodes.map((node, index) => ({
           ...node,
           type: node.type ?? 'Function',
+          label: node.label ?? node.id,
           position:
             node.position ?? this.graphState.nodes[index]?.position ?? this.computeNextPosition()
         }))

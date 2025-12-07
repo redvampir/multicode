@@ -15,7 +15,9 @@ const extensionConfig = {
   },
   devtool: 'source-map',
   externals: {
-    vscode: 'commonjs vscode'
+    vscode: 'commonjs vscode',
+    sharp: 'commonjs sharp',
+    'onnxruntime-node': 'commonjs onnxruntime-node'
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx']

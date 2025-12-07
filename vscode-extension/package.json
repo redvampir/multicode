@@ -124,10 +124,9 @@
           "type": "string",
           "enum": [
             "ru",
-            "en",
-            "bilingual"
+            "en"
           ],
-          "default": "bilingual",
+          "default": "ru",
           "description": "Node display language"
         },
         "multicode.theme": {

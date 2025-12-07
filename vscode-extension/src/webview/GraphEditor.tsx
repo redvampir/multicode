@@ -838,6 +838,16 @@ export const GraphEditor: React.FC<{
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        // Закрываем модальные окна сначала
+        if (paletteAnchor) {
+          closePalette();
+          return;
+        }
+        if (contextMenu) {
+          setContextMenu(null);
+          return;
+        }
+        // Затем сбрасываем выделение
         resetSelection();
         return;
       }
@@ -1108,6 +1118,8 @@ export const GraphEditor: React.FC<{
     return (
       <div
         className="graph-search"
+        role="search"
+        aria-label={translate('search.label', 'Поиск по графу')}
         style={{
           position: 'absolute',
           top: 12,
@@ -1131,6 +1143,7 @@ export const GraphEditor: React.FC<{
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               placeholder={translate('search.placeholder', 'Поиск по узлам и связям')}
+              aria-label={translate('search.input', 'Введите запрос')}
               style={{
                 width: '100%',
                 padding: '8px 10px',
@@ -1144,6 +1157,7 @@ export const GraphEditor: React.FC<{
               type="button"
               onClick={clearSearch}
               disabled={!searchQuery}
+              aria-label={translate('search.clear', 'Очистить')}
               style={{
                 padding: '8px 10px',
                 borderRadius: 6,
@@ -1161,10 +1175,20 @@ export const GraphEditor: React.FC<{
             style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}
           >
             <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" onClick={selectPreviousSearchResult} disabled={!hasResults}>
+              <button
+                type="button"
+                onClick={selectPreviousSearchResult}
+                disabled={!hasResults}
+                aria-label={translate('search.prev', 'Назад')}
+              >
                 {translate('search.prev', 'Назад')}
               </button>
-              <button type="button" onClick={selectNextSearchResult} disabled={!hasResults}>
+              <button
+                type="button"
+                onClick={selectNextSearchResult}
+                disabled={!hasResults}
+                aria-label={translate('search.next', 'Вперёд')}
+              >
                 {translate('search.next', 'Вперёд')}
               </button>
             </div>
@@ -1218,9 +1242,26 @@ export const GraphEditor: React.FC<{
       closePalette();
     };
 
+    const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+      const target = event.target as HTMLElement;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        const next = target.nextElementSibling as HTMLButtonElement | null;
+        next?.focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        const prev = target.previousElementSibling as HTMLButtonElement | null;
+        prev?.focus();
+      }
+    };
+
     return (
       <div
         className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label={translate('palette.title', 'Быстрое добавление')}
+        onKeyDown={handlePaletteKeyDown}
         style={{
           position: 'absolute',
           left: paletteAnchor.x,
@@ -1240,12 +1281,13 @@ export const GraphEditor: React.FC<{
         <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>
           {translate('palette.title', 'Быстрое добавление')} {translate('palette.hint', '(A / двойной клик)')}
         </div>
-        {items.map((item) => (
+        {items.map((item, index) => (
           <button
             key={item.key}
             type="button"
             className="palette__item"
             onClick={() => handlePick(item)}
+            autoFocus={index === 0}
             style={{
               textAlign: 'left',
               padding: '8px 10px',
@@ -1330,17 +1372,40 @@ export const GraphEditor: React.FC<{
         disabled: contextMenu.kind === 'canvas' && !hasSelection
       }
     ];
+
+    const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+      const target = event.target as HTMLElement;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        const next = target.nextElementSibling as HTMLButtonElement | null;
+        next?.focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        const prev = target.previousElementSibling as HTMLButtonElement | null;
+        prev?.focus();
+      }
+    };
+
     return (
-      <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
+      <div
+        className="context-menu"
+        role="menu"
+        aria-label={translate('context.menu', 'Контекстное меню')}
+        onKeyDown={handleContextMenuKeyDown}
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+      >
         {items
           .filter((item) => !item.hidden)
-          .map((item) => (
+          .map((item, index) => (
             <button
               key={item.key}
               type="button"
+              role="menuitem"
               onClick={item.action}
               className="context-menu__item"
               disabled={item.disabled}
+              aria-label={item.label}
+              autoFocus={index === 0}
             >
               {item.label}
             </button>
@@ -1413,6 +1478,8 @@ export const GraphEditor: React.FC<{
       <div
         className="graph-canvas"
         ref={containerRef}
+        role="application"
+        aria-label={translate('canvas.label', 'Редактор графов')}
         style={{
           backgroundColor: theme.canvas.background,
           backgroundImage: theme.canvas.accents,

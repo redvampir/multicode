@@ -159,6 +159,7 @@ const Toolbar: React.FC<{
           onClick={() => send('requestNewGraph')}
           disabled={pending}
           title={translate('tooltip.newGraph', 'Создать новый граф')}
+          aria-label={translate('tooltip.newGraph', 'Создать новый граф')}
         >
           {translate('toolbar.newGraph', 'Новый граф')}
         </button>
@@ -166,6 +167,7 @@ const Toolbar: React.FC<{
           onClick={() => send('requestLoad')}
           disabled={pending}
           title={translate('tooltip.loadGraph', 'Загрузить граф из файла')}
+          aria-label={translate('tooltip.loadGraph', 'Загрузить граф из файла')}
         >
           {translate('toolbar.loadGraph', 'Загрузить')}
         </button>
@@ -173,6 +175,7 @@ const Toolbar: React.FC<{
           onClick={() => send('requestSave')}
           disabled={pending}
           title={translate('tooltip.saveGraph', 'Сохранить граф в файл')}
+          aria-label={translate('tooltip.saveGraph', 'Сохранить граф в файл')}
         >
           {translate('toolbar.saveGraph', 'Сохранить')}
         </button>
@@ -180,6 +183,7 @@ const Toolbar: React.FC<{
           onClick={() => send('requestValidate')}
           disabled={pending}
           title={translate('tooltip.validateGraph', 'Проверить граф на ошибки')}
+          aria-label={translate('tooltip.validateGraph', 'Проверить граф на ошибки')}
         >
           {translate('toolbar.validateGraph', 'Проверить')}
         </button>
@@ -187,6 +191,7 @@ const Toolbar: React.FC<{
           onClick={onCopyGraphId}
           disabled={pending}
           title={translate('tooltip.copyId', 'Скопировать ID графа в буфер обмена')}
+          aria-label={translate('tooltip.copyId', 'Скопировать ID графа в буфер обмена')}
         >
           {translate('toolbar.copyId' as TranslationKey, 'ID графа в буфер')}
         </button>
@@ -194,6 +199,7 @@ const Toolbar: React.FC<{
           onClick={onCalculate}
           disabled={pending}
           title={translate('tooltip.calculateLayout', 'Пересчитать расположение узлов')}
+          aria-label={translate('tooltip.calculateLayout', 'Пересчитать расположение узлов')}
         >
           {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
@@ -201,6 +207,7 @@ const Toolbar: React.FC<{
           onClick={() => send('requestGenerate')}
           disabled={pending}
           title={translate('tooltip.generateCode', 'Сгенерировать код из графа')}
+          aria-label={translate('tooltip.generateCode', 'Сгенерировать код из графа')}
         >
           {translate('toolbar.generateGraph', 'Генерировать код')}
         </button>

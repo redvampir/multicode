@@ -75,12 +75,16 @@ export type TranslationKey =
   | 'search.clear'
   | 'search.type.node'
   | 'search.type.edge'
+  | 'search.label'
+  | 'search.input'
   | 'context.copy'
   | 'context.duplicate'
   | 'context.paste'
   | 'context.delete'
   | 'context.group'
   | 'context.alignGrid'
+  | 'context.menu'
+  | 'canvas.label'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -193,12 +197,16 @@ const translations: Record<Locale, TranslationMap> = {
     'search.clear': 'Очистить',
     'search.type.node': 'Узел',
     'search.type.edge': 'Связь',
+    'search.label': 'Поиск по графу',
+    'search.input': 'Введите запрос',
     'context.copy': 'Копировать',
     'context.duplicate': 'Дублировать',
     'context.paste': 'Вставить',
     'context.delete': 'Удалить',
     'context.group': 'Сгруппировать',
     'context.alignGrid': 'Выровнять по сетке',
+    'context.menu': 'Контекстное меню',
+    'canvas.label': 'Редактор графов',
     'errors.connectionExists': 'Такая связь уже есть',
     'errors.connectionSelf': 'Связь с самим собой запрещена',
     'errors.connectionMissing': 'Укажите оба узла для связи',
@@ -308,12 +316,16 @@ const translations: Record<Locale, TranslationMap> = {
     'search.clear': 'Clear',
     'search.type.node': 'Node',
     'search.type.edge': 'Edge',
+    'search.label': 'Search graph',
+    'search.input': 'Enter search query',
     'context.copy': 'Copy',
     'context.duplicate': 'Duplicate',
     'context.paste': 'Paste',
     'context.delete': 'Delete',
     'context.group': 'Group selection',
     'context.alignGrid': 'Align to grid',
+    'context.menu': 'Context menu',
+    'canvas.label': 'Graph editor',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',

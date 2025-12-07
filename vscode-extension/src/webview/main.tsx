@@ -155,25 +155,53 @@ const Toolbar: React.FC<{
             <option value="en">EN</option>
           </select>
         </label>
-        <button onClick={() => send('requestNewGraph')} disabled={pending}>
+        <button
+          onClick={() => send('requestNewGraph')}
+          disabled={pending}
+          title={translate('tooltip.newGraph', 'Создать новый граф')}
+        >
           {translate('toolbar.newGraph', 'Новый граф')}
         </button>
-        <button onClick={() => send('requestLoad')} disabled={pending}>
+        <button
+          onClick={() => send('requestLoad')}
+          disabled={pending}
+          title={translate('tooltip.loadGraph', 'Загрузить граф из файла')}
+        >
           {translate('toolbar.loadGraph', 'Загрузить')}
         </button>
-        <button onClick={() => send('requestSave')} disabled={pending}>
+        <button
+          onClick={() => send('requestSave')}
+          disabled={pending}
+          title={translate('tooltip.saveGraph', 'Сохранить граф в файл')}
+        >
           {translate('toolbar.saveGraph', 'Сохранить')}
         </button>
-        <button onClick={() => send('requestValidate')} disabled={pending}>
+        <button
+          onClick={() => send('requestValidate')}
+          disabled={pending}
+          title={translate('tooltip.validateGraph', 'Проверить граф на ошибки')}
+        >
           {translate('toolbar.validateGraph', 'Проверить')}
         </button>
-        <button onClick={onCopyGraphId} disabled={pending}>
+        <button
+          onClick={onCopyGraphId}
+          disabled={pending}
+          title={translate('tooltip.copyId', 'Скопировать ID графа в буфер обмена')}
+        >
           {translate('toolbar.copyId' as TranslationKey, 'ID графа в буфер')}
         </button>
-        <button onClick={onCalculate} disabled={pending}>
+        <button
+          onClick={onCalculate}
+          disabled={pending}
+          title={translate('tooltip.calculateLayout', 'Пересчитать расположение узлов')}
+        >
           {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
-        <button onClick={() => send('requestGenerate')} disabled={pending}>
+        <button
+          onClick={() => send('requestGenerate')}
+          disabled={pending}
+          title={translate('tooltip.generateCode', 'Сгенерировать код из графа')}
+        >
           {translate('toolbar.generateGraph', 'Генерировать код')}
         </button>
       </div>
@@ -396,7 +424,7 @@ const NodeActions: React.FC<NodeActionsProps> = ({
           <select value={type} onChange={(event) => setType(event.target.value as GraphNodeType)}>
             {nodeTypeOptions.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {getTranslation(locale, `nodeType.${option}` as TranslationKey, {}, option)}
               </option>
             ))}
           </select>
@@ -442,19 +470,21 @@ interface TranslationActionsProps {
   pending: boolean;
   onDirectionChange: (direction: 'ru-en' | 'en-ru') => void;
   onTranslate: () => void;
+  translate: (key: TranslationKey, fallback: string) => string;
 }
 
 const TranslationActions: React.FC<TranslationActionsProps> = ({
   direction,
   pending,
   onDirectionChange,
-  onTranslate
+  onTranslate,
+  translate
 }) => (
   <div className="panel">
-    <div className="panel-title">Перевод графа</div>
+    <div className="panel-title">{translate('translation.title', 'Перевод графа')}</div>
     <div className="panel-grid">
       <label>
-        <div className="panel-label">Направление</div>
+        <div className="panel-label">{translate('translation.direction', 'Направление')}</div>
         <select
           value={direction}
           onChange={(event) => onDirectionChange(event.target.value as 'ru-en' | 'en-ru')}
@@ -467,7 +497,7 @@ const TranslationActions: React.FC<TranslationActionsProps> = ({
         </select>
       </label>
       <button type="button" className="panel-action" onClick={onTranslate} disabled={pending}>
-        {pending ? 'Перевод...' : 'Перевести'}
+        {pending ? translate('translation.translating', 'Перевод...') : translate('translation.translate', 'Перевести')}
       </button>
     </div>
   </div>
@@ -774,6 +804,7 @@ const App: React.FC = () => {
             pending={translationPending}
             onDirectionChange={setTranslationDirection}
             onTranslate={handleTranslate}
+            translate={translate}
           />
           <LayoutSettingsPanel translate={translate} />
           <NodeActions

@@ -687,6 +687,24 @@ export const GraphEditor: React.FC<{
 
   const renderSearchPanel = (): React.ReactNode => {
     const hasResults = Boolean(searchResults.length);
+
+    const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          selectPreviousSearchResult();
+          return;
+        }
+        selectNextSearchResult();
+        return;
+      }
+      if (event.key === 'Escape') {
+        setSearchQuery('');
+      }
+    };
+
+    const clearSearch = (): void => setSearchQuery('');
+
     return (
       <div
         className="graph-search"
@@ -705,21 +723,39 @@ export const GraphEditor: React.FC<{
         }}
       >
         <div className="graph-search__controls" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={translate('search.placeholder', 'Поиск по узлам и связям')}
-            style={{
-              width: '100%',
-              padding: '8px 10px',
-              borderRadius: 6,
-              border: `1px solid ${theme.canvas.stroke}`,
-              backgroundColor: theme.canvas.background,
-              color: theme.nodes.textColor
-            }}
-          />
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={translate('search.placeholder', 'Поиск по узлам и связям')}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: `1px solid ${theme.canvas.stroke}`,
+                backgroundColor: theme.canvas.background,
+                color: theme.nodes.textColor
+              }}
+            />
+            <button
+              type="button"
+              onClick={clearSearch}
+              disabled={!searchQuery}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: `1px solid ${theme.canvas.stroke}`,
+                backgroundColor: theme.canvas.background,
+                color: theme.nodes.textColor,
+                cursor: searchQuery ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {translate('search.clear', 'Очистить')}
+            </button>
+          </div>
           <div
             className="graph-search__nav"
             style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}

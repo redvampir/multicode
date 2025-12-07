@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import type { GraphState } from './graphState';
+import { graphStateSchema } from './messages';
 
 const GRAPH_SCHEMA_VERSION = 1;
 
@@ -14,13 +16,19 @@ export const serializeGraphState = (state: GraphState): SerializedGraph => ({
   data: state
 });
 
+const serializedGraphSchema = z.object({
+  version: z.number(),
+  savedAt: z.string(),
+  data: graphStateSchema
+});
+
+export const parseSerializedGraph = (data: unknown): ReturnType<typeof serializedGraphSchema.safeParse> =>
+  serializedGraphSchema.safeParse(data);
+
 export const deserializeGraphState = (input: unknown): GraphState => {
-  if (!input || typeof input !== 'object') {
-    throw new Error('File does not contain graph data');
-  }
-  const payload = input as Partial<SerializedGraph>;
-  if (typeof payload.version !== 'number' || !payload.data) {
+  const parsed = parseSerializedGraph(input);
+  if (!parsed.success) {
     throw new Error('Invalid graph format');
   }
-  return payload.data;
+  return parsed.data.data;
 };

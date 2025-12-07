@@ -72,6 +72,12 @@ export type TranslationKey =
   | 'search.clear'
   | 'search.type.node'
   | 'search.type.edge'
+  | 'context.copy'
+  | 'context.duplicate'
+  | 'context.paste'
+  | 'context.delete'
+  | 'context.group'
+  | 'context.alignGrid'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -153,6 +159,12 @@ const translations: Record<Locale, TranslationMap> = {
     'search.clear': 'Очистить',
     'search.type.node': 'Узел',
     'search.type.edge': 'Ребро',
+    'context.copy': 'Копировать',
+    'context.duplicate': 'Дублировать',
+    'context.paste': 'Вставить',
+    'context.delete': 'Удалить',
+    'context.group': 'Сгруппировать',
+    'context.alignGrid': 'Выровнять по сетке',
     'errors.connectionExists': 'Такое соединение уже существует',
     'errors.connectionSelf': 'Нельзя соединить узел с самим собой',
     'errors.connectionMissing': 'Выберите существующие узлы',
@@ -231,6 +243,12 @@ const translations: Record<Locale, TranslationMap> = {
     'search.clear': 'Clear',
     'search.type.node': 'Node',
     'search.type.edge': 'Edge',
+    'context.copy': 'Copy',
+    'context.duplicate': 'Duplicate',
+    'context.paste': 'Paste',
+    'context.delete': 'Delete',
+    'context.group': 'Group selection',
+    'context.alignGrid': 'Align to grid',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',

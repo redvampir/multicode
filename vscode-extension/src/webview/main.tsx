@@ -217,23 +217,42 @@ const ValidationPanel: React.FC<{
   if (!validation) {
     return null;
   }
+
+  const issues = validation.issues?.length
+    ? validation.issues
+    : [
+        ...validation.errors.map((message) => ({ severity: 'error' as const, message })),
+        ...validation.warnings.map((message) => ({ severity: 'warning' as const, message }))
+      ];
+
+  const hasProblems = issues.length > 0;
+
   return (
     <div className="panel">
       <div className="panel-title">{translate('toolbar.validate', 'Валидация')}</div>
-      {validation.errors.length === 0 && validation.warnings.length === 0 ? (
+      {!hasProblems ? (
         <div className="badge badge-ok">{translate('toasts.validationOk', 'Ошибок не найдено')}</div>
       ) : (
         <ul className="validation-list">
-          {validation.errors.map((item) => (
-            <li key={item} className="text-error">
-              {item}
-            </li>
-          ))}
-          {validation.warnings.map((item) => (
-            <li key={item} className="text-warn">
-              {item}
-            </li>
-          ))}
+          {issues.map((item, index) => {
+            const targets: string[] = [];
+            if (item.nodes?.length) {
+              targets.push(`${translate('overview.nodes', 'Узлы')}: ${item.nodes.join(', ')}`);
+            }
+            if (item.edges?.length) {
+              targets.push(`${translate('overview.edges', 'Связи')}: ${item.edges.join(', ')}`);
+            }
+            const details = targets.length ? ` (${targets.join(' · ')})` : '';
+            return (
+              <li
+                key={`${item.message}-${index}`}
+                className={item.severity === 'error' ? 'text-error' : 'text-warn'}
+              >
+                {item.message}
+                {details}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -568,6 +587,7 @@ const App: React.FC = () => {
       const message = parsed.data;
       switch (message.type) {
         case 'setState':
+          setValidation(undefined);
           setGraph(message.payload, { origin: 'remote' });
           setLocale(message.payload.displayLanguage ?? 'ru');
           localeRef.current = message.payload.displayLanguage ?? 'ru';
@@ -627,6 +647,7 @@ const App: React.FC = () => {
         const layout = useGraphStore.getState().layout;
         vscode.setState({ graph, locale: localeRef.current, layout });
         if (origin === 'local') {
+          setValidation(undefined);
           sendToExtension({
             type: 'graphChanged',
             payload: {
@@ -698,6 +719,7 @@ const App: React.FC = () => {
             theme={themeTokens}
             onAddNode={handleAddNode}
             onConnectNodes={handleConnectNodes}
+            validation={validation}
             onLayoutReady={(runner) => {
               layoutRunnerRef.current = runner;
             }}

@@ -3,6 +3,7 @@ import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from
 import dagre from 'cytoscape-dagre';
 import klay from 'cytoscape-klay';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
+import type { ValidationResult } from '../shared/validator';
 import { getTranslation } from '../shared/translations';
 import type { GraphStoreHook, LayoutSettings, SearchResult } from './store';
 import type { ThemeTokens } from './theme';
@@ -192,6 +193,40 @@ const buildStyles = (tokens: ThemeTokens): Stylesheet[] => [
     style: {
       opacity: 0.25
     }
+  },
+  {
+    selector: 'node.validation-error',
+    style: {
+      'border-color': tokens.ui.toastError,
+      'background-color': tokens.ui.toastError,
+      'background-opacity': 0.22,
+      'box-shadow': `0 0 18px ${tokens.ui.toastError}`
+    } as cytoscape.Css.Node
+  },
+  {
+    selector: 'node.validation-warning',
+    style: {
+      'border-color': tokens.ui.toastWarning,
+      'background-color': tokens.ui.toastWarning,
+      'background-opacity': 0.15,
+      'box-shadow': `0 0 14px ${tokens.ui.toastWarning}`
+    } as cytoscape.Css.Node
+  },
+  {
+    selector: 'edge.validation-error',
+    style: {
+      'line-color': tokens.ui.toastError,
+      'target-arrow-color': tokens.ui.toastError,
+      width: tokens.edges.width * tokens.geometry.arrowThickness + 1.5
+    } as cytoscape.Css.Edge
+  },
+  {
+    selector: 'edge.validation-warning',
+    style: {
+      'line-color': tokens.ui.toastWarning,
+      'target-arrow-color': tokens.ui.toastWarning,
+      width: tokens.edges.width * tokens.geometry.arrowThickness + 1
+    } as cytoscape.Css.Edge
   }
 ];
 
@@ -230,10 +265,11 @@ const buildLayoutOptions = (settings: LayoutSettings): EditorLayoutOptions => {
 export const GraphEditor: React.FC<{
   graphStore: GraphStoreHook;
   theme: ThemeTokens;
+  validation?: ValidationResult;
   onAddNode: (payload: { label?: string; nodeType?: GraphNodeType }) => void;
   onConnectNodes: (payload: { sourceId?: string; targetId?: string }) => void;
   onLayoutReady?: (runner: () => void) => void;
-}> = ({ graphStore, theme, onAddNode, onConnectNodes, onLayoutReady }) => {
+}> = ({ graphStore, theme, validation, onAddNode, onConnectNodes, onLayoutReady }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
   const graph = graphStore((state) => state.graph);
@@ -624,6 +660,42 @@ export const GraphEditor: React.FC<{
       }
     });
   }, [searchQuery, searchResults]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+
+    cy.nodes().removeClass('validation-error validation-warning');
+    cy.edges().removeClass('validation-error validation-warning');
+
+    const issues = validation
+      ? validation.issues ?? [
+          ...validation.errors.map((message) => ({ severity: 'error' as const, message })),
+          ...validation.warnings.map((message) => ({ severity: 'warning' as const, message }))
+        ]
+      : [];
+    if (!issues.length) {
+      return;
+    }
+
+    issues.forEach((issue) => {
+      const className = issue.severity === 'error' ? 'validation-error' : 'validation-warning';
+      issue.nodes?.forEach((nodeId) => {
+        const node = cy.$id(nodeId);
+        if (node) {
+          node.addClass(className);
+        }
+      });
+      issue.edges?.forEach((edgeId) => {
+        const edge = cy.$id(edgeId);
+        if (edge) {
+          edge.addClass(className);
+        }
+      });
+    });
+  }, [validation]);
 
   const focusOnElement = useCallback(
     (result?: SearchResult): void => {

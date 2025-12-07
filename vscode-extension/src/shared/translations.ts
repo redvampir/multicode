@@ -106,7 +106,14 @@ export type TranslationKey =
   | 'nodeType.End'
   | 'nodeType.Function'
   | 'nodeType.Variable'
-  | 'nodeType.Custom';
+  | 'nodeType.Custom'
+  | 'tooltip.newGraph'
+  | 'tooltip.loadGraph'
+  | 'tooltip.saveGraph'
+  | 'tooltip.validateGraph'
+  | 'tooltip.generateCode'
+  | 'tooltip.calculateLayout'
+  | 'tooltip.copyId';
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -217,7 +224,14 @@ const translations: Record<Locale, TranslationMap> = {
     'nodeType.End': 'Конец',
     'nodeType.Function': 'Функция',
     'nodeType.Variable': 'Переменная',
-    'nodeType.Custom': 'Пользовательский'
+    'nodeType.Custom': 'Пользовательский',
+    'tooltip.newGraph': 'Создать новый граф',
+    'tooltip.loadGraph': 'Загрузить граф из файла',
+    'tooltip.saveGraph': 'Сохранить граф в файл',
+    'tooltip.validateGraph': 'Проверить граф на ошибки',
+    'tooltip.generateCode': 'Сгенерировать код из графа',
+    'tooltip.calculateLayout': 'Пересчитать расположение узлов',
+    'tooltip.copyId': 'Скопировать ID графа в буфер обмена'
   },
   en: {
     'app.title': 'MultiCode · Visual Graph',
@@ -325,7 +339,14 @@ const translations: Record<Locale, TranslationMap> = {
     'nodeType.End': 'End',
     'nodeType.Function': 'Function',
     'nodeType.Variable': 'Variable',
-    'nodeType.Custom': 'Custom'
+    'nodeType.Custom': 'Custom',
+    'tooltip.newGraph': 'Create new graph',
+    'tooltip.loadGraph': 'Load graph from file',
+    'tooltip.saveGraph': 'Save graph to file',
+    'tooltip.validateGraph': 'Validate graph',
+    'tooltip.generateCode': 'Generate code from graph',
+    'tooltip.calculateLayout': 'Recalculate node layout',
+    'tooltip.copyId': 'Copy graph ID to clipboard'
   }
 };
 

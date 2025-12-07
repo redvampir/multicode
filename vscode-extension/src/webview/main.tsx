@@ -155,25 +155,53 @@ const Toolbar: React.FC<{
             <option value="en">EN</option>
           </select>
         </label>
-        <button onClick={() => send('requestNewGraph')} disabled={pending}>
+        <button
+          onClick={() => send('requestNewGraph')}
+          disabled={pending}
+          title={translate('tooltip.newGraph', 'Создать новый граф')}
+        >
           {translate('toolbar.newGraph', 'Новый граф')}
         </button>
-        <button onClick={() => send('requestLoad')} disabled={pending}>
+        <button
+          onClick={() => send('requestLoad')}
+          disabled={pending}
+          title={translate('tooltip.loadGraph', 'Загрузить граф из файла')}
+        >
           {translate('toolbar.loadGraph', 'Загрузить')}
         </button>
-        <button onClick={() => send('requestSave')} disabled={pending}>
+        <button
+          onClick={() => send('requestSave')}
+          disabled={pending}
+          title={translate('tooltip.saveGraph', 'Сохранить граф в файл')}
+        >
           {translate('toolbar.saveGraph', 'Сохранить')}
         </button>
-        <button onClick={() => send('requestValidate')} disabled={pending}>
+        <button
+          onClick={() => send('requestValidate')}
+          disabled={pending}
+          title={translate('tooltip.validateGraph', 'Проверить граф на ошибки')}
+        >
           {translate('toolbar.validateGraph', 'Проверить')}
         </button>
-        <button onClick={onCopyGraphId} disabled={pending}>
+        <button
+          onClick={onCopyGraphId}
+          disabled={pending}
+          title={translate('tooltip.copyId', 'Скопировать ID графа в буфер обмена')}
+        >
           {translate('toolbar.copyId' as TranslationKey, 'ID графа в буфер')}
         </button>
-        <button onClick={onCalculate} disabled={pending}>
+        <button
+          onClick={onCalculate}
+          disabled={pending}
+          title={translate('tooltip.calculateLayout', 'Пересчитать расположение узлов')}
+        >
           {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
-        <button onClick={() => send('requestGenerate')} disabled={pending}>
+        <button
+          onClick={() => send('requestGenerate')}
+          disabled={pending}
+          title={translate('tooltip.generateCode', 'Сгенерировать код из графа')}
+        >
           {translate('toolbar.generateGraph', 'Генерировать код')}
         </button>
       </div>

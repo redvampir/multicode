@@ -1,9 +1,20 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { createDefaultGraphState } from '../../shared/graphState';
 import { createGraphStore } from '../store';
+import type { GraphActionContext } from '../storeActions';
 import { addNode, applyLayout, connect, deleteItems } from '../storeActions';
 
 const createStore = () => createGraphStore(createDefaultGraphState());
+
+const createTestIdGenerator = () => {
+  let counter = 0;
+  return (kind: 'node' | 'edge') => `${kind}-test-${++counter}`;
+};
+
+const createTestContext = (): GraphActionContext => ({
+  now: () => new Date().toISOString(),
+  idGenerator: createTestIdGenerator()
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -14,28 +25,32 @@ describe('storeActions', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-01-01T12:00:00Z'));
     const store = createStore();
+    const context = createTestContext();
 
-    const node = addNode(store, { label: 'Новый узел', nodeType: 'Custom' });
+    const node = addNode(store, { label: 'Новый узел', nodeType: 'Custom' }, context);
     const { graph, selectedNodeIds } = store.getState();
 
     expect(graph.nodes.find((item) => item.id === node.id)?.label).toBe('Новый узел');
     expect(graph.updatedAt).toBe('2024-01-01T12:00:00.000Z');
     expect(graph.dirty).toBe(true);
     expect(selectedNodeIds).toEqual([node.id]);
+    expect(node.id).toBe('node-test-1');
   });
 
   it('создаёт связь между существующими узлами', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-02-02T00:00:00Z'));
     const store = createStore();
+    const context = createTestContext();
 
-    const success = connect(store, { sourceId: 'node-start', targetId: 'node-end', label: 'custom' });
+    const success = connect(store, { sourceId: 'node-start', targetId: 'node-end', label: 'custom' }, context);
     const { graph, selectedEdgeIds } = store.getState();
 
     expect(success).toBe(true);
     expect(graph.edges.some((edge) => edge.source === 'node-start' && edge.target === 'node-end')).toBe(
       true
     );
+    expect(graph.edges.some((edge) => edge.id === 'edge-test-1')).toBe(true);
     expect(graph.updatedAt).toBe('2024-02-02T00:00:00.000Z');
     expect(selectedEdgeIds.length).toBe(1);
   });

@@ -8,6 +8,8 @@ export type GraphStoreApi = {
 
 type IdentifierKind = 'node' | 'edge';
 
+type IdentifierCounters = Record<IdentifierKind, number>;
+
 export type GraphActionContext = {
   now?: () => string;
   idGenerator?: (kind: IdentifierKind) => string;
@@ -36,11 +38,29 @@ export type DeletePayload = {
 export type LayoutPayload = Record<string, { x: number; y: number }>;
 
 const defaultNow = (): string => new Date().toISOString();
-const defaultId = (kind: IdentifierKind): string => `${kind}-${Date.now()}`;
+
+const createIdGenerator = (): ((kind: IdentifierKind) => string) => {
+  const counters: IdentifierCounters = { node: 0, edge: 0 };
+  const randomUUID =
+    typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function'
+      ? () => globalThis.crypto.randomUUID()
+      : null;
+
+  return (kind: IdentifierKind): string => {
+    if (randomUUID) {
+      return `${kind}-${randomUUID()}`;
+    }
+
+    counters[kind] += 1;
+    return `${kind}-${Date.now()}-${counters[kind]}`;
+  };
+};
+
+const defaultIdGenerator = createIdGenerator();
 
 const withDefaults = (context?: GraphActionContext) => ({
   now: context?.now ?? defaultNow,
-  idGenerator: context?.idGenerator ?? defaultId
+  idGenerator: context?.idGenerator ?? defaultIdGenerator
 });
 
 const markDirty = (graph: GraphState, timestamp: string): GraphState => ({

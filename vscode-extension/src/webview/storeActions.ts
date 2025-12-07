@@ -154,6 +154,8 @@ export const deleteItems = (
       remainingNodeIds.has(edge.target)
   );
 
+  const remainingEdgeIds = new Set(remainingEdges.map((edge) => edge.id));
+
   const nextGraph = markDirty(
     {
       ...graph,
@@ -167,7 +169,7 @@ export const deleteItems = (
 
   store.setState(({ selectedNodeIds, selectedEdgeIds }: GraphStore) => ({
     selectedNodeIds: selectedNodeIds.filter((id) => remainingNodeIds.has(id)),
-    selectedEdgeIds: selectedEdgeIds.filter((id) => remainingEdges.some((edge) => edge.id === id))
+    selectedEdgeIds: selectedEdgeIds.filter((id) => remainingEdgeIds.has(id))
   }));
 
   return nextGraph;

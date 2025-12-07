@@ -80,6 +80,31 @@ describe('storeActions', () => {
     expect(selectedEdgeIds).toEqual([]);
   });
 
+  it('сохраняет корректное выделение при смешанном удалении узлов и рёбер', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-05-05T00:00:00Z'));
+    const store = createStore();
+    const context = createTestContext();
+
+    addNode(store, { id: 'node-extra', label: 'Дополнительный', nodeType: 'Custom' }, context);
+    connect(store, { sourceId: 'node-func', targetId: 'node-extra', label: 'branch' }, context);
+
+    store.setState({
+      selectedNodeIds: ['node-start', 'node-end', 'node-extra'],
+      selectedEdgeIds: ['edge-1', 'edge-2', 'edge-test-1']
+    });
+
+    const nextGraph = deleteItems(store, { nodeIds: ['node-start'], edgeIds: ['edge-2'] }, context);
+    const { selectedNodeIds, selectedEdgeIds, graph } = store.getState();
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(['node-func', 'node-end', 'node-extra']);
+    expect(graph.edges.map((edge) => edge.id)).toEqual(['edge-test-1']);
+    expect(selectedNodeIds).toEqual(['node-end', 'node-extra']);
+    expect(selectedEdgeIds).toEqual(['edge-test-1']);
+    expect(nextGraph.updatedAt).toBe('2024-05-05T00:00:00.000Z');
+    expect(nextGraph.dirty).toBe(true);
+  });
+
   it('применяет вычисленный лэйаут', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-04-04T10:00:00Z'));

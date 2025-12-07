@@ -1,30 +1,55 @@
 import type { GraphEdge, GraphEdgeKind, GraphState } from './graphState';
-import type { ValidationResult } from './messages';
+import type { ValidationIssue, ValidationResult } from './messages';
 
-export type { ValidationResult } from './messages';
+export type { ValidationIssue, ValidationResult } from './messages';
 
 export const validateGraphState = (state: GraphState): ValidationResult => {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const issues: ValidationIssue[] = [];
+
+  const pushIssue = (
+    severity: ValidationIssue['severity'],
+    message: string,
+    targets?: { nodes?: string[]; edges?: string[] }
+  ): void => {
+    if (severity === 'error') {
+      errors.push(message);
+    } else {
+      warnings.push(message);
+    }
+    issues.push({
+      severity,
+      message,
+      nodes: targets?.nodes,
+      edges: targets?.edges
+    });
+  };
 
   if (!state.nodes.length) {
+    const message = 'Graph must contain at least one node.';
     return {
       ok: false,
-      errors: ['Graph must contain at least one node.'],
-      warnings
+      errors: [message],
+      warnings,
+      issues: [{ severity: 'error', message }]
     };
   }
 
   const startNodes = state.nodes.filter((node) => node.type === 'Start');
   if (startNodes.length === 0) {
-    errors.push('Graph must contain a Start node.');
+    pushIssue('error', 'Graph must contain a Start node.');
   } else if (startNodes.length > 1) {
-    errors.push('Only one Start node is allowed.');
+    pushIssue(
+      'error',
+      'Only one Start node is allowed.',
+      startNodes.length ? { nodes: startNodes.map((node) => node.id) } : undefined
+    );
   }
 
   const endNodes = state.nodes.filter((node) => node.type === 'End');
   if (!endNodes.length) {
-    errors.push('Graph must contain at least one End node.');
+    pushIssue('error', 'Graph must contain at least one End node.');
   }
 
   const nodeMap = new Map(state.nodes.map((node) => [node.id, node]));
@@ -35,12 +60,12 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
     const source = nodeMap.get(edge.source);
     const target = nodeMap.get(edge.target);
     if (!source || !target) {
-      errors.push(`Edge #${index + 1} references missing nodes.`);
+      pushIssue('error', `Edge #${index + 1} references missing nodes.`, { edges: [edge.id] });
       return;
     }
 
     if (edge.source === edge.target) {
-      errors.push(`Edge ${edge.id} creates a self-loop.`);
+      pushIssue('error', `Edge ${edge.id} creates a self-loop.`, { edges: [edge.id] });
       return;
     }
 
@@ -48,35 +73,51 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
     if (kind === 'execution') {
       executionEdges.push(edge);
       if (source.type === 'End') {
-        errors.push(
-          `Execution edge ${edge.source} -> ${edge.target} cannot start from End node "${source.label}".`
+        pushIssue(
+          'error',
+          `Execution edge ${edge.source} -> ${edge.target} cannot start from End node "${source.label}".`,
+          { edges: [edge.id], nodes: [source.id] }
         );
       }
       if (target.type === 'Start') {
-        errors.push(
-          `Execution edge ${edge.source} -> ${edge.target} cannot target Start node "${target.label}".`
+        pushIssue(
+          'error',
+          `Execution edge ${edge.source} -> ${edge.target} cannot target Start node "${target.label}".`,
+          { edges: [edge.id], nodes: [target.id] }
         );
       }
     } else {
       dataEdges.push(edge);
       if (source.type === 'Start' || target.type === 'Start') {
-        errors.push(`Data edge ${edge.source} -> ${edge.target} cannot involve Start nodes.`);
+        pushIssue(
+          'error',
+          `Data edge ${edge.source} -> ${edge.target} cannot involve Start nodes.`,
+          { edges: [edge.id], nodes: [source.id, target.id] }
+        );
       }
       if (source.type === 'End') {
-        errors.push(`Data edge ${edge.source} -> ${edge.target} cannot originate from End nodes.`);
+        pushIssue(
+          'error',
+          `Data edge ${edge.source} -> ${edge.target} cannot originate from End nodes.`,
+          { edges: [edge.id], nodes: [source.id] }
+        );
       }
     }
   });
 
   if (state.nodes.length > 1 && !executionEdges.length) {
-    errors.push('Graph does not contain execution flow connections.');
+    pushIssue('error', 'Graph does not contain execution flow connections.');
   }
 
   const seenEdges = new Set<string>();
   state.edges.forEach((edge) => {
     const signature = `${edge.source}->${edge.target}:${edge.kind ?? 'execution'}`;
     if (seenEdges.has(signature)) {
-      warnings.push(`Duplicate edge ${edge.source} -> ${edge.target} (${edge.kind ?? 'execution'}).`);
+      pushIssue(
+        'warning',
+        `Duplicate edge ${edge.source} -> ${edge.target} (${edge.kind ?? 'execution'}).`,
+        { edges: [edge.id] }
+      );
     } else {
       seenEdges.add(signature);
     }
@@ -86,11 +127,11 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
   if (startNode) {
     const incomingStart = executionEdges.some((edge) => edge.target === startNode.id);
     if (incomingStart) {
-      errors.push('Start node cannot have incoming execution edges.');
+      pushIssue('error', 'Start node cannot have incoming execution edges.', { nodes: [startNode.id] });
     }
     const outgoingStart = executionEdges.filter((edge) => edge.source === startNode.id).length;
     if (!outgoingStart) {
-      warnings.push('Start node has no outgoing execution edges.');
+      pushIssue('warning', 'Start node has no outgoing execution edges.', { nodes: [startNode.id] });
     }
   }
 
@@ -98,11 +139,15 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
     endNodes.forEach((node) => {
       const outgoing = executionEdges.some((edge) => edge.source === node.id);
       if (outgoing) {
-        errors.push(`End node "${node.label}" cannot have outgoing execution edges.`);
+        pushIssue('error', `End node "${node.label}" cannot have outgoing execution edges.`, {
+          nodes: [node.id]
+        });
       }
       const incoming = executionEdges.some((edge) => edge.target === node.id);
       if (!incoming) {
-        warnings.push(`End node "${node.label}" has no incoming execution edges.`);
+        pushIssue('warning', `End node "${node.label}" has no incoming execution edges.`, {
+          nodes: [node.id]
+        });
       }
     });
   }
@@ -113,13 +158,17 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
       (node) => node.type !== 'Start' && !reachable.has(node.id)
     );
     if (unreachable.length) {
-      errors.push(`Unreachable nodes: ${unreachable.map((node) => node.label).join(', ')}.`);
+      pushIssue(
+        'error',
+        `Unreachable nodes: ${unreachable.map((node) => node.label).join(', ')}.`,
+        { nodes: unreachable.map((node) => node.id) }
+      );
     }
   }
 
   const cycle = detectCycle(state);
   if (cycle) {
-    errors.push(`Execution cycle detected: ${cycle.join(' -> ')}`);
+    pushIssue('error', `Execution cycle detected: ${cycle.join(' -> ')}`, { nodes: cycle });
   }
 
   dataEdges.forEach((edge) => {
@@ -129,14 +178,19 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
       return;
     }
     if (source.type === 'Variable' && target.type === 'Variable') {
-      warnings.push(`Data edge ${edge.source} -> ${edge.target} connects two Variable nodes.`);
+      pushIssue(
+        'warning',
+        `Data edge ${edge.source} -> ${edge.target} connects two Variable nodes.`,
+        { edges: [edge.id], nodes: [source.id, target.id] }
+      );
     }
   });
 
   return {
     ok: errors.length === 0,
     errors,
-    warnings
+    warnings,
+    issues
   };
 };
 

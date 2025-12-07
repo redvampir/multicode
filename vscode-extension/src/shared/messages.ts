@@ -72,10 +72,18 @@ const logPayloadSchema = z.object({
   message: z.string()
 });
 
+const validationIssueSchema = z.object({
+  severity: z.enum(['error', 'warning']),
+  message: z.string(),
+  nodes: z.array(z.string()).optional(),
+  edges: z.array(z.string()).optional()
+});
+
 export const validationResultSchema = z.object({
   ok: z.boolean(),
   errors: z.array(z.string()),
-  warnings: z.array(z.string())
+  warnings: z.array(z.string()),
+  issues: z.array(validationIssueSchema).optional()
 });
 
 export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
@@ -151,6 +159,7 @@ export type GraphNodeTypeSchema = typeof graphNodeTypeSchema;
 export type GraphLanguageSchema = typeof graphLanguageSchema;
 export type GraphDisplayLanguageSchema = typeof graphDisplayLanguageSchema;
 export type GraphEdgeKindSchema = typeof graphEdgeKindSchema;
+export type ValidationIssue = z.infer<typeof validationIssueSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
 
 export const isExtensionMessage = (data: unknown): data is ExtensionToWebviewMessage =>

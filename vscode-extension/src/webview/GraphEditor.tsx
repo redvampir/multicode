@@ -253,6 +253,7 @@ export const GraphEditor: React.FC<{
   const copySelection = graphStore((state) => state.copySelection);
   const pasteClipboard = graphStore((state) => state.pasteClipboard);
   const duplicateSelection = graphStore((state) => state.duplicateSelection);
+  const applyLayout = graphStore((state) => state.applyLayout);
   const setSearchQuery = graphStore((state) => state.setSearchQuery);
   const setSearchIndex = graphStore((state) => state.setSearchIndex);
   const selectNextSearchResult = graphStore((state) => state.selectNextSearchResult);
@@ -777,17 +778,7 @@ export const GraphEditor: React.FC<{
           const pos = node.position();
           positions[node.id()] = { x: pos.x, y: pos.y };
         });
-        const currentGraph = graphStore.getState().graph;
-        const updatedGraph: GraphState = {
-          ...currentGraph,
-          nodes: currentGraph.nodes.map((node) => ({
-            ...node,
-            position: positions[node.id] ?? node.position
-          })),
-          dirty: true,
-          updatedAt: new Date().toISOString()
-        };
-        graphStore.getState().setGraph(updatedGraph, { origin: 'local' });
+        graphStore.getState().applyLayout(positions);
       });
     };
     layoutRunnerRef.current = runLayout;
@@ -805,19 +796,9 @@ export const GraphEditor: React.FC<{
 
   const applyPositions = useCallback(
     (positions: Record<string, { x: number; y: number }>) => {
-      const state = graphStore.getState();
-      const currentGraph = state.graph;
-      const nextGraph: GraphState = {
-        ...currentGraph,
-        nodes: currentGraph.nodes.map((node) =>
-          positions[node.id] ? { ...node, position: positions[node.id] } : node
-        ),
-        dirty: true,
-        updatedAt: new Date().toISOString()
-      };
-      state.setGraph(nextGraph, { origin: 'local' });
+      applyLayout(positions);
     },
-    [graphStore]
+    [applyLayout]
   );
 
   const handleAlignToGrid = (): void => {

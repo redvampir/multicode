@@ -1304,7 +1304,8 @@ export const GraphEditor: React.FC<{
           display: 'grid',
           gap: 6,
           zIndex: 6,
-          minWidth: 220
+          minWidth: 220,
+          animation: 'fadeInScale 0.15s ease-out'
         }}
       >
         <div style={{ fontWeight: 700, color: theme.ui.panelTitle }}>
@@ -1455,7 +1456,7 @@ export const GraphEditor: React.FC<{
         role="menu"
         aria-label={translate('context.menu', 'Контекстное меню')}
         onKeyDown={handleContextMenuKeyDown}
-        style={{ left: contextMenu.x, top: contextMenu.y }}
+        style={{ left: contextMenu.x, top: contextMenu.y, animation: 'fadeInScale 0.12s ease-out' }}
       >
         {items
           .filter((item) => !item.hidden)
@@ -1574,6 +1575,30 @@ export const GraphEditor: React.FC<{
       {renderPalette()}
       {renderSearchPanel()}
       {renderContextMenu()}
+      <style>{`
+        @keyframes fadeInScale {
+          0% {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        .palette__item, .context-menu__item {
+          transition: all 0.15s ease;
+        }
+
+        .palette__item:hover:not(:disabled), .context-menu__item:hover:not(:disabled) {
+          transform: translateX(2px);
+        }
+
+        .palette__item:active:not(:disabled), .context-menu__item:active:not(:disabled) {
+          transform: scale(0.98);
+        }
+      `}</style>
     </div>
   );
 };

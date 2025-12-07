@@ -211,7 +211,27 @@ const Toolbar: React.FC<{
         >
           {translate('toolbar.generateGraph', 'Генерировать код')}
         </button>
+        {pending && (
+          <div
+            style={{
+              width: 20,
+              height: 20,
+              border: '3px solid rgba(96, 165, 250, 0.3)',
+              borderTop: '3px solid #60a5fa',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }}
+            role="status"
+            aria-label="Loading"
+          />
+        )}
       </div>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

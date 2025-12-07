@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import klay from 'cytoscape-klay';
@@ -244,8 +244,7 @@ export const GraphEditor: React.FC<{
   const searchResults = graphStore((state) => state.searchResults);
   const searchIndex = graphStore((state) => state.searchIndex);
   const hasClipboard = graphStore((state) => Boolean(state.clipboard));
-  const setSelectedNodes = graphStore((state) => state.setSelectedNodes);
-  const setSelectedEdges = graphStore((state) => state.setSelectedEdges);
+  const setSelection = graphStore((state) => state.setSelection);
   const updateNodePosition = graphStore((state) => state.updateNodePosition);
   const deleteNodes = graphStore((state) => state.deleteNodes);
   const deleteEdges = graphStore((state) => state.deleteEdges);
@@ -263,6 +262,13 @@ export const GraphEditor: React.FC<{
   const edgeSelectionRef = useRef<string[]>([]);
   const layoutRunnerRef = useRef<() => void>(() => {});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const translate = useMemo(
@@ -272,6 +278,18 @@ export const GraphEditor: React.FC<{
     [graph.displayLanguage]
   );
 
+  const resetSelection = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    cy.elements().unselect();
+    cy.edges().removeClass('edge--active');
+    setSelection({ nodeIds: [], edgeIds: [] });
+    selectionRef.current = [];
+    edgeSelectionRef.current = [];
+  }, [setSelection]);
+
   useEffect(() => {
     containerRef.current?.focus();
   }, []);
@@ -280,7 +298,7 @@ export const GraphEditor: React.FC<{
     if (!containerRef.current) {
       return;
     }
-    cyRef.current = cytoscape({
+    const cy = cytoscape({
       container: containerRef.current,
       elements: buildElements(graph),
       style: styles,
@@ -293,105 +311,228 @@ export const GraphEditor: React.FC<{
       motionBlur: true
     });
 
-    cyRef.current.on('dragfree', 'node', (event) => {
+    cyRef.current = cy;
+
+    const toLocalPoint = (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return null;
+      }
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const commitSelection = (): void => {
+      const nodeSelection = cy.nodes(':selected').map((node) => node.id());
+      const edgeSelection = cy.edges(':selected').map((edge) => edge.id());
+      setSelection({ nodeIds: nodeSelection, edgeIds: edgeSelection });
+      selectionRef.current = nodeSelection;
+      edgeSelectionRef.current = edgeSelection;
+    };
+
+    const clearSelection = (): void => {
+      cy.batch(() => {
+        cy.elements().unselect();
+        cy.edges().removeClass('edge--active');
+      });
+      commitSelection();
+    };
+
+    cy.on('dragfree', 'node', (event) => {
       const position = event.target.position();
       updateNodePosition(event.target.id(), { x: position.x, y: position.y });
     });
 
-    cyRef.current.on('tap', () => {
-      cyRef.current?.nodes().unselect();
+    cy.on('tap', 'node', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      const isShift = Boolean(originalEvent?.shiftKey);
+      const wasSelected = event.target.selected();
+      cy.batch(() => {
+        if (isShift) {
+          if (wasSelected) {
+            event.target.unselect();
+          } else {
+            event.target.select();
+          }
+        } else {
+          cy.elements().unselect();
+          event.target.select();
+        }
+      });
+      cy.edges().removeClass('edge--active');
+      cy.edges(':selected').addClass('edge--active');
+      commitSelection();
     });
 
-    cyRef.current.on('tap', 'edge', (event) => {
-      cyRef.current?.edges().removeClass('edge--active');
+    cy.on('tap', 'edge', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      const isShift = Boolean(originalEvent?.shiftKey);
+      const wasSelected = event.target.selected();
+      cy.batch(() => {
+        if (isShift) {
+          if (wasSelected) {
+            event.target.unselect();
+          } else {
+            event.target.select();
+          }
+        } else {
+          cy.elements().unselect();
+          event.target.select();
+        }
+      });
+      cy.edges().removeClass('edge--active');
+      cy.edges(':selected').addClass('edge--active');
+      commitSelection();
+    });
+
+    cy.on('tap', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      const isShift = Boolean(originalEvent?.shiftKey);
+      if (event.target === cy && !isShift) {
+        clearSelection();
+      }
+    });
+
+    cy.on('mouseover', 'edge', (event) => {
       event.target.addClass('edge--active');
     });
 
-    cyRef.current.on('mouseover', 'edge', (event) => {
-      event.target.addClass('edge--active');
+    cy.on('mouseout', 'edge', (event) => {
+      if (!event.target.selected()) {
+        event.target.removeClass('edge--active');
+      }
     });
 
-    cyRef.current.on('mouseout', 'edge', (event) => {
-      event.target.removeClass('edge--active');
+    cy.on('tapstart', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (event.target !== cy || !originalEvent?.shiftKey) {
+        return;
+      }
+      const start = toLocalPoint(originalEvent.clientX, originalEvent.clientY);
+      if (!start) {
+        return;
+      }
+      dragStartRef.current = start;
+      setSelectionBox({ x: start.x, y: start.y, width: 0, height: 0 });
     });
 
-    cyRef.current.on('select', 'node', () => {
-      const selected = cyRef.current?.nodes(':selected').map((node) => node.id()) ?? [];
-      setSelectedNodes(selected);
+    cy.on('tapdrag', (event) => {
+      if (!dragStartRef.current) {
+        return;
+      }
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (!originalEvent) {
+        return;
+      }
+      const current = toLocalPoint(originalEvent.clientX, originalEvent.clientY);
+      if (!current) {
+        return;
+      }
+      const start = dragStartRef.current;
+      const x = Math.min(start.x, current.x);
+      const y = Math.min(start.y, current.y);
+      setSelectionBox({ x, y, width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y) });
     });
 
-    cyRef.current.on('unselect', 'node', () => {
-      const selected = cyRef.current?.nodes(':selected').map((node) => node.id()) ?? [];
-      setSelectedNodes(selected);
+    cy.on('tapend', (event) => {
+      if (!dragStartRef.current) {
+        return;
+      }
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      if (!originalEvent) {
+        dragStartRef.current = null;
+        setSelectionBox(null);
+        return;
+      }
+      const endPoint = toLocalPoint(originalEvent.clientX, originalEvent.clientY);
+      const start = dragStartRef.current;
+      dragStartRef.current = null;
+      setSelectionBox(null);
+      if (!endPoint) {
+        return;
+      }
+      const box = {
+        x1: Math.min(start.x, endPoint.x),
+        x2: Math.max(start.x, endPoint.x),
+        y1: Math.min(start.y, endPoint.y),
+        y2: Math.max(start.y, endPoint.y)
+      };
+      cy.batch(() => {
+        const nodesInBox = cy.nodes().filter((node) => {
+          const bounds = node.renderedBoundingBox({ includeLabels: true, includeOverlays: false });
+          return bounds.x2 >= box.x1 && bounds.x1 <= box.x2 && bounds.y2 >= box.y1 && bounds.y1 <= box.y2;
+        });
+        const shouldReset = !originalEvent.shiftKey;
+        if (shouldReset) {
+          cy.elements().unselect();
+        }
+        nodesInBox.select();
+        const edgesToSelect = cy.edges().filter((edge) => edge.connectedNodes().every((node) => node.selected()));
+        edgesToSelect.select();
+        cy.edges().removeClass('edge--active');
+        cy.edges(':selected').addClass('edge--active');
+      });
+      commitSelection();
     });
 
-    cyRef.current.on('select', 'edge', () => {
-      const selected = cyRef.current?.edges(':selected').map((edge) => edge.id()) ?? [];
-      setSelectedEdges(selected);
-    });
+    const openContextMenu = (x: number, y: number, kind: ContextMenuKind, targetId?: string): void => {
+      setContextMenu({ x, y, kind, targetId });
+    };
 
-    cyRef.current.on('unselect', 'edge', () => {
-      const selected = cyRef.current?.edges(':selected').map((edge) => edge.id()) ?? [];
-      setSelectedEdges(selected);
-    });
-
-    cyRef.current.on('cxttap', 'node', (event) => {
+    cy.on('cxttap', 'node', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!originalEvent || !rect) {
+        return;
+      }
       const nodeId = event.target.id();
-      if (!selectionRef.current.includes(nodeId)) {
-        event.target.select();
-      }
-      const rect = containerRef.current?.getBoundingClientRect();
-      const originalEvent = event.originalEvent as MouseEvent | undefined;
-      if (!rect || !originalEvent) {
-        return;
-      }
-      originalEvent.preventDefault();
-      setContextMenu({
-        x: originalEvent.clientX - rect.left,
-        y: originalEvent.clientY - rect.top,
-        kind: 'node',
-        targetId: nodeId
+      cy.batch(() => {
+        if (!selectionRef.current.includes(nodeId)) {
+          cy.elements().unselect();
+          event.target.select();
+          cy.edges().removeClass('edge--active');
+          cy.edges(':selected').addClass('edge--active');
+        }
       });
+      commitSelection();
+      originalEvent.preventDefault();
+      openContextMenu(originalEvent.clientX - rect.left, originalEvent.clientY - rect.top, 'node', nodeId);
     });
 
-    cyRef.current.on('cxttap', 'edge', (event) => {
+    cy.on('cxttap', 'edge', (event) => {
+      const originalEvent = event.originalEvent as MouseEvent | undefined;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!originalEvent || !rect) {
+        return;
+      }
       const edgeId = event.target.id();
-      if (!edgeSelectionRef.current.includes(edgeId)) {
-        event.target.select();
-      }
-      const rect = containerRef.current?.getBoundingClientRect();
-      const originalEvent = event.originalEvent as MouseEvent | undefined;
-      if (!rect || !originalEvent) {
-        return;
-      }
-      originalEvent.preventDefault();
-      setContextMenu({
-        x: originalEvent.clientX - rect.left,
-        y: originalEvent.clientY - rect.top,
-        kind: 'edge',
-        targetId: edgeId
+      cy.batch(() => {
+        if (!edgeSelectionRef.current.includes(edgeId)) {
+          cy.elements().unselect();
+          event.target.select();
+        }
       });
+      cy.edges().removeClass('edge--active');
+      cy.edges(':selected').addClass('edge--active');
+      commitSelection();
+      originalEvent.preventDefault();
+      openContextMenu(originalEvent.clientX - rect.left, originalEvent.clientY - rect.top, 'edge', edgeId);
     });
 
-    cyRef.current.on('cxttap', (event) => {
-      if (event.target !== cyRef.current) {
+    cy.on('cxttap', (event) => {
+      if (event.target !== cy) {
         return;
       }
-      const rect = containerRef.current?.getBoundingClientRect();
       const originalEvent = event.originalEvent as MouseEvent | undefined;
-      if (!rect || !originalEvent) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!originalEvent || !rect) {
         return;
       }
       originalEvent.preventDefault();
-      setContextMenu({
-        x: originalEvent.clientX - rect.left,
-        y: originalEvent.clientY - rect.top,
-        kind: 'canvas'
-      });
+      openContextMenu(originalEvent.clientX - rect.left, originalEvent.clientY - rect.top, 'canvas');
     });
 
     return () => {
-      cyRef.current?.destroy();
+      cy.destroy();
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,6 +589,8 @@ export const GraphEditor: React.FC<{
     selectedEdgeIds.forEach((id) => {
       cy.$id(id).select();
     });
+    cy.edges().removeClass('edge--active');
+    cy.edges(':selected').addClass('edge--active');
     edgeSelectionRef.current = [...selectedEdgeIds];
   }, [selectedEdgeIds]);
 
@@ -481,29 +624,41 @@ export const GraphEditor: React.FC<{
     });
   }, [searchQuery, searchResults]);
 
-  const focusOnElement = (result?: SearchResult): void => {
-    const cy = cyRef.current;
-    if (!cy || !result) {
-      return;
-    }
-    const element = cy.$id(result.id);
-    if (element.empty()) {
-      return;
-    }
-    cy.nodes().unselect();
-    cy.edges().unselect();
-    element.select();
+  const focusOnElement = useCallback(
+    (result?: SearchResult): void => {
+      const cy = cyRef.current;
+      if (!cy || !result) {
+        return;
+      }
+      const element = cy.$id(result.id);
+      if (element.empty()) {
+        return;
+      }
+      cy.nodes().unselect();
+      cy.edges().unselect();
+      element.select();
+      if (element.isNode()) {
+        setSelection({ nodeIds: [element.id()], edgeIds: [] });
+        selectionRef.current = [element.id()];
+        edgeSelectionRef.current = [];
+      } else {
+        setSelection({ nodeIds: [], edgeIds: [element.id()] });
+        selectionRef.current = [];
+        edgeSelectionRef.current = [element.id()];
+      }
 
-    cy.animate({
-      fit: { eles: element, padding: 80 },
-      duration: 280,
-      easing: 'ease-in-out'
-    });
-  };
+      cy.animate({
+        fit: { eles: element, padding: 80 },
+        duration: 280,
+        easing: 'ease-in-out'
+      });
+    },
+    [setSelection]
+  );
 
   useEffect(() => {
     focusOnElement(searchResults[searchIndex]);
-  }, [searchIndex, searchResults]);
+  }, [focusOnElement, searchIndex, searchResults]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -527,6 +682,12 @@ export const GraphEditor: React.FC<{
         event.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        resetSelection();
         return;
       }
 
@@ -588,7 +749,19 @@ export const GraphEditor: React.FC<{
 
     element.addEventListener('keydown', handleKeyDown);
     return () => element.removeEventListener('keydown', handleKeyDown);
-  }, [graph.nodes.length, onAddNode, onConnectNodes, deleteEdges, deleteNodes, copySelection, pasteClipboard, duplicateSelection, undo, redo]);
+  }, [
+    graph.nodes.length,
+    onAddNode,
+    onConnectNodes,
+    deleteEdges,
+    deleteNodes,
+    copySelection,
+    pasteClipboard,
+    duplicateSelection,
+    undo,
+    redo,
+    resetSelection
+  ]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -630,17 +803,105 @@ export const GraphEditor: React.FC<{
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
+  const applyPositions = useCallback(
+    (positions: Record<string, { x: number; y: number }>) => {
+      const state = graphStore.getState();
+      const currentGraph = state.graph;
+      const nextGraph: GraphState = {
+        ...currentGraph,
+        nodes: currentGraph.nodes.map((node) =>
+          positions[node.id] ? { ...node, position: positions[node.id] } : node
+        ),
+        dirty: true,
+        updatedAt: new Date().toISOString()
+      };
+      state.setGraph(nextGraph, { origin: 'local' });
+    },
+    [graphStore]
+  );
+
+  const handleAlignToGrid = (): void => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    const grid = 20;
+    const positions: Record<string, { x: number; y: number }> = {};
+    selectionRef.current.forEach((id) => {
+      const node = cy.$id(id);
+      if (!node.isNode()) {
+        return;
+      }
+      const position = node.position();
+      positions[id] = {
+        x: Math.round(position.x / grid) * grid,
+        y: Math.round(position.y / grid) * grid
+      };
+    });
+    if (!Object.keys(positions).length) {
+      return;
+    }
+    applyPositions(positions);
+  };
+
+  const handleGroupSelection = (): void => {
+    const cy = cyRef.current;
+    if (!cy) {
+      return;
+    }
+    const nodes = selectionRef.current
+      .map((id) => cy.$id(id))
+      .filter((node) => node.isNode());
+    if (nodes.length < 2) {
+      return;
+    }
+    const center = nodes.reduce(
+      (acc, node) => {
+        const pos = node.position();
+        return { x: acc.x + pos.x, y: acc.y + pos.y };
+      },
+      { x: 0, y: 0 }
+    );
+    const centerX = center.x / nodes.length;
+    const centerY = center.y / nodes.length;
+    const columns = Math.ceil(Math.sqrt(nodes.length));
+    const rows = Math.ceil(nodes.length / columns);
+    const spacing = 140;
+    const positions: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((node, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const offsetX = (col - (columns - 1) / 2) * spacing;
+      const offsetY = (row - (rows - 1) / 2) * spacing;
+      positions[node.id()] = { x: centerX + offsetX, y: centerY + offsetY };
+    });
+    applyPositions(positions);
+  };
+
   const handleDeleteContext = (): void => {
     if (!contextMenu) {
       return;
     }
     if (contextMenu.kind === 'node' && contextMenu.targetId) {
-      deleteNodes([contextMenu.targetId]);
+      const selection = selectionRef.current.includes(contextMenu.targetId)
+        ? selectionRef.current
+        : [contextMenu.targetId];
+      deleteEdges([...edgeSelectionRef.current]);
+      deleteNodes([...selection]);
       setContextMenu(null);
       return;
     }
     if (contextMenu.kind === 'edge' && contextMenu.targetId) {
-      deleteEdges([contextMenu.targetId]);
+      const edgeIds = edgeSelectionRef.current.includes(contextMenu.targetId)
+        ? edgeSelectionRef.current
+        : [contextMenu.targetId];
+      deleteEdges([...edgeIds]);
+      setContextMenu(null);
+      return;
+    }
+    if (contextMenu.kind === 'canvas') {
+      deleteEdges([...edgeSelectionRef.current]);
+      deleteNodes([...selectionRef.current]);
       setContextMenu(null);
     }
   };
@@ -803,18 +1064,69 @@ export const GraphEditor: React.FC<{
     if (!contextMenu) {
       return null;
     }
-    const items: Array<{ label: string; action: () => void; hidden?: boolean }> = [
-      { label: 'Копировать', action: handleCopyContext, hidden: contextMenu.kind === 'canvas' },
-      { label: 'Дублировать', action: handleDuplicateContext, hidden: contextMenu.kind === 'canvas' },
-      { label: 'Вставить', action: handlePasteContext, hidden: !hasClipboard },
-      { label: 'Удалить', action: handleDeleteContext, hidden: contextMenu.kind === 'canvas' }
+    const selectionSize = selectedNodeIds.length + selectedEdgeIds.length;
+    const hasSelection = selectionSize > 0;
+    const hasGroupSelection = selectionSize > 1;
+    const items: Array<{
+      key: string;
+      label: string;
+      action: () => void;
+      hidden?: boolean;
+      disabled?: boolean;
+    }> = [
+      {
+        key: 'copy',
+        label: translate('context.copy', 'Копировать'),
+        action: handleCopyContext,
+        hidden: !hasSelection
+      },
+      {
+        key: 'duplicate',
+        label: translate('context.duplicate', 'Дублировать'),
+        action: handleDuplicateContext,
+        hidden: !hasSelection
+      },
+      {
+        key: 'paste',
+        label: translate('context.paste', 'Вставить'),
+        action: handlePasteContext,
+        hidden: !hasClipboard,
+        disabled: !hasClipboard
+      },
+      {
+        key: 'group',
+        label: translate('context.group', 'Сгруппировать'),
+        action: handleGroupSelection,
+        hidden: !hasGroupSelection,
+        disabled: !hasGroupSelection
+      },
+      {
+        key: 'align',
+        label: translate('context.alignGrid', 'Выровнять по сетке'),
+        action: handleAlignToGrid,
+        hidden: !hasSelection,
+        disabled: !hasSelection
+      },
+      {
+        key: 'delete',
+        label: translate('context.delete', 'Удалить'),
+        action: handleDeleteContext,
+        hidden: contextMenu.kind === 'canvas' && !hasSelection,
+        disabled: contextMenu.kind === 'canvas' && !hasSelection
+      }
     ];
     return (
       <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
         {items
           .filter((item) => !item.hidden)
           .map((item) => (
-            <button key={item.label} type="button" onClick={item.action} className="context-menu__item">
+            <button
+              key={item.key}
+              type="button"
+              onClick={item.action}
+              className="context-menu__item"
+              disabled={item.disabled}
+            >
               {item.label}
             </button>
           ))}
@@ -824,18 +1136,34 @@ export const GraphEditor: React.FC<{
 
   return (
     <div
-      className="graph-canvas"
-      ref={containerRef}
-      style={{
-        backgroundColor: theme.canvas.background,
-        backgroundImage: theme.canvas.accents,
+    className="graph-canvas"
+    ref={containerRef}
+    style={{
+      backgroundColor: theme.canvas.background,
+      backgroundImage: theme.canvas.accents,
         borderColor: theme.canvas.stroke,
         borderStyle: 'solid',
         borderWidth: 1,
-        position: 'relative'
-      }}
-      tabIndex={0}
-    >
+      position: 'relative'
+    }}
+    tabIndex={0}
+  >
+      {selectionBox ? (
+        <div
+          className="graph-canvas__selection"
+          style={{
+            position: 'absolute',
+            left: selectionBox.x,
+            top: selectionBox.y,
+            width: selectionBox.width,
+            height: selectionBox.height,
+            border: `1px dashed ${theme.edges.activeGlow}`,
+            backgroundColor: `${theme.canvas.stroke}33`,
+            pointerEvents: 'none',
+            zIndex: 4
+          }}
+        />
+      ) : null}
       {renderSearchPanel()}
       {renderContextMenu()}
     </div>

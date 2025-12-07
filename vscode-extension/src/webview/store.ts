@@ -82,6 +82,7 @@ export interface GraphStore {
   selectedEdgeIds: string[];
   setSelectedNodes: (nodeIds: string[]) => void;
   setSelectedEdges: (edgeIds: string[]) => void;
+  setSelection: (selection: { nodeIds?: string[]; edgeIds?: string[] }) => void;
   deleteNodes: (nodeIds: string[]) => void;
   deleteEdges: (edgeIds: string[]) => void;
   undo: () => void;
@@ -121,15 +122,17 @@ const cloneGraph = (graph: GraphState): GraphState => ({
   updatedAt: graph.updatedAt
 });
 
+const uniqueIds = (ids: string[]): string[] => Array.from(new Set(ids));
+
 const sanitizeSelection = (
   graph: GraphState,
   selection: string[]
-): string[] => selection.filter((id) => graph.nodes.some((node) => node.id === id));
+): string[] => uniqueIds(selection).filter((id) => graph.nodes.some((node) => node.id === id));
 
 const sanitizeEdgeSelection = (
   graph: GraphState,
   selection: string[]
-): string[] => selection.filter((id) => graph.edges.some((edge) => edge.id === id));
+): string[] => uniqueIds(selection).filter((id) => graph.edges.some((edge) => edge.id === id));
 
 const normalizeText = (value?: string): string => value?.toLowerCase() ?? '';
 
@@ -253,8 +256,15 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
       })),
     selectedNodeIds: [],
     selectedEdgeIds: [],
-    setSelectedNodes: (nodeIds) => set({ selectedNodeIds: [...nodeIds] }),
-    setSelectedEdges: (edgeIds) => set({ selectedEdgeIds: [...edgeIds] }),
+    setSelectedNodes: (nodeIds) =>
+      set(({ graph }) => ({ selectedNodeIds: sanitizeSelection(graph, nodeIds) })),
+    setSelectedEdges: (edgeIds) =>
+      set(({ graph }) => ({ selectedEdgeIds: sanitizeEdgeSelection(graph, edgeIds) })),
+    setSelection: (selection) =>
+      set(({ graph, selectedNodeIds, selectedEdgeIds }) => ({
+        selectedNodeIds: sanitizeSelection(graph, selection.nodeIds ?? selectedNodeIds),
+        selectedEdgeIds: sanitizeEdgeSelection(graph, selection.edgeIds ?? selectedEdgeIds)
+      })),
     deleteNodes: (nodeIds) => {
       if (!nodeIds.length) {
         return;
@@ -336,13 +346,16 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
       if (!selectedNodes.length && !selectedEdges.length) {
         return;
       }
+      const edgeIdSet = new Set(selectedEdges);
       const nodeIdSet = new Set(selectedNodes);
+      graph.edges.forEach((edge) => {
+        if (edgeIdSet.has(edge.id)) {
+          nodeIdSet.add(edge.source);
+          nodeIdSet.add(edge.target);
+        }
+      });
       const nodes = graph.nodes.filter((node) => nodeIdSet.has(node.id));
-      const edges = graph.edges.filter(
-        (edge) =>
-          (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) ||
-          selectedEdges.includes(edge.id)
-      );
+      const edges = graph.edges.filter((edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target));
       set({
         clipboard: {
           nodes: nodes.map((node) => ({
@@ -403,7 +416,10 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
       };
 
       setGraph(nextGraph, { origin: 'local' });
-      set({ selectedNodeIds: nodesToAdd.map((node) => node.id), selectedEdgeIds: [] });
+      set({
+        selectedNodeIds: nodesToAdd.map((node) => node.id),
+        selectedEdgeIds: edgesToAdd.map((edge) => edge.id)
+      });
     },
     duplicateSelection: () => {
       const selection = get().selectedNodeIds;

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   createDefaultGraphState,
-  type GraphNode,
   type GraphNodeType,
   type GraphDisplayLanguage,
   type GraphState
@@ -26,7 +25,6 @@ import {
 import {
   parseExtensionMessage,
   webviewToExtensionMessageSchema,
-  type ExtensionToWebviewMessage,
   type ThemeMessage,
   type TranslationDirection,
   type WebviewToExtensionMessage

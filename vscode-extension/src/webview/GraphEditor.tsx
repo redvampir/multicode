@@ -1,16 +1,38 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape, { type Core, type ElementDefinition, type LayoutOptions } from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import klay from 'cytoscape-klay';
 import type { GraphNodeType, GraphState } from '../shared/graphState';
-import type { GraphStoreHook } from './store';
+import type { GraphStoreHook, LayoutSettings } from './store';
 import type { ThemeTokens } from './theme';
 
 cytoscape.use(dagre);
+cytoscape.use(klay);
 
 type Stylesheet = cytoscape.StylesheetStyle;
-type DagreLayoutOptions = LayoutOptions & { rankDir?: 'LR' | 'TB' | 'BT' | 'RL'; padding?: number };
+type DagreLayoutOptions = LayoutOptions & {
+  name: 'dagre';
+  rankDir?: 'LR' | 'TB' | 'BT' | 'RL';
+  padding?: number;
+  nodeSep?: number;
+  edgeSep?: number;
+  spacingFactor?: number;
+};
 
-const defaultLayout: DagreLayoutOptions = { name: 'dagre', rankDir: 'LR', padding: 30 };
+type KlayLayoutOptions = LayoutOptions & {
+  name: 'klay';
+  nodeDimensionsIncludeLabels?: boolean;
+  klay?: {
+    spacing?: number;
+    edgeSpacingFactor?: number;
+    inLayerSpacingFactor?: number;
+    direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+  };
+};
+
+type EditorLayoutOptions = DagreLayoutOptions | KlayLayoutOptions;
+
+const layoutPadding = 30;
 
 type ContextMenuKind = 'node' | 'edge' | 'canvas';
 
@@ -149,6 +171,38 @@ const buildStyles = (tokens: ThemeTokens): Stylesheet[] => [
   }
 ];
 
+const klayDirectionMap: Record<LayoutSettings['rankDir'], 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'> = {
+  LR: 'RIGHT',
+  RL: 'LEFT',
+  TB: 'DOWN',
+  BT: 'UP'
+};
+
+const buildLayoutOptions = (settings: LayoutSettings): EditorLayoutOptions => {
+  if (settings.algorithm === 'klay') {
+    return {
+      name: 'klay',
+      padding: layoutPadding,
+      nodeDimensionsIncludeLabels: true,
+      klay: {
+        spacing: settings.nodeSep,
+        edgeSpacingFactor: settings.edgeSep,
+        inLayerSpacingFactor: settings.spacing,
+        direction: klayDirectionMap[settings.rankDir]
+      }
+    } satisfies KlayLayoutOptions;
+  }
+
+  return {
+    name: 'dagre',
+    rankDir: settings.rankDir,
+    nodeSep: settings.nodeSep,
+    edgeSep: settings.edgeSep,
+    spacingFactor: settings.spacing,
+    padding: layoutPadding
+  } satisfies DagreLayoutOptions;
+};
+
 export const GraphEditor: React.FC<{
   graphStore: GraphStoreHook;
   theme: ThemeTokens;
@@ -161,6 +215,7 @@ export const GraphEditor: React.FC<{
   const graph = graphStore((state) => state.graph);
   const selectedNodeIds = graphStore((state) => state.selectedNodeIds);
   const selectedEdgeIds = graphStore((state) => state.selectedEdgeIds);
+  const layoutSettings = graphStore((state) => state.layout);
   const hasClipboard = graphStore((state) => Boolean(state.clipboard));
   const setSelectedNodes = graphStore((state) => state.setSelectedNodes);
   const setSelectedEdges = graphStore((state) => state.setSelectedEdges);
@@ -190,7 +245,7 @@ export const GraphEditor: React.FC<{
       container: containerRef.current,
       elements: buildElements(graph),
       style: styles,
-      layout: { ...defaultLayout },
+      layout: buildLayoutOptions(layoutSettings),
       wheelSensitivity: 0.15,
       minZoom: 0.2,
       maxZoom: 2,
@@ -321,9 +376,9 @@ export const GraphEditor: React.FC<{
     });
 
     if (!graph.nodes.every((node) => node.position)) {
-      cy.layout({ ...defaultLayout }).run();
+      cy.layout(buildLayoutOptions(layoutSettings)).run();
     }
-  }, [graph]);
+  }, [graph, layoutSettings]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -433,7 +488,7 @@ export const GraphEditor: React.FC<{
       return;
     }
     const runLayout = (): void => {
-      const layout = cy.layout({ ...defaultLayout });
+      const layout = cy.layout(buildLayoutOptions(layoutSettings));
       layout.run();
       layout.once('layoutstop', () => {
         const positions: Record<string, { x: number; y: number }> = {};
@@ -456,7 +511,7 @@ export const GraphEditor: React.FC<{
     };
     layoutRunnerRef.current = runLayout;
     onLayoutReady?.(runLayout);
-  }, [graphStore, onLayoutReady]);
+  }, [graphStore, layoutSettings, onLayoutReady]);
 
   useEffect(() => {
     if (!contextMenu) {

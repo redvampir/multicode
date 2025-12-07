@@ -10,12 +10,17 @@ import {
 import type { ValidationResult } from '../shared/validator';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import { GraphEditor } from './GraphEditor';
-import { createGraphStore, type GraphStoreHook } from './store';
+import {
+  createGraphStore,
+  layoutBounds,
+  normalizeLayoutSettings,
+  type GraphStoreHook,
+  type LayoutSettings
+} from './store';
 import {
   getThemeTokens,
   resolveEffectiveTheme,
   type EffectiveTheme,
-  type ThemeSetting,
   type ThemeTokens
 } from './theme';
 import {
@@ -31,20 +36,40 @@ type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
 type Toast = { id: number; kind: ToastKind; message: string };
 
-type PersistedState = { graph?: GraphState; locale?: GraphDisplayLanguage };
+type PersistedState = { graph?: GraphState; locale?: GraphDisplayLanguage; layout?: LayoutSettings };
+
+const layoutStorageKey = 'multicode.layout';
 
 declare const initialGraphState: GraphState | undefined;
 declare const initialTheme: ThemeMessage | undefined;
 const vscode = acquireVsCodeApi<PersistedState>();
 
+const readLayoutFromLocalStorage = (): LayoutSettings | undefined => {
+  try {
+    const cached = localStorage.getItem(layoutStorageKey);
+    if (!cached) {
+      return undefined;
+    }
+    const parsed = JSON.parse(cached) as Partial<LayoutSettings>;
+    return normalizeLayoutSettings(parsed);
+  } catch (error) {
+    console.warn('Не удалось загрузить настройки лэйаута из localStorage', error);
+    return undefined;
+  }
+};
+
 const persistedState = vscode.getState();
 const persistedGraph = persistedState?.graph;
+const persistedLayout = persistedState?.layout;
 const bootGraph: GraphState = persistedGraph ?? initialGraphState ?? createDefaultGraphState();
+const bootLayout: LayoutSettings = persistedLayout
+  ? normalizeLayoutSettings(persistedLayout)
+  : readLayoutFromLocalStorage() ?? normalizeLayoutSettings();
 const bootLocale: GraphDisplayLanguage =
   (persistedState?.locale as GraphDisplayLanguage | undefined) ??
   bootGraph.displayLanguage ??
   'ru';
-const useGraphStore: GraphStoreHook = createGraphStore(bootGraph);
+const useGraphStore: GraphStoreHook = createGraphStore(bootGraph, bootLayout);
 const initialThemeMessage: ThemeMessage =
   initialTheme ?? ({ preference: 'auto', hostTheme: 'dark' } as ThemeMessage);
 
@@ -417,6 +442,74 @@ const TranslationActions: React.FC<TranslationActionsProps> = ({
   </div>
 );
 
+const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback: string) => string }> = ({
+  translate
+}) => {
+  const layout = useGraphStore((state) => state.layout);
+  const setLayout = useGraphStore((state) => state.setLayout);
+
+  return (
+    <div className="panel">
+      <div className="panel-title">{translate('layout.title', 'Настройки лэйаута')}</div>
+      <div className="panel-grid">
+        <label>
+          <div className="panel-label">{translate('layout.algorithm', 'Алгоритм')}</div>
+          <select
+            value={layout.algorithm}
+            onChange={(event) => setLayout({ algorithm: event.target.value as LayoutSettings['algorithm'] })}
+          >
+            <option value="dagre">{translate('layout.algorithm.dagre', 'Dagre')}</option>
+            <option value="klay">{translate('layout.algorithm.klay', 'Klay')}</option>
+          </select>
+        </label>
+        <label>
+          <div className="panel-label">{translate('layout.rankDir', 'Направление рангов')}</div>
+          <select
+            value={layout.rankDir}
+            onChange={(event) => setLayout({ rankDir: event.target.value as LayoutSettings['rankDir'] })}
+          >
+            <option value="LR">{translate('layout.rank.lr', 'Слева направо')}</option>
+            <option value="RL">{translate('layout.rank.rl', 'Справа налево')}</option>
+            <option value="TB">{translate('layout.rank.tb', 'Сверху вниз')}</option>
+            <option value="BT">{translate('layout.rank.bt', 'Снизу вверх')}</option>
+          </select>
+        </label>
+        <label>
+          <div className="panel-label">{translate('layout.nodeSep', 'Отступ между узлами')}</div>
+          <input
+            type="number"
+            min={layoutBounds.nodeSep.min}
+            max={layoutBounds.nodeSep.max}
+            value={layout.nodeSep}
+            onChange={(event) => setLayout({ nodeSep: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          <div className="panel-label">{translate('layout.edgeSep', 'Отступ между рёбрами')}</div>
+          <input
+            type="number"
+            min={layoutBounds.edgeSep.min}
+            max={layoutBounds.edgeSep.max}
+            value={layout.edgeSep}
+            onChange={(event) => setLayout({ edgeSep: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          <div className="panel-label">{translate('layout.spacing', 'Масштаб расстояний')}</div>
+          <input
+            type="number"
+            step={0.1}
+            min={layoutBounds.spacing.min}
+            max={layoutBounds.spacing.max}
+            value={layout.spacing}
+            onChange={(event) => setLayout({ spacing: Number(event.target.value) })}
+          />
+        </label>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
@@ -533,7 +626,8 @@ const App: React.FC = () => {
     const unsubscribe = useGraphStore.subscribe(
       (state) => ({ graph: state.graph, origin: state.lastChangeOrigin }),
       ({ graph, origin }) => {
-        vscode.setState({ graph, locale: localeRef.current });
+        const layout = useGraphStore.getState().layout;
+        vscode.setState({ graph, locale: localeRef.current, layout });
         if (origin === 'local') {
           sendToExtension({
             type: 'graphChanged',
@@ -550,6 +644,23 @@ const App: React.FC = () => {
       { equalityFn: (prev, next) => prev.graph === next.graph && prev.origin === next.origin }
     );
 
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const persistLayout = (layout: LayoutSettings): void => {
+      const graphSnapshot = useGraphStore.getState().graph;
+      vscode.setState({ graph: graphSnapshot, locale: localeRef.current, layout });
+      try {
+        localStorage.setItem(layoutStorageKey, JSON.stringify(layout));
+      } catch (error) {
+        console.warn('Не удалось сохранить настройки лэйаута', error);
+      }
+    };
+
+    persistLayout(useGraphStore.getState().layout);
+
+    const unsubscribe = useGraphStore.subscribe((state) => state.layout, persistLayout);
     return () => unsubscribe();
   }, []);
 
@@ -601,6 +712,7 @@ const App: React.FC = () => {
             onDirectionChange={setTranslationDirection}
             onTranslate={handleTranslate}
           />
+          <LayoutSettingsPanel translate={translate} />
           <NodeActions
             onAddNode={handleAddNode}
             onConnectNodes={handleConnectNodes}

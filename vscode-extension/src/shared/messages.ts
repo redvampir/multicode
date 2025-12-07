@@ -26,7 +26,7 @@ const graphEdgeSchema = z.object({
   kind: graphEdgeKindSchema.optional()
 });
 
-const graphStateSchema: z.ZodType<GraphState> = z.object({
+export const graphStateSchema: z.ZodType<GraphState> = z.object({
   id: z.string(),
   name: z.string(),
   language: graphLanguageSchema,

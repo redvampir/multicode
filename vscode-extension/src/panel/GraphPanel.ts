@@ -8,7 +8,7 @@ import {
   GraphNodeType,
   createDefaultGraphState
 } from '../shared/graphState';
-import { serializeGraphState, deserializeGraphState } from '../shared/serializer';
+import { serializeGraphState, deserializeGraphState, parseSerializedGraph } from '../shared/serializer';
 import { validateGraphState, type ValidationResult } from '../shared/validator';
 import { generateCodeFromGraph } from '../shared/codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
@@ -312,6 +312,15 @@ export class GraphPanel {
     try {
       const raw = await vscode.workspace.fs.readFile(uri);
       const parsed = JSON.parse(Buffer.from(raw).toString('utf8'));
+      const validated = parseSerializedGraph(parsed);
+      if (!validated.success) {
+        const validation = this.composeValidationFromIssues(validated.error.issues ?? []);
+        this.postValidationResult(validation);
+        const details = this.extractErrorDetails(validated.error);
+        this.postToast('error', `${this.translate('errors.graphLoad')}: ${details}`);
+        return;
+      }
+
       const graph = deserializeGraphState(parsed);
       this.graphState = this.normalizeState(graph);
       this.postState();
@@ -380,12 +389,25 @@ export class GraphPanel {
       result.warnings.forEach((warning) => this.postToast('warning', warning));
     }
 
+    this.postValidationResult(result);
+
+    return result;
+  }
+
+  private composeValidationFromIssues(issues: Array<{ message: string }>): ValidationResult {
+    return {
+      ok: false,
+      errors: issues.map((issue) => issue.message),
+      warnings: [],
+      issues: issues.map((issue) => ({ severity: 'error' as const, message: issue.message }))
+    };
+  }
+
+  private postValidationResult(result: ValidationResult): void {
     this.sendToWebview({
       type: 'validationResult',
       payload: result
     });
-
-    return result;
   }
 
   private postToast(kind: ToastKind, message: string): void {

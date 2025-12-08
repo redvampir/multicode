@@ -304,6 +304,7 @@ export const GraphEditor: React.FC<{
   const layoutRunnerRef = useRef<() => void>(() => {});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [paletteAnchor, setPaletteAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [paletteQuery, setPaletteQuery] = useState('');
   const [selectionBox, setSelectionBox] = useState<{
     x: number;
     y: number;
@@ -334,7 +335,10 @@ export const GraphEditor: React.FC<{
     edgeSelectionRef.current = [];
   }, [setSelection]);
 
-  const closePalette = (): void => setPaletteAnchor(null);
+  const closePalette = (): void => {
+    setPaletteAnchor(null);
+    setPaletteQuery('');
+  };
   const openPaletteAt = (point?: { x: number; y: number }): void => {
     const fallbackPoint = { x: (containerRef.current?.clientWidth ?? 400) / 2, y: 120 };
     setPaletteAnchor(point ?? fallbackPoint);
@@ -1227,8 +1231,6 @@ export const GraphEditor: React.FC<{
     if (!paletteAnchor) {
       return null;
     }
-
-    const [paletteQuery, setPaletteQuery] = React.useState('');
 
     type PaletteItem = { key: string; translationKey: TranslationKey; type: GraphNodeType };
     type PaletteCategory = { categoryKey: TranslationKey; items: PaletteItem[] };

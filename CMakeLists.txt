@@ -81,11 +81,17 @@ if(NOT Catch2_FOUND)
 endif()
 
 if(TARGET Catch2)
-    target_compile_options(Catch2 PRIVATE -Wno-error -Wno-error=conversion)
+    target_compile_options(Catch2 PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-error>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-error=conversion>
+    )
 endif()
 
 if(TARGET Catch2WithMain)
-    target_compile_options(Catch2WithMain PRIVATE -Wno-error -Wno-error=conversion)
+    target_compile_options(Catch2WithMain PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-error>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-error=conversion>
+    )
 endif()
 
 # ============================================================================

@@ -32,6 +32,7 @@
   "activationEvents": [
     "onLanguage:cpp",
     "onLanguage:rust",
+    "onCommand:multicode.openEditor",
     "onCommand:multicode.translateGraph"
   ],
   "main": "./dist/extension.js",

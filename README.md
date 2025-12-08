@@ -10,6 +10,70 @@
 - `GraphSerializer` для импорта/экспорта графов в JSON с версионированием схемы.
 - CMake + vcpkg зависимости (nlohmann-json, spdlog, Catch2) и тестовый бинарь `multicode_tests`.
 
+## Быстрый старт: сборка и установка
+
+### Сборка C++ ядра
+```bash
+# Установка зависимостей (Ubuntu/Debian)
+sudo apt-get install cmake build-essential
+
+# Сборка библиотеки и тестов
+cmake -S . -B build
+cmake --build build
+
+# Запуск тестов
+ctest --test-dir build
+```
+
+### Сборка VS Code расширения
+
+#### Установка зависимостей
+```bash
+cd vscode-extension
+npm install --ignore-scripts
+```
+
+**Примечание:** Используется `--ignore-scripts` для обхода проблем с опциональными пакетами (sharp) при установке через прокси.
+
+#### Компиляция расширения
+```bash
+npm run compile
+```
+
+Результат: файлы `extension.js` и `webview.js` в директории `dist/`.
+
+#### Запуск в режиме разработки
+1. Открыть папку `vscode-extension` в VS Code
+2. Нажать `F5` (или Run → Start Debugging)
+3. В новом окне Extension Development Host:
+   - `Ctrl+Shift+P` → `МультиКод: Open Visual Editor`
+
+#### Установка локально
+```bash
+# Создать .vsix пакет и установить
+cd vscode-extension
+npm run package
+vsce package
+code --install-extension multicode-visual-programming-*.vsix
+```
+
+#### Горячие клавиши в графическом редакторе
+- `A` — открыть Palette для добавления узла
+- `Escape` — закрыть модальные окна / сбросить выделение
+- `Delete` / `Backspace` — удалить выбранные узлы
+- `Ctrl+F` — фокус на поиске
+- `Ctrl+C` / `Ctrl+V` / `Ctrl+D` — копировать/вставить/дублировать
+- `Ctrl+Z` / `Ctrl+Shift+Z` — отменить/повторить
+- `Ctrl+L` — пересчитать layout
+- Arrow Up/Down — навигация в Palette и Context Menu
+
+### Особенности UI (Sprint 2)
+- **Локализация RU/EN**: переключатель в Toolbar, мгновенный перевод всех элементов
+- **Категоризированная Palette**: Control Flow, Data, Utilities с поиском
+- **Спиннер загрузки**: визуальный feedback при операциях save/load/validate/generate
+- **Плавные анимации**: fade-in для модальных окон, hover эффекты
+- **Accessibility**: WCAG AAA контраст, полная клавиатурная навигация, ARIA labels
+
 ## Архитектура в текущей ревизии
 ### Core library (`include/visprog/core`, `src/core`)
 - `Types`: все enum/ID + `Result<T>` с человекочитаемыми ошибками и кодами.

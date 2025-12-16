@@ -3,7 +3,7 @@
   "name": "multicode-visual-programming",
   "displayName": "МультиКод - Visual Programming",
   "description": "Visual programming for C++, Rust, and Assembly - Blueprint-style graph editor",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publisher": "multicode-team",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -30,6 +30,7 @@
     "Russian"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:cpp",
     "onLanguage:rust",
     "onCommand:multicode.openEditor",

@@ -24,8 +24,10 @@
 
 ### Инструменты и сборка
 - `CMakeLists.txt` содержит только library+tests, без сторонних сценариев.
-- `cmake -S . -B build && cmake --build build` - собрать ядро.
+- **Рекомендуется:** `.\scripts\build-cmake-utf8.ps1` - защищённая сборка с UTF-8 (решает проблемы с кириллицей в путях)
+- Или вручную: `cmake -S . -B build && cmake --build build` - собрать ядро.
 - `ctest --test-dir build` - прогнать тесты.
+- **Важно для Windows:** Если возникают проблемы с кодировкой — см. [ENCODING_ISSUE.md](Документы/Инфраструктура/ENCODING_ISSUE.md)
 - Быстрый прогон lint + сборки + VS Code тестов: `scripts/vscode-test-i-sborka.sh` (используйте флаги `--skip-lint`/`--skip-tests`, если нужно ускорить). Артефакты после скрипта: бандлы webview в `vscode-extension/dist/`, собранное расширение и тесты в `vscode-extension/out/`.
 - Никаких скриптов автоформатирования/генерации - clang-format конфиг лежит в корне.
 

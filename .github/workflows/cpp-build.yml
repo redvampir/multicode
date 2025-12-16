@@ -28,6 +28,10 @@ jobs:
       
     - name: Configure CMake
       run: |
+        # Принудительная установка UTF-8 для предотвращения проблем с кириллицей
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $env:PYTHONUTF8 = "1"
+        
         cmake -B build -S . `
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake

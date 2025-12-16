@@ -1,7 +1,15 @@
-import { env, pipeline, type TranslationPipeline } from '@xenova/transformers';
+import type { TranslationPipeline } from '@xenova/transformers';
 import type { TranslationDirection } from '../shared/messages';
 
 type TranslationCacheKey = `${TranslationDirection}:${string}`;
+type TransformersModule = typeof import('@xenova/transformers');
+type DynamicImporter = <TModule>(specifier: string) => Promise<TModule>;
+
+const defaultImporter: DynamicImporter = async <TModule>(specifier: string): Promise<TModule> => {
+  // eslint-disable-next-line no-new-func -- Нужен динамический import() для ESM-пакета из CommonJS-бандла VS Code.
+  const dynamicImport = new Function('s', 'return import(s)') as (s: string) => Promise<TModule>;
+  return dynamicImport(specifier);
+};
 
 const DEFAULT_MODELS: Record<TranslationDirection, string> = {
   'ru-en': 'Helsinki-NLP/opus-mt-ru-en',
@@ -13,14 +21,13 @@ const DEFAULT_CACHE_LIMIT = 200;
 export class MarianTranslator {
   private readonly cache = new Map<TranslationCacheKey, string>();
   private readonly pipelines = new Map<TranslationDirection, Promise<TranslationPipeline>>();
+  private transformers: Promise<TransformersModule> | undefined;
 
   constructor(
     private readonly modelOverrides: Partial<Record<TranslationDirection, string>> = {},
-    private readonly cacheLimit: number = DEFAULT_CACHE_LIMIT
+    private readonly cacheLimit: number = DEFAULT_CACHE_LIMIT,
+    private readonly importer: DynamicImporter = defaultImporter
   ) {
-    env.allowLocalModels = true;
-    env.useBrowserCache = false;
-    env.useFSCache = true;
   }
 
   public async translateBatch(
@@ -54,15 +61,43 @@ export class MarianTranslator {
     return result;
   }
 
+  private async getTransformers(): Promise<TransformersModule> {
+    if (!this.transformers) {
+      this.transformers = this.loadTransformers();
+    }
+    return this.transformers;
+  }
+
+  private async loadTransformers(): Promise<TransformersModule> {
+    try {
+      const module = await this.importer<TransformersModule>('@xenova/transformers');
+      module.env.allowLocalModels = true;
+      module.env.useBrowserCache = false;
+      module.env.useFSCache = true;
+      return module;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Marian MT недоступен: не удалось загрузить пакет '@xenova/transformers'. ${message}`
+      );
+    }
+  }
+
   private async getPipeline(direction: TranslationDirection): Promise<TranslationPipeline> {
     const modelId = this.modelOverrides[direction] ?? DEFAULT_MODELS[direction];
     const existing = this.pipelines.get(direction);
     if (existing) {
       return existing;
     }
-    const created = pipeline('translation', modelId) as Promise<TranslationPipeline>;
+
+    const created = this.createPipeline(modelId);
     this.pipelines.set(direction, created);
     return created;
+  }
+
+  private async createPipeline(modelId: string): Promise<TranslationPipeline> {
+    const transformers = await this.getTransformers();
+    return transformers.pipeline('translation', modelId) as Promise<TranslationPipeline>;
   }
 
   private async translateSingle(

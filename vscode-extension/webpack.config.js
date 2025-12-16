@@ -5,7 +5,7 @@ const path = require('path');
 /** @type {import('webpack').Configuration} */
 const extensionConfig = {
   target: 'node',
-  mode: 'none',
+  mode: 'development', // Временно: отключим минификацию для отладки
   entry: './src/extension.ts',
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -17,7 +17,8 @@ const extensionConfig = {
   externals: {
     vscode: 'commonjs vscode',
     sharp: 'commonjs sharp',
-    'onnxruntime-node': 'commonjs onnxruntime-node'
+    'onnxruntime-node': 'commonjs onnxruntime-node',
+    '@xenova/transformers': 'commonjs @xenova/transformers'
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx']
@@ -27,16 +28,7 @@ const extensionConfig = {
       {
         test: /\.tsx?$/,
         exclude: /node_modules/,
-        use: [
-          {
-            loader: 'ts-loader',
-            options: {
-              compilerOptions: {
-                module: 'esnext'
-              }
-            }
-          }
-        ]
+        use: 'ts-loader' // Используем tsconfig.json настройки (commonjs)
       }
     ]
   }

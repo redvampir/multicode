@@ -12,3 +12,6 @@ schemas/**
 *.vsix
 README.old.md
 .gitignore
+
+out/**
+!dist/**

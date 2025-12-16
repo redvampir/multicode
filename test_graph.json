@@ -1,0 +1,79 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "Start",
+      "name": "Start",
+      "position": { "x": 100, "y": 100 },
+      "metadata": {},
+      "ports": [
+        {
+          "id": "start_out",
+          "name": "out",
+          "direction": "Output",
+          "type": "Exec"
+        }
+      ]
+    },
+    {
+      "id": "print_hello",
+      "type": "PrintString",
+      "name": "Print Hello",
+      "position": { "x": 300, "y": 100 },
+      "metadata": {
+        "message": "Hello from MultiCode!"
+      },
+      "ports": [
+        {
+          "id": "print_in",
+          "name": "in",
+          "direction": "Input",
+          "type": "Exec"
+        },
+        {
+          "id": "print_out",
+          "name": "out",
+          "direction": "Output",
+          "type": "Exec"
+        },
+        {
+          "id": "print_string",
+          "name": "message",
+          "direction": "Input",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "id": "end",
+      "type": "End",
+      "name": "End",
+      "position": { "x": 500, "y": 100 },
+      "metadata": {},
+      "ports": [
+        {
+          "id": "end_in",
+          "name": "in",
+          "direction": "Input",
+          "type": "Exec"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn1",
+      "from": "start_out",
+      "to": "print_in"
+    },
+    {
+      "id": "conn2",
+      "from": "print_out",
+      "to": "end_in"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Test graph for MultiCode installation"
+  }
+}

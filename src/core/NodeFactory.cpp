@@ -6,149 +6,55 @@
 
 namespace visprog::core {
 
-auto NodeFactory::create(NodeType type, std::string name) -> std::unique_ptr<Node> {
-    if (name.empty()) {
-        name = generate_default_name(type);
+auto NodeFactory::create(const NodeType& type, std::string instance_name) -> std::unique_ptr<Node> {
+    const auto node_id = generate_node_id();
+    if (instance_name.empty()) {
+        instance_name = std::format("{} #{}", type.label, node_id.value);
     }
+    return create_with_id(node_id, type, std::move(instance_name));
+}
 
-    const auto id = generate_node_id();
-    auto node = std::make_unique<Node>(id, type, std::move(name));
-
-    configure_node(*node, type);
-
+auto NodeFactory::create_with_id(NodeId node_id, const NodeType& type, std::string instance_name) -> std::unique_ptr<Node> {
+    auto node = std::make_unique<Node>(node_id, type, std::move(instance_name));
+    configure_ports(*node);
     return node;
 }
 
-auto NodeFactory::create_with_id(NodeId id,
-                                 NodeType type,
-                                 std::string name) -> std::unique_ptr<Node> {
-    auto node = std::make_unique<Node>(id, type, std::move(name));
-    configure_node(*node, type);
-    return node;
+void NodeFactory::configure_ports(Node& node) {
+    const auto type = node.get_type();
+
+    if (type.name == NodeTypes::Start.name) {
+        node.add_output_port(DataType::Execution, "start", generate_port_id());
+    } else if (type.name == NodeTypes::End.name) {
+        node.add_input_port(DataType::Execution, "end", generate_port_id());
+    } else if (type.name == NodeTypes::PrintString.name) {
+        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
+        node.add_input_port(DataType::StringView, "value", generate_port_id());
+        // Set a default value for the string to be printed
+        node.set_property("value", std::string("Hello, World!"));
+    }
+    // Here we will add more `else if` statements for other core nodes.
+    // In the future, this will be replaced by a system that reads .nodedef.json files.
 }
 
 auto NodeFactory::generate_node_id() -> NodeId {
-    return NodeId{next_id_.fetch_add(1, std::memory_order_relaxed)};
+    return NodeId{next_node_id_.fetch_add(1, std::memory_order_relaxed)};
 }
 
-auto NodeFactory::configure_node(Node& node, NodeType type) -> void {
-    switch (type) {
-        case NodeType::Start:
-            node.add_exec_output();
-            break;
-
-        case NodeType::End:
-            node.add_exec_input();
-            break;
-
-        case NodeType::Function:
-            node.add_exec_input();
-            node.add_exec_output();
-            // Ports will be added dynamically
-            break;
-
-        case NodeType::PureFunction:
-            // No execution ports for pure functions
-            break;
-
-        case NodeType::Variable:
-            node.add_output_port(DataType::Auto, "value");
-            break;
-
-        case NodeType::GetVariable:
-            node.add_output_port(DataType::Auto, "value");
-            break;
-
-        case NodeType::SetVariable:
-            node.add_exec_input();
-            node.add_exec_output();
-            node.add_input_port(DataType::Auto, "value");
-            break;
-
-        case NodeType::If:
-            node.add_exec_input();
-            node.add_input_port(DataType::Bool, "condition");
-            node.add_exec_output();  // true branch
-            node.add_exec_output();  // false branch
-            break;
-
-        case NodeType::ForLoop:
-            node.add_exec_input();
-            node.add_input_port(DataType::Int32, "start");
-            node.add_input_port(DataType::Int32, "end");
-            node.add_exec_output();  // loop body
-            node.add_output_port(DataType::Int32, "index");
-            node.add_exec_output();  // completed
-            break;
-
-        case NodeType::WhileLoop:
-            node.add_exec_input();
-            node.add_input_port(DataType::Bool, "condition");
-            node.add_exec_output();  // loop body
-            node.add_exec_output();  // completed
-            break;
-
-        case NodeType::Print:
-            node.add_exec_input();
-            node.add_exec_output();
-            node.add_input_port(DataType::String, "message");
-            break;
-
-        // Operators
-        case NodeType::Add:
-        case NodeType::Subtract:
-        case NodeType::Multiply:
-        case NodeType::Divide:
-        case NodeType::Modulo:
-            node.add_input_port(DataType::Auto, "a");
-            node.add_input_port(DataType::Auto, "b");
-            node.add_output_port(DataType::Auto, "result");
-            break;
-
-        // Comparison
-        case NodeType::Equal:
-        case NodeType::NotEqual:
-        case NodeType::Less:
-        case NodeType::LessEqual:
-        case NodeType::Greater:
-        case NodeType::GreaterEqual:
-            node.add_input_port(DataType::Auto, "a");
-            node.add_input_port(DataType::Auto, "b");
-            node.add_output_port(DataType::Bool, "result");
-            break;
-
-        // Logical
-        case NodeType::And:
-        case NodeType::Or:
-            node.add_input_port(DataType::Bool, "a");
-            node.add_input_port(DataType::Bool, "b");
-            node.add_output_port(DataType::Bool, "result");
-            break;
-
-        case NodeType::Not:
-            node.add_input_port(DataType::Bool, "value");
-            node.add_output_port(DataType::Bool, "result");
-            break;
-
-        default:
-            // For other types, ports are added dynamically
-            break;
-    }
+auto NodeFactory::generate_port_id() -> PortId {
+    return PortId{next_port_id_.fetch_add(1, std::memory_order_relaxed)};
 }
 
-auto NodeFactory::generate_default_name(NodeType type) -> std::string {
-    return std::format("{}_{}", to_string(type), generate_node_id().value);
-}
-
-auto NodeFactory::synchronize_id_counter(NodeId max_id) -> void {
-    const auto desired = max_id.value + 1;
-    auto current = next_id_.load(std::memory_order_relaxed);
-
-    while (current < desired &&
-           !next_id_.compare_exchange_weak(
-               current, desired, std::memory_order_relaxed, std::memory_order_relaxed)) {
-        // retry until we successfully update the counter or discover newer value
-    }
+void NodeFactory::synchronize_id_counters(NodeId max_node_id, PortId max_port_id) {
+    auto sync_atomic = [](std::atomic<uint64_t>& atomic, uint64_t new_value) {
+        auto current = atomic.load(std::memory_order_relaxed);
+        while (current < new_value &&
+               !atomic.compare_exchange_weak(current, new_value, std::memory_order_relaxed, std::memory_order_relaxed)) {
+        }
+    };
+    sync_atomic(next_node_id_, max_node_id.value + 1);
+    sync_atomic(next_port_id_, max_port_id.value + 1);
 }
 
 }  // namespace visprog::core

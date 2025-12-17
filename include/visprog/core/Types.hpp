@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 /// @brief Main namespace for Visual Programming Core
 namespace visprog::core {
@@ -58,106 +59,30 @@ struct GraphId {
 };
 
 // ============================================================================
-// Enumerations
+// Node & Port Definitions
 // ============================================================================
 
-/// @brief Type of node in the visual graph
-enum class NodeType : std::uint8_t {
-    // Control Flow
-    Start,  ///< Entry point of program
-    End,    ///< Exit point of program
+/// @brief Defines a type of node in the visual graph.
+/// This is now a struct to allow for dynamic, string-based node definitions.
+struct NodeType {
+    std::string_view name;  // Unique identifier, e.g., "core.flow.start"
+    std::string_view label; // Human-readable label, e.g., "Start"
 
-    // Functions
-    Function,      ///< Function call (impure)
-    PureFunction,  ///< Pure function (no side effects)
-    Constructor,   ///< Constructor call
-    Destructor,    ///< Destructor call
-
-    // Variables
-    Variable,     ///< Variable declaration
-    Constant,     ///< Constant value
-    GetVariable,  ///< Get variable value
-    SetVariable,  ///< Set variable value
-
-    // Control Flow
-    If,      ///< If statement
-    Else,    ///< Else branch
-    ElseIf,  ///< Else-if branch
-    Switch,  ///< Switch statement
-    Case,    ///< Case branch
-
-    // Loops
-    ForLoop,      ///< For loop
-    WhileLoop,    ///< While loop
-    DoWhileLoop,  ///< Do-while loop
-    RangeFor,     ///< Range-based for loop (C++)
-
-    // Operators
-    Add,       ///< Addition (+)
-    Subtract,  ///< Subtraction (-)
-    Multiply,  ///< Multiplication (*)
-    Divide,    ///< Division (/)
-    Modulo,    ///< Modulo (%)
-
-    // Comparison
-    Equal,         ///< Equality (==)
-    NotEqual,      ///< Inequality (!=)
-    Less,          ///< Less than (<)
-    LessEqual,     ///< Less or equal (<=)
-    Greater,       ///< Greater than (>)
-    GreaterEqual,  ///< Greater or equal (>=)
-
-    // Logical
-    And,  ///< Logical AND (&&)
-    Or,   ///< Logical OR (||)
-    Not,  ///< Logical NOT (!)
-
-    // Bitwise
-    BitwiseAnd,  ///< Bitwise AND (&)
-    BitwiseOr,   ///< Bitwise OR (|)
-    BitwiseXor,  ///< Bitwise XOR (^)
-    BitwiseNot,  ///< Bitwise NOT (~)
-    ShiftLeft,   ///< Left shift (<<)
-    ShiftRight,  ///< Right shift (>>)
-
-    // Data Structures
-    Array,   ///< Array
-    Vector,  ///< Vector/Dynamic array
-    Map,     ///< Map/Dictionary
-    Set,     ///< Set
-
-    // I/O
-    Print,      ///< Print to console
-    Read,       ///< Read from console
-    FileRead,   ///< Read from file
-    FileWrite,  ///< Write to file
-
-    // Low-Level (Special for our project!)
-    PointerDereference,  ///< Pointer dereference (*)
-    AddressOf,           ///< Address-of operator (&)
-    MemoryCopy,          ///< memcpy
-    MemoryAlloc,         ///< malloc/new
-    MemoryFree,          ///< free/delete
-    Assembly,            ///< Inline assembly block
-
-    // OOP
-    Class,   ///< Class definition
-    Struct,  ///< Struct definition
-    Method,  ///< Class method
-    Field,   ///< Class field
-
-    // Events
-    Event,         ///< Event trigger
-    EventHandler,  ///< Event handler
-
-    // Comments & Debug
-    Comment,     ///< Comment block
-    DebugPrint,  ///< Debug output
-    Breakpoint,  ///< Breakpoint marker
-
-    // Custom
-    Custom,  ///< User-defined node
+    [[nodiscard]] auto operator<=>(const NodeType&) const noexcept = default;
 };
+
+/// @brief Predefined core node types.
+/// Custom nodes will be loaded dynamically, but core nodes are defined here.
+namespace NodeTypes {
+    // Core Flow
+    inline constexpr NodeType Start{.name = "core.flow.start", .label = "Start"};
+    inline constexpr NodeType End{.name = "core.flow.end", .label = "End"};
+
+    // I/O (New node for our prototype)
+    inline constexpr NodeType PrintString{.name = "core.io.print_string", .label = "Print String"};
+    
+    // ... other core nodes like If, ForLoop, etc. will be added here
+}
 
 /// @brief Type of connection between nodes
 enum class ConnectionType : std::uint8_t {
@@ -177,42 +102,18 @@ enum class DataType : std::uint8_t {
     // Primitives
     Void,
     Bool,
-    Int8,
-    Int16,
     Int32,
     Int64,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
     Float,
     Double,
-    Char,
-
+    
     // Strings
     String,
     StringView,
 
-    // Pointers
-    Pointer,
-    Reference,
-
-    // Containers
-    Array,
-    Vector,
-    Map,
-    Set,
-
-    // User-defined
-    Struct,
-    Class,
-    Enum,
-
     // Special
-    Auto,       ///< Type inference
-    Template,   ///< Template type
-    Execution,  ///< Execution flow (special)
-    Any,        ///< Any type (for custom nodes)
+    Execution,  ///< Execution flow (special type)
+    Any,        ///< Any type (for generic nodes)
 };
 
 /// @brief Programming language target
@@ -249,25 +150,22 @@ public:
     explicit Result(Error error) noexcept(std::is_nothrow_move_constructible_v<Error>)
         : data_(std::move(error)) {}
 
-    // Movable only (safe ownership)
+    // Movable only
     Result(Result&&) noexcept = default;
     Result& operator=(Result&&) noexcept = default;
 
-    // Non-copyable (ownership semantics)
+    // Non-copyable
     Result(const Result&) = delete;
     Result& operator=(const Result&) = delete;
 
-    /// @brief Check if result contains a value
     [[nodiscard]] auto has_value() const noexcept -> bool {
         return std::holds_alternative<T>(data_);
     }
 
-    /// @brief Check if result contains an error
     [[nodiscard]] auto has_error() const noexcept -> bool {
         return std::holds_alternative<Error>(data_);
     }
 
-    /// @brief Get value (throws if error)
     [[nodiscard]] auto value() & -> T& {
         if (!has_value()) {
             throw std::runtime_error(std::get<Error>(data_).message);
@@ -289,17 +187,14 @@ public:
         return std::move(std::get<T>(data_));
     }
 
-    /// @brief Get error (undefined if has value)
     [[nodiscard]] auto error() const& -> const Error& {
         return std::get<Error>(data_);
     }
 
-    /// @brief Boolean conversion (has value?)
     [[nodiscard]] explicit operator bool() const noexcept {
         return has_value();
     }
 
-    /// @brief Value or default
     [[nodiscard]] auto value_or(T default_value) && -> T {
         return has_value() ? std::move(std::get<T>(data_)) : std::move(default_value);
     }
@@ -312,27 +207,13 @@ private:
 template <>
 class [[nodiscard]] Result<void> {
 public:
-    /// @brief Success constructor
     Result() noexcept : has_value_(true) {}
-
-    /// @brief Error constructor
     explicit Result(Error error) noexcept : error_(std::move(error)), has_value_(false) {}
 
-    [[nodiscard]] auto has_value() const noexcept -> bool {
-        return has_value_;
-    }
-
-    [[nodiscard]] auto has_error() const noexcept -> bool {
-        return !has_value_;
-    }
-
-    [[nodiscard]] auto error() const& -> const Error& {
-        return error_;
-    }
-
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return has_value_;
-    }
+    [[nodiscard]] auto has_value() const noexcept -> bool { return has_value_; }
+    [[nodiscard]] auto has_error() const noexcept -> bool { return !has_value_; }
+    [[nodiscard]] auto error() const& -> const Error& { return error_; }
+    [[nodiscard]] explicit operator bool() const noexcept { return has_value_; }
 
 private:
     Error error_{};
@@ -342,9 +223,6 @@ private:
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// @brief Convert NodeType to string
-[[nodiscard]] auto to_string(NodeType type) -> std::string_view;
 
 /// @brief Convert DataType to string
 [[nodiscard]] auto to_string(DataType type) -> std::string_view;
@@ -358,7 +236,7 @@ private:
 }  // namespace visprog::core
 
 // ============================================================================
-// Hash Support (for unordered_map/unordered_set)
+// Hash Support
 // ============================================================================
 
 namespace std {
@@ -388,6 +266,13 @@ template <>
 struct hash<visprog::core::GraphId> {
     auto operator()(const visprog::core::GraphId& id) const noexcept -> size_t {
         return hash<uint64_t>{}(id.value);
+    }
+};
+
+template <>
+struct hash<visprog::core::NodeType> {
+    auto operator()(const visprog::core::NodeType& type) const noexcept -> size_t {
+        return hash<string_view>{}(type.name);
     }
 };
 

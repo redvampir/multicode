@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "visprog/core/Port.hpp"
@@ -16,22 +17,23 @@ namespace visprog::core {
 
 class GraphSerializer;
 
-/// @brief Node represents a single element in the visual programming graph
-/// @details
-/// - Immutable ID and type after construction
-/// - Movable but non-copyable (unique ownership)
-/// - Thread-safe for reading, mutations require external synchronization
+/// @brief A variant type for node-specific properties.
+/// @details This allows nodes to store typed data (e.g., a default string, a number)
+/// that is not connected to a data port. It's essential for custom node templates.
+using NodeProperty = std::variant<std::string, double, std::int64_t, bool>;
+
+/// @brief Represents a single element in the visual programming graph.
 class Node {
 public:
     // ========================================================================
     // Construction
     // ========================================================================
 
-    /// @brief Create a new node
-    /// @param id Unique node identifier
-    /// @param type Type of node (Function, Variable, etc.)
-    /// @param name Node name (e.g., "calculateSum")
-    Node(NodeId id, NodeType type, std::string name);
+    /// @brief Create a new node.
+    /// @param id Unique node identifier.
+    /// @param type The type of node (contains name and label).
+    /// @param instance_name An optional, user-defined name for this specific node instance.
+    Node(NodeId id, NodeType type, std::string instance_name);
 
     // Movable (ownership transfer)
     Node(Node&&) noexcept = default;
@@ -47,161 +49,91 @@ public:
     // Immutable Properties (const, noexcept)
     // ========================================================================
 
-    /// @brief Get unique node identifier
-    [[nodiscard]] auto get_id() const noexcept -> NodeId {
-        return id_;
-    }
-
-    /// @brief Get node type
-    [[nodiscard]] auto get_type() const noexcept -> NodeType {
-        return type_;
-    }
-
-    /// @brief Get node name
-    [[nodiscard]] auto get_name() const noexcept -> std::string_view {
-        return name_;
-    }
-
-    /// @brief Get display name (AI-generated human-readable name)
+    [[nodiscard]] auto get_id() const noexcept -> NodeId { return id_; }
+    [[nodiscard]] auto get_type() const noexcept -> NodeType { return type_; }
+    [[nodiscard]] auto get_instance_name() const noexcept -> std::string_view { return instance_name_; }
     [[nodiscard]] auto get_display_name() const noexcept -> std::string_view {
-        return display_name_.empty() ? name_ : display_name_;
+        return display_name_.empty() ? instance_name_ : display_name_;
     }
+    [[nodiscard]] auto get_ports() const noexcept -> std::span<const Port> { return ports_; }
+    [[nodiscard]] auto find_port(PortId id) const -> const Port*;
+    [[nodiscard]] auto has_execution_flow() const noexcept -> bool { return has_execution_flow_; }
+    [[nodiscard]] auto get_description() const noexcept -> std::string_view { return description_; }
 
-    /// @brief Get all ports (immutable view)
-    [[nodiscard]] auto get_ports() const noexcept -> std::span<const Port> {
-        return ports_;
-    }
+    // ========================================================================
+    // Computed Port Views
+    // ========================================================================
 
-    /// @brief Get input ports only
     [[nodiscard]] auto get_input_ports() const -> std::vector<const Port*>;
-
-    /// @brief Get output ports only
     [[nodiscard]] auto get_output_ports() const -> std::vector<const Port*>;
-
-    /// @brief Get execution input ports
     [[nodiscard]] auto get_exec_input_ports() const -> std::vector<const Port*>;
-
-    /// @brief Get execution output ports
     [[nodiscard]] auto get_exec_output_ports() const -> std::vector<const Port*>;
 
-    /// @brief Find port by ID
-    [[nodiscard]] auto find_port(PortId id) const -> const Port*;
-
-    /// @brief Check if node has execution flow (impure function)
-    [[nodiscard]] auto has_execution_flow() const noexcept -> bool {
-        return has_execution_flow_;
-    }
-
-    /// @brief Get node description/documentation
-    [[nodiscard]] auto get_description() const noexcept -> std::string_view {
-        return description_;
-    }
-
     // ========================================================================
-    // Mutators (non-const)
+    // Mutators
     // ========================================================================
 
-    /// @brief Set display name (AI-generated or user-provided)
-    auto set_display_name(std::string name) -> void {
-        display_name_ = std::move(name);
-    }
-
-    /// @brief Set node description
-    auto set_description(std::string description) -> void {
-        description_ = std::move(description);
-    }
-
-    /// @brief Add an input port
-    /// @return PortId of the created port
-    auto add_input_port(DataType data_type, std::string name) -> PortId;
-
-    /// @brief Add an output port
-    /// @return PortId of the created port
-    auto add_output_port(DataType data_type, std::string name) -> PortId;
-
-    /// @brief Add execution input port (for control flow)
-    /// @return PortId of the created port
-    auto add_exec_input() -> PortId;
-
-    /// @brief Add execution output port (for control flow)
-    /// @return PortId of the created port
-    auto add_exec_output() -> PortId;
-
-    /// @brief Remove a port by ID
-    /// @return Result indicating success or error
+    auto set_display_name(std::string name) -> void { display_name_ = std::move(name); }
+    auto set_description(std::string description) -> void { description_ = std::move(description); }
+    auto add_input_port(DataType data_type, std::string name, PortId id) -> Port&;
+    auto add_output_port(DataType data_type, std::string name, PortId id) -> Port&;
     auto remove_port(PortId id) -> Result<void>;
 
     // ========================================================================
-    // Metadata (for code generation and UI)
+    // Properties (Successor to Metadata)
     // ========================================================================
 
-    /// @brief Set metadata key-value pair
-    auto set_metadata(std::string key, std::string value) -> void;
+    /// @brief Set a node-specific property (e.g., a default value for a port).
+    template <typename T>
+    auto set_property(const std::string& key, T value) -> void {
+        properties_[key] = std::move(value);
+    }
 
-    /// @brief Get metadata value
-    [[nodiscard]] auto get_metadata(std::string_view key) const -> std::optional<std::string_view>;
+    /// @brief Get a node-specific property.
+    template <typename T>
+    [[nodiscard]] auto get_property(std::string_view key) const -> std::optional<T> {
+        if (auto it = properties_.find(std::string(key)); it != properties_.end()) {
+            if (auto* val = std::get_if<T>(&it->second)) {
+                return *val;
+            }
+        }
+        return std::nullopt;
+    }
 
-    /// @brief Get all metadata
-    [[nodiscard]] auto get_all_metadata() const noexcept
-        -> const std::unordered_map<std::string, std::string>& {
-        return metadata_;
+    /// @brief Get all properties.
+    [[nodiscard]] auto get_all_properties() const noexcept
+        -> const std::unordered_map<std::string, NodeProperty>& {
+        return properties_;
     }
 
     // ========================================================================
-    // Validation
+    // Validation & Utility
     // ========================================================================
 
-    /// @brief Validate node configuration
-    /// @return Result with error if invalid
     [[nodiscard]] auto validate() const -> Result<void>;
-
-    // ========================================================================
-    // Utility
-    // ========================================================================
-
-    /// @brief Equality comparison (by ID)
-    [[nodiscard]] auto operator==(const Node& other) const noexcept -> bool {
-        return id_ == other.id_;
-    }
-
-    /// @brief Three-way comparison (by ID)
-    [[nodiscard]] auto operator<=>(const Node& other) const noexcept {
-        return id_ <=> other.id_;
-    }
+    [[nodiscard]] auto operator==(const Node& other) const noexcept -> bool { return id_ == other.id_; }
+    [[nodiscard]] auto operator<=>(const Node& other) const noexcept { return id_ <=> other.id_; }
 
 private:
     friend class GraphSerializer;
+    friend class NodeFactory;
 
-    // ========================================================================
-    // Helper Methods
-    // ========================================================================
-
-    /// @brief Generate next port ID
-    [[nodiscard]] auto generate_port_id() -> PortId;
-
-    /// @brief Update execution flow flag
+    auto append_port(Port port) -> void; 
     auto update_execution_flow_flag() -> void;
 
-    /// @brief Append a fully constructed port (used during deserialization)
-    auto append_port(Port port) -> void;
-
-    // ========================================================================
-    // Member Variables
-    // ========================================================================
-
-    // Immutable after construction
+    // Core immutable state
     NodeId id_;
     NodeType type_;
-    std::string name_;
+    std::string instance_name_; // User-defined name for this instance
 
     // Mutable state
-    std::string display_name_;                               ///< AI-generated or user-provided name
-    std::string description_;                                ///< Node documentation
-    std::vector<Port> ports_;                                ///< All ports (inputs and outputs)
-    std::unordered_map<std::string, std::string> metadata_;  ///< Extra data
+    std::string display_name_; // AI-generated or user-set pretty name
+    std::string description_;
+    std::vector<Port> ports_;
+    std::unordered_map<std::string, NodeProperty> properties_; // Typed key-value data
 
     // Cached flags
-    bool has_execution_flow_{false};  ///< Does this node have exec ports?
+    bool has_execution_flow_{false};
 };
 
 }  // namespace visprog::core

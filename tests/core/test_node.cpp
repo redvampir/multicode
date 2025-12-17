@@ -8,294 +8,143 @@
 using namespace visprog::core;
 
 // ============================================================================
-// Node Construction Tests
+// Node Construction and Properties
 // ============================================================================
 
-TEST_CASE("Node: Basic construction", "[node]") {
-    const auto node_id = NodeId{42};
-    const auto node_type = NodeType::Function;
-    const std::string name = "testNode";
+TEST_CASE("Node: Basic Construction via Factory", "[node][factory]") {
+    auto node = NodeFactory::create(NodeTypes::PrintString, "MyPrintNode");
 
-    Node node(node_id, node_type, name);
-
-    REQUIRE(node.get_id() == node_id);
-    REQUIRE(node.get_type() == node_type);
-    REQUIRE(node.get_name() == name);
+    REQUIRE(node != nullptr);
+    REQUIRE(node->get_type().name == NodeTypes::PrintString.name);
+    REQUIRE(node->get_type().label == NodeTypes::PrintString.label);
+    REQUIRE(node->get_instance_name() == "MyPrintNode");
 }
 
-TEST_CASE("Node: Display name", "[node]") {
-    Node node(NodeId{1}, NodeType::Function, "calculateSum");
+TEST_CASE("Node: Default Instance Name", "[node][factory]") {
+    auto node = NodeFactory::create(NodeTypes::Start);
+    
+    REQUIRE(node != nullptr);
+    // Check if the default name is in the format "Label #ID"
+    REQUIRE(node->get_instance_name().starts_with(NodeTypes::Start.label));
+    REQUIRE(node->get_instance_name().find(std::to_string(node->get_id().value)) != std::string::npos);
+}
 
-    SECTION("Default display name equals name") {
-        REQUIRE(node.get_display_name() == "calculateSum");
+
+// ============================================================================
+// Node Properties (New system, replaces Metadata)
+// ============================================================================
+
+TEST_CASE("Node: Properties", "[node][properties]") {
+    auto node = NodeFactory::create(NodeTypes::PrintString);
+    REQUIRE(node != nullptr);
+
+    SECTION("Get default property") {
+        auto default_val = node->get_property<std::string>("value");
+        REQUIRE(default_val.has_value());
+        REQUIRE(default_val.value() == "Hello, World!");
     }
 
-    SECTION("Custom display name") {
-        node.set_display_name("Вычисление суммы");
-        REQUIRE(node.get_display_name() == "Вычисление суммы");
-        REQUIRE(node.get_name() == "calculateSum");  // Original unchanged
-    }
-}
-
-// ============================================================================
-// Port Management Tests
-// ============================================================================
-
-TEST_CASE("Node: Add input ports", "[node][ports]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    const auto port1 = node.add_input_port(DataType::Int32, "a");
-    const auto port2 = node.add_input_port(DataType::Int32, "b");
-
-    REQUIRE(port1.value != 0);
-    REQUIRE(port2.value != 0);
-    REQUIRE(port1 != port2);
-
-    const auto inputs = node.get_input_ports();
-    REQUIRE(inputs.size() == 2);
-}
-
-TEST_CASE("Node: Add output ports", "[node][ports]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    const auto port = node.add_output_port(DataType::Int32, "result");
-
-    REQUIRE(port.value != 0);
-
-    const auto outputs = node.get_output_ports();
-    REQUIRE(outputs.size() == 1);
-}
-
-TEST_CASE("Node: Execution ports", "[node][ports]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    REQUIRE(!node.has_execution_flow());
-
-    const auto exec_in = node.add_exec_input();
-    REQUIRE(exec_in.value != 0);
-    REQUIRE(node.has_execution_flow());
-
-    const auto exec_out = node.add_exec_output();
-    REQUIRE(exec_out.value != 0);
-
-    const auto exec_inputs = node.get_exec_input_ports();
-    const auto exec_outputs = node.get_exec_output_ports();
-
-    REQUIRE(exec_inputs.size() == 1);
-    REQUIRE(exec_outputs.size() == 1);
-}
-
-TEST_CASE("Node: Find port by ID", "[node][ports]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    const auto port_id = node.add_input_port(DataType::Int32, "x");
-
-    const auto* found = node.find_port(port_id);
-    REQUIRE(found != nullptr);
-    REQUIRE(found->get_id() == port_id);
-    REQUIRE(found->get_name() == "x");
-
-    const auto* not_found = node.find_port(PortId{999});
-    REQUIRE(not_found == nullptr);
-}
-
-TEST_CASE("Node: Remove port", "[node][ports]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    const auto port_id = node.add_input_port(DataType::Int32, "x");
-    REQUIRE(node.get_input_ports().size() == 1);
-
-    const auto result = node.remove_port(port_id);
-    REQUIRE(result.has_value());
-    REQUIRE(node.get_input_ports().size() == 0);
-}
-
-// ============================================================================
-// Metadata Tests
-// ============================================================================
-
-TEST_CASE("Node: Metadata", "[node][metadata]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-
-    SECTION("Set and get metadata") {
-        node.set_metadata("key1", "value1");
-        node.set_metadata("key2", "value2");
-
-        const auto val1 = node.get_metadata("key1");
-        REQUIRE(val1.has_value());
-        REQUIRE(val1.value() == "value1");
-
-        const auto val2 = node.get_metadata("key2");
-        REQUIRE(val2.has_value());
-        REQUIRE(val2.value() == "value2");
+    SECTION("Set and get string property") {
+        node->set_property("value", std::string("New message"));
+        auto new_val = node->get_property<std::string>("value");
+        REQUIRE(new_val.has_value());
+        REQUIRE(new_val.value() == "New message");
     }
 
-    SECTION("Non-existent key") {
-        const auto val = node.get_metadata("nonexistent");
+    SECTION("Set and get other property types") {
+        node->set_property("my_number", 123.45);
+        node->set_property("my_integer", (int64_t)99);
+        node->set_property("my_bool", true);
+
+        auto num_val = node->get_property<double>("my_number");
+        auto int_val = node->get_property<int64_t>("my_integer");
+        auto bool_val = node->get_property<bool>("my_bool");
+
+        REQUIRE(num_val.has_value());
+        REQUIRE(num_val.value() == 123.45);
+        REQUIRE(int_val.has_value());
+        REQUIRE(int_val.value() == 99);
+        REQUIRE(bool_val.has_value());
+        REQUIRE(bool_val.value() == true);
+    }
+
+    SECTION("Get non-existent property") {
+        auto val = node->get_property<std::string>("non_existent_key");
         REQUIRE(!val.has_value());
     }
 
-    SECTION("Update metadata") {
-        node.set_metadata("key", "value1");
-        node.set_metadata("key", "value2");  // Overwrite
-
-        const auto val = node.get_metadata("key");
-        REQUIRE(val.value() == "value2");
+    SECTION("Type mismatch") {
+        auto val = node->get_property<int64_t>("value"); // "value" is a string
+        REQUIRE(!val.has_value());
     }
 }
 
 // ============================================================================
-// Validation Tests
+// NodeFactory Tests (Adapted for new architecture)
 // ============================================================================
 
-TEST_CASE("Node: Validation - valid node", "[node][validation]") {
-    Node node(NodeId{1}, NodeType::Function, "test");
-    node.add_exec_input();
-    node.add_exec_output();
-    node.add_input_port(DataType::Int32, "a");
-    node.add_output_port(DataType::Int32, "result");
-
-    const auto result = node.validate();
-    REQUIRE(result.has_value());
-}
-
-TEST_CASE("Node: Validation - empty name", "[node][validation]") {
-    Node node(NodeId{1}, NodeType::Function, "");
-
-    const auto result = node.validate();
-    REQUIRE(!result.has_value());
-    REQUIRE(result.error().code == 100);
-}
-
-TEST_CASE("Node: Validation - Start node", "[node][validation]") {
-    Node start(NodeId{1}, NodeType::Start, "start");
-
-    SECTION("Valid Start node") {
-        start.add_exec_output();
-
-        const auto result = start.validate();
-        REQUIRE(result.has_value());
-    }
-
-    SECTION("Start node with exec input - invalid") {
-        start.add_exec_input();
-        start.add_exec_output();
-
-        const auto result = start.validate();
-        REQUIRE(!result.has_value());
-        REQUIRE(result.error().code == 103);
-    }
-
-    SECTION("Start node without exec output - invalid") {
-        const auto result = start.validate();
-        REQUIRE(!result.has_value());
-        REQUIRE(result.error().code == 104);
-    }
-}
-
-TEST_CASE("Node: Validation - End node", "[node][validation]") {
-    Node end(NodeId{1}, NodeType::End, "end");
-
-    SECTION("Valid End node") {
-        end.add_exec_input();
-
-        const auto result = end.validate();
-        REQUIRE(result.has_value());
-    }
-
-    SECTION("End node with exec output - invalid") {
-        end.add_exec_input();
-        end.add_exec_output();
-
-        const auto result = end.validate();
-        REQUIRE(!result.has_value());
-        REQUIRE(result.error().code == 105);
-    }
-}
-
-TEST_CASE("Node: Validation - Pure function", "[node][validation]") {
-    Node pure(NodeId{1}, NodeType::PureFunction, "sqrt");
-
-    SECTION("Valid pure function") {
-        pure.add_input_port(DataType::Float, "x");
-        pure.add_output_port(DataType::Float, "result");
-
-        const auto result = pure.validate();
-        REQUIRE(result.has_value());
-    }
-
-    SECTION("Pure function with exec flow - invalid") {
-        pure.add_exec_input();
-        pure.add_input_port(DataType::Float, "x");
-
-        const auto result = pure.validate();
-        REQUIRE(!result.has_value());
-        REQUIRE(result.error().code == 107);
-    }
-}
-
-// ============================================================================
-// NodeFactory Tests
-// ============================================================================
-
-TEST_CASE("NodeFactory: Create nodes", "[factory]") {
-    SECTION("Create Function node") {
-        auto node = NodeFactory::create(NodeType::Function, "myFunc");
-
-        REQUIRE(node != nullptr);
-        REQUIRE(node->get_type() == NodeType::Function);
-        REQUIRE(node->get_name() == "myFunc");
-        REQUIRE(node->has_execution_flow());
-    }
-
+TEST_CASE("NodeFactory: Create Core Nodes", "[factory]") {
     SECTION("Create Start node") {
-        auto node = NodeFactory::create(NodeType::Start);
-
+        auto node = NodeFactory::create(NodeTypes::Start);
         REQUIRE(node != nullptr);
-        REQUIRE(node->get_type() == NodeType::Start);
-        REQUIRE(node->get_exec_output_ports().size() == 1);
-    }
-
-    SECTION("Create Variable node") {
-        auto node = NodeFactory::create(NodeType::Variable, "counter");
-
-        REQUIRE(node != nullptr);
-        REQUIRE(node->get_type() == NodeType::Variable);
+        REQUIRE(node->get_type().name == NodeTypes::Start.name);
+        REQUIRE(node->get_input_ports().empty());
         REQUIRE(node->get_output_ports().size() == 1);
+        REQUIRE(node->get_output_ports()[0]->is_execution());
     }
 
-    SECTION("Create If node") {
-        auto node = NodeFactory::create(NodeType::If);
-
+    SECTION("Create End node") {
+        auto node = NodeFactory::create(NodeTypes::End);
         REQUIRE(node != nullptr);
-        REQUIRE(node->has_execution_flow());
-        REQUIRE(node->get_exec_output_ports().size() == 2);  // true/false
+        REQUIRE(node->get_type().name == NodeTypes::End.name);
+        REQUIRE(node->get_output_ports().empty());
+        REQUIRE(node->get_input_ports().size() == 1);
+        REQUIRE(node->get_input_ports()[0]->is_execution());
+    }
+
+    SECTION("Create PrintString node") {
+        auto node = NodeFactory::create(NodeTypes::PrintString);
+        REQUIRE(node != nullptr);
+        REQUIRE(node->get_type().name == NodeTypes::PrintString.name);
+        REQUIRE(node->get_exec_input_ports().size() == 1);
+        REQUIRE(node->get_exec_output_ports().size() == 1);
+        REQUIRE(node->get_input_ports().size() == 2); // exec + data
+        auto data_ports = node->get_input_ports();
+        auto it = std::ranges::find_if(data_ports, [](const Port* p){ return !p->is_execution(); });
+        REQUIRE(it != data_ports.end());
+        REQUIRE((*it)->get_name() == "value");
+        REQUIRE((*it)->get_data_type() == DataType::StringView);
     }
 
     SECTION("Unique IDs") {
-        auto node1 = NodeFactory::create(NodeType::Function);
-        auto node2 = NodeFactory::create(NodeType::Function);
-
+        auto node1 = NodeFactory::create(NodeTypes::Start);
+        auto node2 = NodeFactory::create(NodeTypes::Start);
         REQUIRE(node1->get_id() != node2->get_id());
     }
 }
 
-TEST_CASE("NodeFactory: Operators", "[factory]") {
-    SECTION("Binary operators") {
-        auto add = NodeFactory::create(NodeType::Add);
+// ============================================================================
+// Validation Tests (Adapted)
+// ============================================================================
 
-        REQUIRE(!add->has_execution_flow());           // Pure
-        REQUIRE(add->get_input_ports().size() == 2);   // a, b
-        REQUIRE(add->get_output_ports().size() == 1);  // result
+TEST_CASE("Node: Validation", "[node][validation]") {
+    SECTION("Valid Start node") {
+        auto node = NodeFactory::create(NodeTypes::Start);
+        auto result = node->validate();
+        REQUIRE(result.has_value());
     }
 
-    SECTION("Comparison operators") {
-        auto eq = NodeFactory::create(NodeType::Equal);
+    SECTION("Valid End node") {
+        auto node = NodeFactory::create(NodeTypes::End);
+        auto result = node->validate();
+        REQUIRE(result.has_value());
+    }
 
-        REQUIRE(eq->get_input_ports().size() == 2);
-        REQUIRE(eq->get_output_ports().size() == 1);
-
-        const auto* result_port = eq->get_output_ports()[0];
-        REQUIRE(result_port->get_data_type() == DataType::Bool);
+    SECTION("Node with empty instance name - invalid") {
+        // Start and End are exceptions, they can have empty names.
+        auto node = NodeFactory::create(NodeTypes::PrintString, "");
+        auto result = node->validate();
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().code == 100);
     }
 }

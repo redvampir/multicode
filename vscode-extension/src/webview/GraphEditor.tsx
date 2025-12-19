@@ -363,7 +363,7 @@ export const GraphEditor: React.FC<{
       boxSelectionEnabled: false,
       motionBlur: true,
       panningEnabled: true,
-      userPanningEnabled: true
+      userPanningEnabled: false
     });
 
     cyRef.current = cy;
@@ -465,7 +465,9 @@ export const GraphEditor: React.FC<{
 
     cy.on('tapstart', (event) => {
       const originalEvent = event.originalEvent as MouseEvent | undefined;
-      if (event.target !== cy || !originalEvent?.shiftKey) {
+      // Allow box selection on background with left click (button 0)
+      // Unreal Engine style: Left click drag = box select
+      if (event.target !== cy || !originalEvent || originalEvent.button !== 0) {
         return;
       }
       const start = toLocalPoint(originalEvent.clientX, originalEvent.clientY);
@@ -522,10 +524,13 @@ export const GraphEditor: React.FC<{
           const bounds = node.renderedBoundingBox({ includeLabels: true, includeOverlays: false });
           return bounds.x2 >= box.x1 && bounds.x1 <= box.x2 && bounds.y2 >= box.y1 && bounds.y1 <= box.y2;
         });
-        const shouldReset = !originalEvent.shiftKey;
-        if (shouldReset) {
+        
+        // Unreal Engine style: Ctrl or Shift adds to selection
+        const isAdditive = originalEvent.ctrlKey || originalEvent.shiftKey;
+        if (!isAdditive) {
           cy.elements().unselect();
         }
+        
         nodesInBox.select();
         const edgesToSelect = cy.edges().filter((edge) =>
           edge

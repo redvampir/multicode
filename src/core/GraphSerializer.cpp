@@ -1,4 +1,4 @@
-'''// Copyright (c) 2025 МультиКод Team. MIT License.
+// Copyright (c) 2025 Р СљРЎС“Р В»РЎРЉРЎвЂљР С‘Р С™Р С•Р Т‘ Team. MIT License.
 
 #include "visprog/core/GraphSerializer.hpp"
 
@@ -29,11 +29,13 @@ using visprog::core::NodeFactory;
 using visprog::core::NodeId;
 using visprog::core::NodeProperty;
 using visprog::core::NodeType;
-using visprog::core::NodeTypes;
 using visprog::core::Port;
 using visprog::core::PortDirection;
 using visprog::core::PortId;
 using visprog::core::Result;
+
+// Access NodeTypes namespace directly
+namespace NodeTypes = visprog::core::NodeTypes;
 
 // --- Error Codes ---
 constexpr int kErrorInvalidDocument = 600;
@@ -262,4 +264,3 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 }
 
 }  // namespace visprog::core
-''

@@ -102,18 +102,45 @@ enum class DataType : std::uint8_t {
     // Primitives
     Void,
     Bool,
+    Int8,
+    Int16,
     Int32,
     Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
     Float,
     Double,
     
     // Strings
     String,
     StringView,
+    Char,
+    WChar,
+
+    // Pointers and References
+    Pointer,      ///< Pointer type (requires type_name)
+    Reference,    ///< Reference type (requires type_name)
+    
+    // Containers
+    Array,        ///< Fixed-size array (requires type_name)
+    Vector,       ///< Dynamic array (requires type_name)
+    Map,          ///< Key-value map (requires type_name)
+    Set,          ///< Unique set (requires type_name)
+    
+    // User-defined types
+    Struct,       ///< Struct type (requires type_name)
+    Class,        ///< Class type (requires type_name)
+    Enum,         ///< Enum type (requires type_name)
+    Template,     ///< Template type (requires type_name)
+    Object,       ///< Generic object
 
     // Special
-    Execution,  ///< Execution flow (special type)
-    Any,        ///< Any type (for generic nodes)
+    Execution,    ///< Execution flow (special type)
+    Any,          ///< Any type (for generic nodes)
+    Auto,         ///< Auto-deduced type
+    Unknown,      ///< Unknown type
 };
 
 /// @brief Programming language target

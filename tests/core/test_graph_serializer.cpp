@@ -8,6 +8,9 @@
 
 using namespace visprog::core;
 
+// Error codes matching those in GraphSerializer.cpp
+constexpr int kTestErrorInvalidEnum = 602;
+
 TEST_CASE("GraphSerializer: Round-trip with New Property System", "[graph][serialization]") {
     // 1. Create a graph and add a node with a modified property
     Graph original_graph("PropertyGraph");
@@ -28,11 +31,11 @@ TEST_CASE("GraphSerializer: Round-trip with New Property System", "[graph][seria
     // std::cout << json_doc.dump(2) << std::endl;
 
     // 3. Verify the serialized JSON structure
-    REQUIRE(json_doc["schema"]["version"] == "1.1.0");
-    REQUIRE(json_doc["nodes"][0]["type"] == NodeTypes::PrintString.name);
-    REQUIRE(json_doc["nodes"][0]["instanceName"] == "MyPrinter");
-    REQUIRE(json_doc["nodes"][0]["properties"]["value"] == "Custom Message");
-    REQUIRE(json_doc["nodes"][0]["properties"]["speed"] == 100);
+    REQUIRE(json_doc["schema"]["version"].get<std::string>() == "1.1.0");
+    REQUIRE(json_doc["nodes"][0]["type"].get<std::string>() == std::string(NodeTypes::PrintString.name));
+    REQUIRE(json_doc["nodes"][0]["instanceName"].get<std::string>() == "MyPrinter");
+    REQUIRE(json_doc["nodes"][0]["properties"]["value"].get<std::string>() == "Custom Message");
+    REQUIRE(json_doc["nodes"][0]["properties"]["speed"].get<int64_t>() == 100);
 
     // 4. Deserialize the JSON back into a new graph
     auto restored_result = GraphSerializer::from_json(json_doc);
@@ -72,7 +75,7 @@ TEST_CASE("GraphSerializer: Invalid or Unknown Node Type", "[graph][serializatio
 
     auto result = GraphSerializer::from_json(invalid_json);
     REQUIRE(!result.has_value());
-    REQUIRE(result.error().code == kErrorInvalidEnum);
+    REQUIRE(result.error().code == kTestErrorInvalidEnum);
 }
 
 TEST_CASE("GraphSerializer: Connect two nodes and serialize", "[graph][serialization]") {

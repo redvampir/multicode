@@ -32,6 +32,7 @@ import {
   BlueprintNode as BlueprintNodeType,
   BlueprintEdge,
   createNode,
+  createCallUserFunctionNode,
   BlueprintNodeType as NodeType,
   NodeTypeDefinition,
 } from '../shared/blueprintTypes';
@@ -45,6 +46,8 @@ import {
   createCanvasMenuItems, 
   createNodeMenuItems,
 } from './ContextMenu';
+import { FunctionListPanel } from './FunctionListPanel';
+import type { BlueprintFunction } from '../shared/blueprintTypes';
 
 // ============================================
 // Преобразование данных
@@ -201,6 +204,39 @@ const editorStyles = {
 };
 
 // ============================================
+// Helper: Получить узлы/рёбра активного графа
+// ============================================
+
+interface ActiveGraphData {
+  nodes: BlueprintNodeType[];
+  edges: BlueprintEdge[];
+  isFunction: boolean;
+  functionName?: string;
+}
+
+function getActiveGraphData(
+  graph: BlueprintGraphState,
+  activeFunctionId: string | null
+): ActiveGraphData {
+  if (activeFunctionId && graph.functions) {
+    const func = graph.functions.find(f => f.id === activeFunctionId);
+    if (func) {
+      return {
+        nodes: func.graph.nodes,
+        edges: func.graph.edges,
+        isFunction: true,
+        functionName: func.nameRu || func.name,
+      };
+    }
+  }
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges,
+    isFunction: false,
+  };
+}
+
+// ============================================
 // Node Palette Component
 // ============================================
 
@@ -209,10 +245,14 @@ interface NodePaletteProps {
   displayLanguage: 'ru' | 'en';
   onClose: () => void;
   onAddNode: (type: NodeType, position: XYPosition) => void;
+  /** Добавить узел вызова пользовательской функции */
+  onAddCallFunction?: (functionId: string, position: XYPosition) => void;
   /** Определения узлов из реестра пакетов */
   nodeDefinitions: Record<string, NodeTypeDefinition>;
   /** Категории из реестра пакетов */
   categories: { id: string; label: string; labelRu: string }[];
+  /** Пользовательские функции для отображения в палитре */
+  userFunctions?: BlueprintFunction[];
 }
 
 const NodePalette: React.FC<NodePaletteProps> = ({ 
@@ -220,8 +260,10 @@ const NodePalette: React.FC<NodePaletteProps> = ({
   displayLanguage, 
   onClose,
   onAddNode,
+  onAddCallFunction,
   nodeDefinitions,
   categories,
+  userFunctions = [],
 }) => {
   const [search, setSearch] = useState('');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -229,7 +271,9 @@ const NodePalette: React.FC<NodePaletteProps> = ({
   
   const filteredCategories = useMemo(() => {
     const term = search.toLowerCase();
-    return categories.map(cat => ({
+    
+    // Базовые категории из nodeDefinitions
+    const baseCats = categories.map(cat => ({
       ...cat,
       nodes: Object.values(nodeDefinitions)
         .filter(def => {
@@ -238,8 +282,21 @@ const NodePalette: React.FC<NodePaletteProps> = ({
           const label = displayLanguage === 'ru' ? def.labelRu : def.label;
           return label.toLowerCase().includes(term);
         }),
-    })).filter(cat => cat.nodes.length > 0);
-  }, [search, displayLanguage, nodeDefinitions, categories]);
+      userFunctions: [] as BlueprintFunction[],
+    }));
+    
+    // Добавляем пользовательские функции в категорию function
+    const functionCat = baseCats.find(c => c.id === 'function');
+    if (functionCat && userFunctions.length > 0) {
+      functionCat.userFunctions = userFunctions.filter(f => {
+        if (!term) return true;
+        const label = displayLanguage === 'ru' ? f.nameRu : f.name;
+        return label.toLowerCase().includes(term);
+      });
+    }
+    
+    return baseCats.filter(cat => cat.nodes.length > 0 || cat.userFunctions.length > 0);
+  }, [search, displayLanguage, nodeDefinitions, categories, userFunctions]);
   
   const handleDragStart = useCallback((e: React.DragEvent, type: NodeType) => {
     e.dataTransfer.setData('application/reactflow', type);
@@ -313,6 +370,51 @@ const NodePalette: React.FC<NodePaletteProps> = ({
                 <span>{displayLanguage === 'ru' ? def.labelRu : def.label}</span>
               </div>
             ))}
+            
+            {/* Пользовательские функции */}
+            {cat.userFunctions && cat.userFunctions.length > 0 && (
+              <>
+                <div style={{ 
+                  ...editorStyles.categoryHeader, 
+                  marginTop: 8,
+                  color: '#9C27B0',
+                  fontSize: 10 
+                }}>
+                  {displayLanguage === 'ru' ? 'Мои функции' : 'My Functions'}
+                </div>
+                {cat.userFunctions.map(func => (
+                  <div
+                    key={func.id}
+                    style={{
+                      ...editorStyles.nodeItem,
+                      ...(hoveredItem === `func-${func.id}` ? editorStyles.nodeItemHover : {}),
+                    }}
+                    onMouseEnter={() => setHoveredItem(`func-${func.id}`)}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    onClick={() => {
+                      if (onAddCallFunction) {
+                        const position = screenToFlowPosition({ 
+                          x: window.innerWidth / 2, 
+                          y: window.innerHeight / 2 
+                        });
+                        onAddCallFunction(func.id, position);
+                        onClose();
+                      }
+                    }}
+                  >
+                    <div
+                      style={{
+                        ...editorStyles.nodeColorDot,
+                        backgroundColor: '#9C27B0',
+                      }}
+                    />
+                    <span style={{ color: '#cba6f7' }}>
+                      ƒ {displayLanguage === 'ru' ? func.nameRu : func.name}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -348,16 +450,32 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     unloadPackage,
   } = usePackageRegistry();
   
+  // ============================================
+  // Состояние для функций (UE Blueprint-style)
+  // ============================================
+  
+  // ID активной редактируемой функции (null = основной EventGraph)
+  const [activeFunctionId, setActiveFunctionId] = useState<string | null>(
+    graph.activeFunctionId ?? null
+  );
+  
+  // Получить данные активного графа (основного или функции)
+  const activeGraphData = useMemo(() => 
+    getActiveGraphData(graph, activeFunctionId),
+    [graph, activeFunctionId]
+  );
+  
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    blueprintToFlowNodes(graph.nodes, displayLanguage)
+    blueprintToFlowNodes(activeGraphData.nodes, displayLanguage)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
-    blueprintToFlowEdges(graph.edges)
+    blueprintToFlowEdges(activeGraphData.edges)
   );
   
   const [paletteVisible, setPaletteVisible] = useState(false);
   const [codePreviewVisible, setCodePreviewVisible] = useState(false);
   const [packageManagerVisible, setPackageManagerVisible] = useState(false);
+  const [functionPanelVisible, setFunctionPanelVisible] = useState(true); // Панель функций видна по умолчанию
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     position: ContextMenuPosition;
@@ -447,6 +565,95 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   }, [applyLayout]);
   
   // ============================================
+  // Синхронизация с внешним состоянием
+  // ============================================
+  
+  // Функция для уведомления родителя об изменениях
+  // Вызывается ЯВНО из обработчиков действий, НЕ из useEffect (чтобы избежать циклов)
+  const notifyGraphChange = useCallback((newNodes: BlueprintFlowNode[], newEdges: Edge[]) => {
+    const blueprintNodes = newNodes.map(n => ({
+      ...n.data.node,
+      position: n.position,
+    }));
+    const blueprintEdges = newEdges.map(e => ({
+      id: e.id,
+      sourceNode: e.source,
+      sourcePort: e.sourceHandle ?? '',
+      targetNode: e.target,
+      targetPort: e.targetHandle ?? '',
+      kind: e.animated ? 'data' as const : 'execution' as const,
+      dataType: e.animated ? 'any' as const : 'execution' as const,
+    }));
+    
+    let updatedGraph: BlueprintGraphState;
+    
+    if (activeFunctionId && graph.functions) {
+      // Обновляем граф внутри функции
+      const updatedFunctions = graph.functions.map(f => {
+        if (f.id === activeFunctionId) {
+          return {
+            ...f,
+            graph: { nodes: blueprintNodes, edges: blueprintEdges },
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return f;
+      });
+      updatedGraph = {
+        ...graph,
+        functions: updatedFunctions,
+        activeFunctionId,
+        updatedAt: new Date().toISOString(),
+        dirty: true,
+      };
+    } else {
+      // Обновляем основной граф
+      updatedGraph = {
+        ...graph,
+        nodes: blueprintNodes,
+        edges: blueprintEdges,
+        activeFunctionId: null,
+        updatedAt: new Date().toISOString(),
+        dirty: true,
+      };
+    }
+    
+    onGraphChange(updatedGraph);
+  }, [graph, activeFunctionId, onGraphChange]);
+  
+  // ============================================
+  // Обработчики для функций
+  // ============================================
+  
+  // Обновление списка функций
+  const handleFunctionsChange = useCallback((functions: BlueprintFunction[]) => {
+    const updatedGraph: BlueprintGraphState = {
+      ...graph,
+      functions,
+      updatedAt: new Date().toISOString(),
+      dirty: true,
+    };
+    onGraphChange(updatedGraph);
+  }, [graph, onGraphChange]);
+  
+  // Переключение на другую функцию или EventGraph
+  const handleSelectFunction = useCallback((functionId: string | null) => {
+    setActiveFunctionId(functionId);
+    
+    // Загружаем узлы/рёбра выбранного графа
+    const graphData = getActiveGraphData(graph, functionId);
+    setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+    setEdges(blueprintToFlowEdges(graphData.edges));
+    
+    // Обновляем активную функцию в состоянии графа
+    const updatedGraph: BlueprintGraphState = {
+      ...graph,
+      activeFunctionId: functionId,
+    };
+    onGraphChange(updatedGraph);
+  }, [graph, displayLanguage, setNodes, setEdges, onGraphChange]);
+  
+  // ============================================
   // Copy/Paste система
   // ============================================
   
@@ -478,13 +685,17 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     handleCopy();
     
     // Затем удаляем
-    setNodes(nds => nds.filter(n => !n.selected));
-    setEdges(eds => eds.filter(e => {
+    const newNodes = nodes.filter(n => !n.selected);
+    const newEdges = edges.filter(e => {
       const sourceSelected = nodes.find(n => n.id === e.source)?.selected;
       const targetSelected = nodes.find(n => n.id === e.target)?.selected;
       return !sourceSelected && !targetSelected;
-    }));
-  }, [nodes, handleCopy, setNodes, setEdges]);
+    });
+    
+    setNodes(newNodes);
+    setEdges(newEdges);
+    setTimeout(() => notifyGraphChange(newNodes, newEdges), 0);
+  }, [nodes, edges, handleCopy, setNodes, setEdges, notifyGraphChange]);
   
   const handlePaste = useCallback(() => {
     const result = clipboard.paste();
@@ -525,84 +736,40 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
     
     // Снимаем выделение с текущих узлов и добавляем новые
-    setNodes(nds => [
-      ...nds.map(n => ({ ...n, selected: false })),
+    const allNewNodes = [
+      ...nodes.map(n => ({ ...n, selected: false })),
       ...newFlowNodes,
-    ]);
-    setEdges(eds => [...eds, ...newFlowEdges]);
-  }, [clipboard, displayLanguage, handleLabelChange, setNodes, setEdges]);
+    ];
+    const allNewEdges = [...edges, ...newFlowEdges];
+    
+    setNodes(allNewNodes);
+    setEdges(allNewEdges);
+    setTimeout(() => notifyGraphChange(allNewNodes, allNewEdges), 0);
+  }, [clipboard, displayLanguage, handleLabelChange, setNodes, setEdges, nodes, edges, notifyGraphChange]);
   
-  // ============================================
-  // Синхронизация с внешним состоянием
-  // ============================================
-  
-  // Sync graph state when external graph changes
-  // Flag to prevent sync loops (external update vs internal update)
-  const isExternalUpdate = useRef(false);
-  const prevGraphRef = useRef<string>(graph.id);
-  
-  // Sync external graph changes to internal state
-  useEffect(() => {
-    // Only sync if graph ID changed or this is truly an external update
-    const graphChanged = prevGraphRef.current !== graph.id;
-    if (graphChanged) {
-      console.log('[BlueprintEditor] External graph update detected, syncing...');
-      isExternalUpdate.current = true;
-      prevGraphRef.current = graph.id;
-      setNodes(blueprintToFlowNodes(graph.nodes, displayLanguage));
-      setEdges(blueprintToFlowEdges(graph.edges));
-      // Reset flag after React processes the state update
-      requestAnimationFrame(() => {
-        isExternalUpdate.current = false;
-      });
-    }
-  }, [graph.id, displayLanguage, setNodes, setEdges, graph.nodes, graph.edges]);
-  
-  // Sync changes back to parent (only for internal changes, not external)
-  const prevNodesRef = useRef(nodes);
-  const prevEdgesRef = useRef(edges);
+  // Sync FROM parent ONLY when graph.id changes (new graph loaded) OR activeFunctionId changes
+  const initializedGraphId = useRef(graph.id);
+  const initializedFunctionId = useRef(activeFunctionId);
   
   useEffect(() => {
-    // Skip if this is an external update to prevent loops
-    if (isExternalUpdate.current) {
-      console.log('[BlueprintEditor] Skipping onGraphChange (external update)');
-      prevNodesRef.current = nodes;
-      prevEdgesRef.current = edges;
-      return;
+    const graphIdChanged = initializedGraphId.current !== graph.id;
+    const functionIdChanged = initializedFunctionId.current !== activeFunctionId;
+    
+    if (graphIdChanged) {
+      console.log('[BlueprintEditor] New graph loaded, syncing from parent');
+      initializedGraphId.current = graph.id;
+      initializedFunctionId.current = activeFunctionId;
+      const graphData = getActiveGraphData(graph, activeFunctionId);
+      setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+      setEdges(blueprintToFlowEdges(graphData.edges));
+    } else if (functionIdChanged) {
+      console.log('[BlueprintEditor] Function changed, syncing from parent');
+      initializedFunctionId.current = activeFunctionId;
+      const graphData = getActiveGraphData(graph, activeFunctionId);
+      setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+      setEdges(blueprintToFlowEdges(graphData.edges));
     }
-    
-    // Check if there are actual changes
-    const nodesChanged = nodes !== prevNodesRef.current;
-    const edgesChanged = edges !== prevEdgesRef.current;
-    
-    if (!nodesChanged && !edgesChanged) {
-      return;
-    }
-    
-    console.log('[BlueprintEditor] Internal change detected, calling onGraphChange');
-    prevNodesRef.current = nodes;
-    prevEdgesRef.current = edges;
-    
-    const updatedGraph: BlueprintGraphState = {
-      ...graph,
-      nodes: nodes.map(n => ({
-        ...n.data.node,
-        position: n.position,
-      })),
-      edges: edges.map(e => ({
-        id: e.id,
-        sourceNode: e.source,
-        sourcePort: e.sourceHandle ?? '',
-        targetNode: e.target,
-        targetPort: e.targetHandle ?? '',
-        kind: e.animated ? 'data' as const : 'execution' as const,
-        dataType: e.animated ? 'any' as const : 'execution' as const,
-      })),
-      updatedAt: new Date().toISOString(),
-      dirty: true,
-    };
-    onGraphChange(updatedGraph);
-  }, [nodes, edges, graph, onGraphChange]);
+  }, [graph, activeFunctionId, displayLanguage, setNodes, setEdges]);
   
   // ============================================
   // Обработчики событий
@@ -655,18 +822,47 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       },
     };
     
-    setEdges(eds => addEdge(newEdge, eds));
-  }, [nodes, setEdges]);
+    setEdges(eds => {
+      const newEdges = addEdge(newEdge, eds);
+      setTimeout(() => notifyGraphChange(nodes, newEdges), 0);
+      return newEdges;
+    });
+  }, [nodes, setEdges, notifyGraphChange]);
   
   // Handle node changes (position, selection)
+  // Track if we need to notify parent (e.g., after drag end)
   const handleNodesChange: OnNodesChange<BlueprintFlowNode> = useCallback((changes) => {
     onNodesChange(changes);
-  }, [onNodesChange]);
+    
+    // Check if any node position changed (drag end)
+    const positionChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
+    if (positionChanges.length > 0) {
+      // Defer notification to avoid setState during render
+      setTimeout(() => {
+        // Get updated nodes after React processes the change
+        setNodes(currentNodes => {
+          notifyGraphChange(currentNodes, edges);
+          return currentNodes;
+        });
+      }, 0);
+    }
+  }, [onNodesChange, setNodes, edges, notifyGraphChange]);
   
   // Handle edge changes (deletion)
   const handleEdgesChange: OnEdgesChange<BlueprintFlowEdge> = useCallback((changes) => {
     onEdgesChange(changes);
-  }, [onEdgesChange]);
+    
+    // Check if any edge was removed
+    const removeChanges = changes.filter(c => c.type === 'remove');
+    if (removeChanges.length > 0) {
+      setTimeout(() => {
+        setEdges(currentEdges => {
+          notifyGraphChange(nodes, currentEdges);
+          return currentEdges;
+        });
+      }, 0);
+    }
+  }, [onEdgesChange, setEdges, nodes, notifyGraphChange]);
   
   // Handle drag & drop from palette
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -690,8 +886,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
     };
     
-    setNodes(nds => [...nds, flowNode]);
-  }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange]);
+    setNodes(nds => {
+      const newNodes = [...nds, flowNode];
+      // Notify parent about change (defer to avoid setState during render)
+      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      return newNodes;
+    });
+  }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
   
   // Add node from palette click
   const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
@@ -702,18 +903,47 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       position: newNode.position,
       data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
     };
-    setNodes(nds => [...nds, flowNode]);
-  }, [displayLanguage, setNodes, handleLabelChange]);
+    setNodes(nds => {
+      const newNodes = [...nds, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      return newNodes;
+    });
+  }, [displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
+  
+  // Add CallUserFunction node from palette
+  const handleAddCallFunction = useCallback((functionId: string, position: XYPosition) => {
+    const func = graph.functions?.find(f => f.id === functionId);
+    if (!func) return;
+    
+    // Используем функцию из blueprintTypes для создания узла вызова
+    const newNode = createCallUserFunctionNode(func, position);
+    
+    const flowNode: BlueprintFlowNode = {
+      id: newNode.id,
+      type: 'blueprint',
+      position: newNode.position,
+      data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
+    };
+    setNodes(nds => {
+      const newNodes = [...nds, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      return newNodes;
+    });
+  }, [graph.functions, displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
   
   // Delete selected nodes
   const handleDeleteSelected = useCallback(() => {
     const selectedNodeIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
     
-    setNodes(nds => nds.filter(n => !n.selected));
-    setEdges(eds => eds.filter(e => 
+    const newNodes = nodes.filter(n => !n.selected);
+    const newEdges = edges.filter(e => 
       !e.selected && !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target)
-    ));
-  }, [nodes, setNodes, setEdges]);
+    );
+    
+    setNodes(newNodes);
+    setEdges(newEdges);
+    setTimeout(() => notifyGraphChange(newNodes, newEdges), 0);
+  }, [nodes, edges, setNodes, setEdges, notifyGraphChange]);
   
   // Zoom to fit
   const handleZoomToFit = useCallback(() => {
@@ -933,15 +1163,59 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     add: displayLanguage === 'ru' ? 'Добавить (A)' : 'Add (A)',
     code: displayLanguage === 'ru' ? 'Код (C)' : 'Code (C)',
     packages: displayLanguage === 'ru' ? 'Пакеты (P)' : 'Packages (P)',
+    functions: displayLanguage === 'ru' ? 'Функции' : 'Functions',
     undo: displayLanguage === 'ru' ? 'Отменить' : 'Undo',
     redo: displayLanguage === 'ru' ? 'Повторить' : 'Redo',
     fit: displayLanguage === 'ru' ? 'Вписать (F)' : 'Fit (F)',
     layout: displayLanguage === 'ru' ? 'Автолейаут (L)' : 'Layout (L)',
+    eventGraph: 'EventGraph',
   }), [displayLanguage]);
+  
+  // Заголовок текущего графа
+  const currentGraphTitle = useMemo(() => {
+    if (activeFunctionId && graph.functions) {
+      const func = graph.functions.find(f => f.id === activeFunctionId);
+      if (func) {
+        return displayLanguage === 'ru' ? func.nameRu : func.name;
+      }
+    }
+    return t.eventGraph;
+  }, [activeFunctionId, graph.functions, displayLanguage, t.eventGraph]);
   
   return (
     <div ref={reactFlowWrapper} style={editorStyles.container}>
+      {/* Панель функций слева */}
+      {functionPanelVisible && (
+        <FunctionListPanel
+          graphState={graph}
+          onFunctionsChange={handleFunctionsChange}
+          onSelectFunction={handleSelectFunction}
+          activeFunctionId={activeFunctionId}
+          displayLanguage={displayLanguage}
+        />
+      )}
+      
       <div style={editorStyles.graphContainer}>
+        {/* Табы: показывать текущий граф */}
+        <div className="graph-tabs">
+          <button
+            className={`graph-tab ${activeFunctionId === null ? 'active' : ''}`}
+            onClick={() => handleSelectFunction(null)}
+          >
+            <span className="graph-tab-icon">📊</span>
+            {t.eventGraph}
+          </button>
+          {activeFunctionId && (
+            <button
+              className="graph-tab active"
+              onClick={() => {}}
+            >
+              <span className="graph-tab-icon">ƒ</span>
+              {currentGraphTitle}
+            </button>
+          )}
+        </div>
+        
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1051,6 +1325,27 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 <span>{t.packages}</span>
               </button>
               
+              {/* Функции */}
+              <button
+                onClick={() => setFunctionPanelVisible(v => !v)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: functionPanelVisible ? '#9C27B0' : '#45475a',
+                  color: functionPanelVisible ? '#ffffff' : '#cdd6f4',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>ƒ</span>
+                <span>{t.functions}</span>
+              </button>
+              
               {/* Разделитель */}
               <div style={{ width: 1, backgroundColor: '#45475a', margin: '0 4px' }} />
               
@@ -1139,8 +1434,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             displayLanguage={displayLanguage}
             onClose={() => setPaletteVisible(false)}
             onAddNode={handleAddNode}
+            onAddCallFunction={handleAddCallFunction}
             nodeDefinitions={packageNodeDefinitions}
             categories={packageCategories}
+            userFunctions={graph.functions ?? []}
           />
         </ReactFlow>
       </div>

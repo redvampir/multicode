@@ -29,6 +29,9 @@ export type BlueprintNodeType =
   // Functions
   | 'Function'
   | 'FunctionCall'
+  | 'FunctionEntry'  // Точка входа в пользовательскую функцию
+  | 'FunctionReturn' // Возврат из пользовательской функции
+  | 'CallUserFunction' // Вызов пользовательской функции
   | 'Event'
   // Variables
   | 'Variable'
@@ -125,6 +128,55 @@ export interface BlueprintGraphState {
     y: number;
     zoom: number;
   };
+  /** Пользовательские функции (как в UE Blueprints) */
+  functions?: BlueprintFunction[];
+  /** ID текущей редактируемой функции (null = основной граф EventGraph) */
+  activeFunctionId?: string | null;
+}
+
+// ============================================
+// Типы для пользовательских функций (UE Blueprint-style)
+// ============================================
+
+/** Направление параметра функции */
+export type FunctionParameterDirection = 'input' | 'output';
+
+/** Параметр пользовательской функции */
+export interface FunctionParameter {
+  id: string;
+  name: string;
+  nameRu: string;
+  dataType: PortDataType;
+  direction: FunctionParameterDirection;
+  defaultValue?: string | number | boolean;
+  description?: string;
+}
+
+/** Пользовательская функция (граф с параметрами) */
+export interface BlueprintFunction {
+  /** Уникальный ID функции */
+  id: string;
+  /** Имя функции (для кодогенерации) */
+  name: string;
+  /** Отображаемое имя (RU) */
+  nameRu: string;
+  /** Описание функции */
+  description?: string;
+  /** Параметры функции (входные и выходные) */
+  parameters: FunctionParameter[];
+  /** Граф функции (узлы и связи) */
+  graph: {
+    nodes: BlueprintNode[];
+    edges: BlueprintEdge[];
+  };
+  /** Является ли функция чистой (без побочных эффектов) */
+  isPure?: boolean;
+  /** Цвет категории (для визуального различия) */
+  categoryColor?: string;
+  /** Дата создания */
+  createdAt: string;
+  /** Дата обновления */
+  updatedAt: string;
 }
 
 /** Определение типа узла (шаблон для создания) */
@@ -442,6 +494,56 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     inputs: [],
     outputs: [
       { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  
+  // === User-Defined Functions (UE Blueprint-style) ===
+  FunctionEntry: {
+    type: 'FunctionEntry',
+    label: 'Function Entry',
+    labelRu: 'Вход в функцию',
+    category: 'function',
+    description: 'Entry point of a user-defined function',
+    descriptionRu: 'Точка входа в пользовательскую функцию',
+    headerColor: '#9C27B0', // Фиолетовый — для функций
+    dynamicPorts: true, // Порты генерируются из параметров функции
+    inputs: [],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' }
+      // Дополнительные выходы создаются динамически из параметров функции (inputs)
+    ],
+  },
+  FunctionReturn: {
+    type: 'FunctionReturn',
+    label: 'Return Node',
+    labelRu: 'Возврат из функции',
+    category: 'function',
+    description: 'Return point of a user-defined function',
+    descriptionRu: 'Точка возврата из пользовательской функции',
+    headerColor: '#9C27B0',
+    dynamicPorts: true, // Порты генерируются из параметров функции
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
+      // Дополнительные входы создаются динамически из return-параметров функции
+    ],
+    outputs: [],
+  },
+  CallUserFunction: {
+    type: 'CallUserFunction',
+    label: 'Call Function',
+    labelRu: 'Вызов функции',
+    category: 'function',
+    description: 'Call a user-defined function',
+    descriptionRu: 'Вызов пользовательской функции',
+    headerColor: '#9C27B0',
+    dynamicPorts: true, // Порты генерируются из сигнатуры функции
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
+      // Дополнительные входы = input-параметры функции
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' }
+      // Дополнительные выходы = output-параметры функции
     ],
   },
   
@@ -870,7 +972,7 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
 
 function mapBlueprintNodeTypeToOld(type: BlueprintNodeType): GraphNode['type'] {
   // Маппинг расширенных типов на базовые
-  const functionTypes: BlueprintNodeType[] = ['Function', 'FunctionCall', 'Event'];
+  const functionTypes: BlueprintNodeType[] = ['Function', 'FunctionCall', 'Event', 'FunctionEntry', 'FunctionReturn', 'CallUserFunction'];
   const variableTypes: BlueprintNodeType[] = ['Variable', 'GetVariable', 'SetVariable'];
   
   if (type === 'Start') return 'Start';
@@ -878,4 +980,342 @@ function mapBlueprintNodeTypeToOld(type: BlueprintNodeType): GraphNode['type'] {
   if (functionTypes.includes(type)) return 'Function';
   if (variableTypes.includes(type)) return 'Variable';
   return 'Custom';
+}
+
+// ============================================
+// Утилиты для работы с пользовательскими функциями
+// ============================================
+
+/** Генерировать уникальный ID */
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/** Создать пустую пользовательскую функцию */
+export function createUserFunction(
+  name: string,
+  nameRu: string,
+  description?: string
+): BlueprintFunction {
+  const funcId = generateId('func');
+  const entryNodeId = `${funcId}-entry`;
+  const returnNodeId = `${funcId}-return`;
+  
+  // Создаём узел FunctionEntry
+  const entryNode: BlueprintNode = {
+    id: entryNodeId,
+    label: `${name}`,
+    type: 'FunctionEntry',
+    position: { x: 100, y: 200 },
+    inputs: [],
+    outputs: [
+      {
+        id: `${entryNodeId}-exec-out`,
+        name: '',
+        dataType: 'execution',
+        direction: 'output',
+        index: 0,
+        connected: false,
+      }
+    ],
+    properties: {
+      functionId: funcId,
+    },
+  };
+  
+  // Создаём узел FunctionReturn
+  const returnNode: BlueprintNode = {
+    id: returnNodeId,
+    label: 'Return',
+    type: 'FunctionReturn',
+    position: { x: 500, y: 200 },
+    inputs: [
+      {
+        id: `${returnNodeId}-exec-in`,
+        name: '',
+        dataType: 'execution',
+        direction: 'input',
+        index: 0,
+        connected: false,
+      }
+    ],
+    outputs: [],
+    properties: {
+      functionId: funcId,
+    },
+  };
+  
+  const now = new Date().toISOString();
+  
+  return {
+    id: funcId,
+    name,
+    nameRu,
+    description,
+    parameters: [],
+    graph: {
+      nodes: [entryNode, returnNode],
+      edges: [
+        createEdge(entryNodeId, `${entryNodeId}-exec-out`, returnNodeId, `${returnNodeId}-exec-in`),
+      ],
+    },
+    isPure: false,
+    categoryColor: '#9C27B0',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Добавить входной параметр к функции */
+export function addFunctionInputParameter(
+  func: BlueprintFunction,
+  name: string,
+  nameRu: string,
+  dataType: PortDataType,
+  defaultValue?: string | number | boolean
+): BlueprintFunction {
+  const paramId = generateId('param');
+  const newParam: FunctionParameter = {
+    id: paramId,
+    name,
+    nameRu,
+    dataType,
+    direction: 'input',
+    defaultValue,
+  };
+  
+  // Добавляем параметр
+  const newParameters = [...func.parameters, newParam];
+  
+  // Находим узел FunctionEntry и добавляем выходной порт
+  const entryNode = func.graph.nodes.find(n => n.type === 'FunctionEntry');
+  if (entryNode) {
+    const portIndex = entryNode.outputs.length;
+    entryNode.outputs.push({
+      id: `${entryNode.id}-${paramId}`,
+      name: nameRu || name,
+      dataType,
+      direction: 'output',
+      index: portIndex,
+      connected: false,
+    });
+  }
+  
+  return {
+    ...func,
+    parameters: newParameters,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Добавить выходной параметр к функции */
+export function addFunctionOutputParameter(
+  func: BlueprintFunction,
+  name: string,
+  nameRu: string,
+  dataType: PortDataType
+): BlueprintFunction {
+  const paramId = generateId('param');
+  const newParam: FunctionParameter = {
+    id: paramId,
+    name,
+    nameRu,
+    dataType,
+    direction: 'output',
+  };
+  
+  // Добавляем параметр
+  const newParameters = [...func.parameters, newParam];
+  
+  // Находим узел FunctionReturn и добавляем входной порт
+  const returnNode = func.graph.nodes.find(n => n.type === 'FunctionReturn');
+  if (returnNode) {
+    const portIndex = returnNode.inputs.length;
+    returnNode.inputs.push({
+      id: `${returnNode.id}-${paramId}`,
+      name: nameRu || name,
+      dataType,
+      direction: 'input',
+      index: portIndex,
+      connected: false,
+    });
+  }
+  
+  return {
+    ...func,
+    parameters: newParameters,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Удалить параметр из функции */
+export function removeFunctionParameter(
+  func: BlueprintFunction,
+  paramId: string
+): BlueprintFunction {
+  const param = func.parameters.find(p => p.id === paramId);
+  if (!param) return func;
+  
+  const newParameters = func.parameters.filter(p => p.id !== paramId);
+  
+  // Удаляем соответствующий порт из узла
+  const nodeType = param.direction === 'input' ? 'FunctionEntry' : 'FunctionReturn';
+  const targetNode = func.graph.nodes.find(n => n.type === nodeType);
+  
+  if (targetNode) {
+    if (param.direction === 'input') {
+      targetNode.outputs = targetNode.outputs.filter(p => !p.id.includes(paramId));
+      // Пересчитываем индексы
+      targetNode.outputs.forEach((p, i) => { p.index = i; });
+    } else {
+      targetNode.inputs = targetNode.inputs.filter(p => !p.id.includes(paramId));
+      targetNode.inputs.forEach((p, i) => { p.index = i; });
+    }
+    
+    // Удаляем связи, которые использовали этот порт
+    const updatedEdges = func.graph.edges.filter(e => {
+      const portId = `${targetNode.id}-${paramId}`;
+      return e.sourcePort !== portId && e.targetPort !== portId;
+    });
+    func.graph.edges = updatedEdges;
+  }
+  
+  return {
+    ...func,
+    parameters: newParameters,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Создать узел вызова пользовательской функции */
+export function createCallUserFunctionNode(
+  func: BlueprintFunction,
+  position: { x: number; y: number }
+): BlueprintNode {
+  const nodeId = generateId('call');
+  
+  // Собираем входные порты (exec + input params)
+  const inputs: NodePort[] = [
+    {
+      id: `${nodeId}-exec-in`,
+      name: '',
+      dataType: 'execution',
+      direction: 'input',
+      index: 0,
+      connected: false,
+    },
+    ...func.parameters
+      .filter(p => p.direction === 'input')
+      .map((p, i) => ({
+        id: `${nodeId}-${p.id}`,
+        name: p.nameRu || p.name,
+        dataType: p.dataType,
+        direction: 'input' as const,
+        index: i + 1,
+        connected: false,
+        defaultValue: p.defaultValue,
+      })),
+  ];
+  
+  // Собираем выходные порты (exec + output params)
+  const outputs: NodePort[] = [
+    {
+      id: `${nodeId}-exec-out`,
+      name: '',
+      dataType: 'execution',
+      direction: 'output',
+      index: 0,
+      connected: false,
+    },
+    ...func.parameters
+      .filter(p => p.direction === 'output')
+      .map((p, i) => ({
+        id: `${nodeId}-${p.id}`,
+        name: p.nameRu || p.name,
+        dataType: p.dataType,
+        direction: 'output' as const,
+        index: i + 1,
+        connected: false,
+      })),
+  ];
+  
+  return {
+    id: nodeId,
+    label: func.nameRu || func.name,
+    type: 'CallUserFunction',
+    position,
+    inputs,
+    outputs,
+    properties: {
+      functionId: func.id,
+      functionName: func.name,
+    },
+  };
+}
+
+/** Обновить все узлы вызова функции при изменении её сигнатуры */
+export function updateCallNodesForFunction(
+  graphState: BlueprintGraphState,
+  func: BlueprintFunction
+): BlueprintGraphState {
+  const updatedNodes = graphState.nodes.map(node => {
+    if (node.type === 'CallUserFunction' && node.properties?.functionId === func.id) {
+      // Пересоздаём узел с обновлённой сигнатурой
+      const newNode = createCallUserFunctionNode(func, node.position);
+      newNode.id = node.id; // Сохраняем тот же ID
+      // Сохраняем подключения где возможно
+      newNode.inputs.forEach(newPort => {
+        const oldPort = node.inputs.find(p => p.name === newPort.name);
+        if (oldPort) {
+          newPort.connected = oldPort.connected;
+          newPort.value = oldPort.value;
+        }
+      });
+      newNode.outputs.forEach(newPort => {
+        const oldPort = node.outputs.find(p => p.name === newPort.name);
+        if (oldPort) {
+          newPort.connected = oldPort.connected;
+        }
+      });
+      return newNode;
+    }
+    return node;
+  });
+  
+  return {
+    ...graphState,
+    nodes: updatedNodes,
+  };
+}
+
+/** Получить функцию по ID */
+export function getFunctionById(
+  graphState: BlueprintGraphState,
+  functionId: string
+): BlueprintFunction | undefined {
+  return graphState.functions?.find(f => f.id === functionId);
+}
+
+/** Получить текущий редактируемый граф (основной или функция) */
+export function getActiveGraph(
+  graphState: BlueprintGraphState
+): { nodes: BlueprintNode[]; edges: BlueprintEdge[] } {
+  if (graphState.activeFunctionId) {
+    const func = getFunctionById(graphState, graphState.activeFunctionId);
+    if (func) {
+      return func.graph;
+    }
+  }
+  return { nodes: graphState.nodes, edges: graphState.edges };
+}
+
+/** Установить активный граф (основной или функция) */
+export function setActiveGraph(
+  graphState: BlueprintGraphState,
+  functionId: string | null
+): BlueprintGraphState {
+  return {
+    ...graphState,
+    activeFunctionId: functionId,
+  };
 }

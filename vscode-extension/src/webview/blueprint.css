@@ -236,3 +236,398 @@
   color: #cdd6f4;
   margin: 0 2px;
 }
+
+/* ============================================ */
+/* FunctionListPanel - Панель функций (UE-style) */
+/* ============================================ */
+
+.function-list-panel {
+  background-color: #1e1e2e;
+  border-right: 1px solid #313244;
+  width: 260px;
+  min-width: 200px;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.function-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #313244;
+  background-color: #181825;
+}
+
+.function-list-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+.btn-add-function {
+  background-color: #9C27B0;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.15s;
+}
+
+.btn-add-function:hover {
+  background-color: #AB47BC;
+}
+
+.function-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.function-item-container {
+  margin-bottom: 2px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.function-item-container.active {
+  background-color: rgba(156, 39, 176, 0.1);
+}
+
+.function-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s;
+  gap: 8px;
+}
+
+.function-item:hover {
+  background-color: #313244;
+}
+
+.function-item.active {
+  background-color: #45475a;
+  border-left: 3px solid #9C27B0;
+  padding-left: 9px;
+}
+
+.function-expand {
+  width: 16px;
+  font-size: 10px;
+  color: #6c7086;
+  cursor: pointer;
+  user-select: none;
+}
+
+.function-expand:hover {
+  color: #cdd6f4;
+}
+
+.function-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.function-name {
+  flex: 1;
+  font-size: 13px;
+  color: #cdd6f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.function-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.function-item:hover .function-actions {
+  opacity: 1;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  transition: background-color 0.1s;
+}
+
+.btn-icon:hover {
+  background-color: #45475a;
+}
+
+.btn-icon.btn-danger:hover {
+  background-color: rgba(243, 139, 168, 0.2);
+}
+
+/* Параметры функции */
+.function-params {
+  padding: 4px 8px 8px 32px;
+  font-size: 12px;
+}
+
+.params-section {
+  margin-bottom: 8px;
+}
+
+.params-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #6c7086;
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  padding: 4px 0;
+}
+
+.btn-add-param {
+  background: transparent;
+  border: 1px solid #45475a;
+  color: #6c7086;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-add-param:hover {
+  background-color: #45475a;
+  color: #cdd6f4;
+}
+
+.param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background-color: #181825;
+  margin-bottom: 2px;
+}
+
+.param-type {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: #313244;
+  color: #a6adc8;
+  font-family: monospace;
+}
+
+.param-type[data-type="int32"],
+.param-type[data-type="int64"] {
+  color: #89dceb;
+}
+
+.param-type[data-type="float"],
+.param-type[data-type="double"] {
+  color: #a6e3a1;
+}
+
+.param-type[data-type="bool"] {
+  color: #f38ba8;
+}
+
+.param-type[data-type="string"] {
+  color: #f9e2af;
+}
+
+.param-type[data-type="vector"] {
+  color: #fab387;
+}
+
+.param-type[data-type="object"] {
+  color: #cba6f7;
+}
+
+.param-name {
+  flex: 1;
+  color: #bac2de;
+}
+
+.btn-icon.small {
+  padding: 2px;
+  font-size: 10px;
+}
+
+.no-params {
+  color: #585b70;
+  font-style: italic;
+  padding: 4px 6px;
+}
+
+.no-functions {
+  color: #6c7086;
+  text-align: center;
+  padding: 20px;
+  font-size: 12px;
+}
+
+/* ============================================ */
+/* Диалоги */
+/* ============================================ */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background-color: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dialog h4 {
+  margin: 0 0 16px 0;
+  color: #cdd6f4;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dialog-field {
+  margin-bottom: 14px;
+}
+
+.dialog-field label {
+  display: block;
+  color: #a6adc8;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.dialog-field input,
+.dialog-field select,
+.dialog-field textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #11111b;
+  border: 1px solid #313244;
+  border-radius: 4px;
+  color: #cdd6f4;
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.dialog-field input:focus,
+.dialog-field select:focus,
+.dialog-field textarea:focus {
+  outline: none;
+  border-color: #9C27B0;
+}
+
+.dialog-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.btn-cancel,
+.btn-save {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.15s;
+}
+
+.btn-cancel {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.btn-cancel:hover {
+  background-color: #45475a;
+}
+
+.btn-save {
+  background-color: #9C27B0;
+  color: white;
+}
+
+.btn-save:hover {
+  background-color: #AB47BC;
+}
+
+.btn-save:disabled {
+  background-color: #585b70;
+  cursor: not-allowed;
+}
+
+/* ============================================ */
+/* Табы графов (EventGraph / Functions) */
+/* ============================================ */
+
+.graph-tabs {
+  display: flex;
+  background-color: #181825;
+  border-bottom: 1px solid #313244;
+  overflow-x: auto;
+}
+
+.graph-tab {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #6c7086;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.graph-tab:hover {
+  color: #cdd6f4;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.graph-tab.active {
+  color: #cdd6f4;
+  border-bottom-color: #9C27B0;
+}
+
+.graph-tab-icon {
+  margin-right: 6px;
+}

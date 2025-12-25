@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import {
   GraphState,
   GraphLanguage,
@@ -10,7 +10,8 @@ import {
 } from '../shared/graphState';
 import { serializeGraphState, deserializeGraphState, parseSerializedGraph } from '../shared/serializer';
 import { validateGraphState, type ValidationResult } from '../shared/validator';
-import { generateCodeFromGraph } from '../shared/codegen';
+import { migrateToBlueprintFormat } from '../shared/blueprintTypes';
+import { CppCodeGenerator } from '../codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import {
   extensionToWebviewMessageSchema,
@@ -349,10 +350,40 @@ export class GraphPanel {
   }
 
   public async handleGenerateCode(): Promise<void> {
-    const code = generateCodeFromGraph(this.graphState);
-    this.outputChannel.appendLine(code);
-    this.outputChannel.show(true);
-    this.postToast('success', this.translate('toasts.generated'));
+    const generator = new CppCodeGenerator();
+    const blueprintState = migrateToBlueprintFormat(this.graphState);
+    const result = generator.generate(blueprintState);
+    
+    if (result.success) {
+      this.outputChannel.appendLine('');
+      this.outputChannel.appendLine('═'.repeat(60));
+      this.outputChannel.appendLine(result.code);
+      this.outputChannel.appendLine('═'.repeat(60));
+      this.outputChannel.appendLine(`// Узлов обработано: ${result.stats.nodesProcessed}`);
+      this.outputChannel.appendLine(`// Строк кода: ${result.stats.linesOfCode}`);
+      this.outputChannel.appendLine(`// Время генерации: ${result.stats.generationTimeMs.toFixed(2)} мс`);
+      
+      if (result.warnings.length > 0) {
+        this.outputChannel.appendLine('');
+        this.outputChannel.appendLine('// Предупреждения:');
+        for (const warning of result.warnings) {
+          this.outputChannel.appendLine(`//   - ${warning.message}`);
+        }
+      }
+      
+      this.outputChannel.show(true);
+      this.postToast('success', this.translate('toasts.generated'));
+    } else {
+      this.outputChannel.appendLine('');
+      this.outputChannel.appendLine('═'.repeat(60));
+      this.outputChannel.appendLine('// ОШИБКИ ГЕНЕРАЦИИ:');
+      for (const error of result.errors) {
+        this.outputChannel.appendLine(`//   ✗ ${error.message}`);
+      }
+      this.outputChannel.appendLine('═'.repeat(60));
+      this.outputChannel.show(true);
+      this.postToast('error', `Ошибки генерации: ${result.errors.length}`);
+    }
   }
 
   public async handleValidateGraph(): Promise<void> {

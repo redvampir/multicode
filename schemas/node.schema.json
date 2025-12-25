@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://multicode.dev/schemas/node.schema.json",
+  "title": "MultiCode Node Definition",
+  "description": "Схема определения узла для пакетов MultiCode",
+  "type": "object",
+  "required": ["type", "label", "labelRu", "category", "inputs", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Ссылка на JSON Schema"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[A-Z][a-zA-Z0-9]*$",
+      "description": "Уникальный идентификатор типа узла (PascalCase)"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Название узла на английском"
+    },
+    "labelRu": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Название узла на русском"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["flow", "function", "variable", "math", "comparison", "logic", "io", "string", "array", "object", "other"],
+      "description": "Категория узла для группировки в палитре"
+    },
+    "description": {
+      "type": "string",
+      "description": "Описание узла на английском"
+    },
+    "descriptionRu": {
+      "type": "string",
+      "description": "Описание узла на русском"
+    },
+    "headerColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "Цвет заголовка узла в формате #RRGGBB"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Иконка узла (emoji или URL)"
+    },
+    "dynamicPorts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Разрешить добавление/удаление портов пользователем"
+    },
+    "deprecated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Узел устарел и не рекомендуется к использованию"
+    },
+    "deprecatedMessage": {
+      "type": "string",
+      "description": "Сообщение о причине deprecation и альтернативе"
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Входные порты узла (отображаются слева)",
+      "items": { "$ref": "#/$defs/port" }
+    },
+    "outputs": {
+      "type": "array",
+      "description": "Выходные порты узла (отображаются справа)",
+      "items": { "$ref": "#/$defs/port" }
+    },
+    "properties": {
+      "type": "array",
+      "description": "Редактируемые свойства узла (отображаются в инспекторе)",
+      "items": { "$ref": "#/$defs/property" }
+    },
+    "codegen": {
+      "$ref": "#/$defs/codegen",
+      "description": "Настройки кодогенерации для этого узла"
+    }
+  },
+  "$defs": {
+    "port": {
+      "type": "object",
+      "required": ["id", "name", "dataType"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Уникальный ID порта (kebab-case)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Отображаемое имя порта (пустая строка для exec-портов)"
+        },
+        "nameRu": {
+          "type": "string",
+          "description": "Отображаемое имя порта на русском"
+        },
+        "dataType": {
+          "type": "string",
+          "enum": ["execution", "bool", "int32", "int64", "float", "double", "string", "vector", "object", "array", "any"],
+          "description": "Тип данных порта"
+        },
+        "typeName": {
+          "type": "string",
+          "description": "Полное имя типа для сложных типов (например, 'std::vector<int>')"
+        },
+        "defaultValue": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "null" }
+          ],
+          "description": "Значение по умолчанию для input-порта"
+        },
+        "hidden": {
+          "type": "boolean",
+          "default": false,
+          "description": "Скрыть порт если не подключён"
+        },
+        "multi": {
+          "type": "boolean",
+          "default": false,
+          "description": "Разрешить множественные подключения"
+        }
+      }
+    },
+    "property": {
+      "type": "object",
+      "required": ["id", "name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]*$",
+          "description": "Уникальный ID свойства (camelCase)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Отображаемое имя свойства"
+        },
+        "nameRu": {
+          "type": "string",
+          "description": "Отображаемое имя свойства на русском"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "enum", "color", "code"],
+          "description": "Тип редактора свойства"
+        },
+        "default": {
+          "description": "Значение по умолчанию"
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value", "label"],
+            "properties": {
+              "value": { "type": "string" },
+              "label": { "type": "string" },
+              "labelRu": { "type": "string" }
+            }
+          },
+          "description": "Варианты для enum-свойства"
+        },
+        "min": {
+          "type": "number",
+          "description": "Минимальное значение для number"
+        },
+        "max": {
+          "type": "number",
+          "description": "Максимальное значение для number"
+        },
+        "step": {
+          "type": "number",
+          "description": "Шаг для number"
+        },
+        "multiline": {
+          "type": "boolean",
+          "description": "Многострочный ввод для string"
+        },
+        "language": {
+          "type": "string",
+          "description": "Язык подсветки для code-свойства"
+        }
+      }
+    },
+    "codegen": {
+      "type": "object",
+      "description": "Настройки кодогенерации",
+      "additionalProperties": false,
+      "properties": {
+        "cpp": {
+          "$ref": "#/$defs/codegenTarget",
+          "description": "Шаблон для C++"
+        },
+        "rust": {
+          "$ref": "#/$defs/codegenTarget",
+          "description": "Шаблон для Rust"
+        },
+        "python": {
+          "$ref": "#/$defs/codegenTarget",
+          "description": "Шаблон для Python"
+        }
+      }
+    },
+    "codegenTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "type": "string",
+          "description": "Шаблон кода с плейсхолдерами: {{input.portId}}, {{output.portId}}, {{prop.propId}}"
+        },
+        "includes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Необходимые #include заголовки"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Зависимости (библиотеки)"
+        },
+        "before": {
+          "type": "string",
+          "description": "Код для вставки перед основным шаблоном"
+        },
+        "after": {
+          "type": "string",
+          "description": "Код для вставки после основного шаблона"
+        },
+        "wrapBody": {
+          "type": "boolean",
+          "default": false,
+          "description": "Обернуть тело в блок {}"
+        }
+      }
+    }
+  }
+}

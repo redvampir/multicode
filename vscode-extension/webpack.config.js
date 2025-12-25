@@ -49,7 +49,7 @@ const webviewConfig = {
   },
   devtool: 'source-map',
   resolve: {
-    extensions: ['.ts', '.tsx', '.js', '.jsx']
+    extensions: ['.ts', '.tsx', '.js', '.jsx', '.css', '.json']
   },
   module: {
     rules: [
@@ -66,10 +66,13 @@ const webviewConfig = {
             }
           }
         ]
+      },
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader']
       }
     ]
-  }
-  ,
+  },
   performance: {
     hints: false
   }

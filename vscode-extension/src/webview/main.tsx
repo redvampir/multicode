@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ErrorBoundary } from './ErrorBoundary';
 import {
   createDefaultGraphState,
   type GraphNodeType,
@@ -9,6 +10,12 @@ import {
 import type { ValidationIssue, ValidationResult } from '../shared/validator';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import { GraphEditor } from './GraphEditor';
+import { BlueprintEditor } from './BlueprintEditor';
+import {
+  BlueprintGraphState,
+  migrateToBlueprintFormat,
+  migrateFromBlueprintFormat,
+} from '../shared/blueprintTypes';
 import {
   createGraphStore,
   layoutBounds,
@@ -29,6 +36,23 @@ import {
   type TranslationDirection,
   type WebviewToExtensionMessage
 } from '../shared/messages';
+
+// Feature toggle: 'blueprint' = React Flow (новый), 'cytoscape' = Cytoscape (старый)
+type EditorMode = 'blueprint' | 'cytoscape';
+const EDITOR_MODE_KEY = 'multicode.editorMode';
+
+const getInitialEditorMode = (): EditorMode => {
+  try {
+    const saved = localStorage.getItem(EDITOR_MODE_KEY);
+    if (saved === 'blueprint' || saved === 'cytoscape') {
+      return saved;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  // По умолчанию используем новый Blueprint редактор
+  return 'blueprint';
+};
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -124,7 +148,9 @@ const Toolbar: React.FC<{
   translate: (key: TranslationKey, fallback: string, replacements?: Record<string, string>) => string;
   onCalculate: () => void;
   onCopyGraphId: () => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId }) => {
+  editorMode: EditorMode;
+  onEditorModeChange: (mode: EditorMode) => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -145,6 +171,16 @@ const Toolbar: React.FC<{
         </div>
       </div>
       <div className="toolbar-actions">
+        <label className="toolbar-language" title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}>
+          <span>{locale === 'ru' ? 'Редактор' : 'Editor'}</span>
+          <select
+            value={editorMode}
+            onChange={(event) => onEditorModeChange(event.target.value as EditorMode)}
+          >
+            <option value="blueprint">{locale === 'ru' ? 'Blueprint' : 'Blueprint'}</option>
+            <option value="cytoscape">{locale === 'ru' ? 'Классический' : 'Classic'}</option>
+          </select>
+        </label>
         <label className="toolbar-language">
           <span>{translate('toolbar.languageSwitch', 'Язык интерфейса')}</span>
           <select
@@ -586,6 +622,14 @@ const App: React.FC = () => {
   );
   const [translationPending, setTranslationPending] = useState(false);
   const layoutRunnerRef = useRef<() => void>(() => {});
+  
+  // Editor mode: 'blueprint' (React Flow) or 'cytoscape' (classic)
+  const [editorMode, setEditorMode] = useState<EditorMode>(getInitialEditorMode);
+  
+  // Blueprint graph state (derived from GraphState for Blueprint editor)
+  const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
+    migrateToBlueprintFormat(graph)
+  );
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
@@ -608,6 +652,52 @@ const App: React.FC = () => {
     const currentGraph = useGraphStore.getState().graph;
     setGraph({ ...currentGraph, displayLanguage: nextLocale }, { origin: 'local', pushHistory: false });
     vscode.setState({ graph: currentGraph, locale: nextLocale, layout: useGraphStore.getState().layout });
+  };
+
+  // Обработчик смены режима редактора
+  const handleEditorModeChange = (mode: EditorMode): void => {
+    setEditorMode(mode);
+    try {
+      localStorage.setItem(EDITOR_MODE_KEY, mode);
+    } catch {
+      // Ignore localStorage errors
+    }
+  };
+
+  // Синхронизация blueprintGraph при изменении graph
+  useEffect(() => {
+    console.log('[MultiCode] Syncing blueprintGraph from graph:', {
+      graphId: graph?.id,
+      graphName: graph?.name,
+      nodesCount: graph?.nodes?.length ?? 0,
+      edgesCount: graph?.edges?.length ?? 0,
+    });
+    try {
+      const migrated = migrateToBlueprintFormat(graph);
+      console.log('[MultiCode] Migration successful:', {
+        nodesCount: migrated?.nodes?.length ?? 0,
+        edgesCount: migrated?.edges?.length ?? 0,
+      });
+      setBlueprintGraph(migrated);
+    } catch (error) {
+      console.error('[MultiCode] Migration failed:', error);
+    }
+  }, [graph]);
+
+  // Обработчик изменений из BlueprintEditor
+  const handleBlueprintGraphChange = (newBlueprintGraph: BlueprintGraphState): void => {
+    console.log('[MultiCode] Blueprint graph changed:', {
+      nodesCount: newBlueprintGraph?.nodes?.length ?? 0,
+      edgesCount: newBlueprintGraph?.edges?.length ?? 0,
+    });
+    setBlueprintGraph(newBlueprintGraph);
+    // Конвертируем обратно в GraphState для сохранения совместимости
+    try {
+      const newGraphState = migrateFromBlueprintFormat(newBlueprintGraph);
+      setGraph({ ...newGraphState, dirty: true }, { origin: 'local' });
+    } catch (error) {
+      console.error('[MultiCode] migrateFromBlueprintFormat failed:', error);
+    }
   };
 
   useEffect(() => {
@@ -776,6 +866,33 @@ const App: React.FC = () => {
     layoutRunnerRef.current();
   };
 
+  // Render the appropriate editor based on mode
+  const renderEditor = () => {
+    if (editorMode === 'blueprint') {
+      return (
+        <BlueprintEditor
+          graph={blueprintGraph}
+          onGraphChange={handleBlueprintGraphChange}
+          displayLanguage={locale}
+        />
+      );
+    }
+    
+    // Classic Cytoscape editor
+    return (
+      <GraphEditor
+        graphStore={useGraphStore}
+        theme={themeTokens}
+        onAddNode={handleAddNode}
+        onConnectNodes={handleConnectNodes}
+        validation={validation}
+        onLayoutReady={(runner) => {
+          layoutRunnerRef.current = runner;
+        }}
+      />
+    );
+  };
+
   return (
     <div className="app-shell">
       <Toolbar
@@ -784,38 +901,34 @@ const App: React.FC = () => {
         translate={translate}
         onCalculate={handleCalculateLayout}
         onCopyGraphId={handleCopyGraphId}
+        editorMode={editorMode}
+        onEditorModeChange={handleEditorModeChange}
       />
       <div className="workspace">
         <div className="canvas-wrapper">
-          <GraphEditor
-            graphStore={useGraphStore}
-            theme={themeTokens}
-            onAddNode={handleAddNode}
-            onConnectNodes={handleConnectNodes}
-            validation={validation}
-            onLayoutReady={(runner) => {
-              layoutRunnerRef.current = runner;
-            }}
-          />
+          {renderEditor()}
         </div>
-        <div className="side-panel">
-          <TranslationActions
-            direction={translationDirection}
-            pending={translationPending}
-            onDirectionChange={setTranslationDirection}
-            onTranslate={handleTranslate}
-            translate={translate}
-          />
-          <LayoutSettingsPanel translate={translate} />
-          <NodeActions
-            onAddNode={handleAddNode}
-            onConnectNodes={handleConnectNodes}
-            lastNodeAddedToken={lastNodeAddedToken}
-            lastConnectionToken={lastConnectionToken}
-          />
-          <GraphFacts translate={translate} />
-          <ValidationPanel validation={validation} translate={translate} />
-        </div>
+        {/* Side panel only for classic editor */}
+        {editorMode === 'cytoscape' && (
+          <div className="side-panel">
+            <TranslationActions
+              direction={translationDirection}
+              pending={translationPending}
+              onDirectionChange={setTranslationDirection}
+              onTranslate={handleTranslate}
+              translate={translate}
+            />
+            <LayoutSettingsPanel translate={translate} />
+            <NodeActions
+              onAddNode={handleAddNode}
+              onConnectNodes={handleConnectNodes}
+              lastNodeAddedToken={lastNodeAddedToken}
+              lastConnectionToken={lastConnectionToken}
+            />
+            <GraphFacts translate={translate} />
+            <ValidationPanel validation={validation} translate={translate} />
+          </div>
+        )}
       </div>
       <ToastContainer
         toasts={toasts}
@@ -829,5 +942,9 @@ const App: React.FC = () => {
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
-  root.render(<App />);
+  root.render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
 }

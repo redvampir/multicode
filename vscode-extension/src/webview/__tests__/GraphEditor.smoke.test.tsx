@@ -24,8 +24,8 @@ type MockCollection<T> = {
   length: number;
 };
 
-const createMockCollection = <T,>(items: T[] = []): MockCollection<T> => {
-  const collection: MockCollection<T> = {
+const createMockCollection = <T,>(items: T[] = []): MockCollection<T> & { boundingBox: () => { x1: number; y1: number; x2: number; y2: number; w: number; h: number } } => {
+  const collection: MockCollection<T> & { boundingBox: () => { x1: number; y1: number; x2: number; y2: number; w: number; h: number } } = {
     items,
     map: (fn) => collection.items.map(fn),
     forEach: (fn) => collection.items.forEach(fn),
@@ -37,6 +37,7 @@ const createMockCollection = <T,>(items: T[] = []): MockCollection<T> => {
     remove: () => collection,
     every: (predicate) => collection.items.every(predicate),
     connectedNodes: () => createMockCollection<T>(),
+    boundingBox: () => ({ x1: 0, y1: 0, x2: 100, y2: 100, w: 100, h: 100 }),
     length: items.length
   };
   return collection;
@@ -83,6 +84,7 @@ const createMockCytoscape = (options?: { elements?: GraphElement[] }) => {
     fit: vi.fn(),
     zoom: vi.fn(),
     pan: vi.fn(),
+    png: () => 'data:image/png;base64,mock',
     $id: (id: string) => createMockElement(id)
   };
 };
@@ -110,6 +112,6 @@ describe('GraphEditor', () => {
       />
     );
 
-    expect(screen.getByPlaceholderText('Поиск по узлам и связям')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Поиск узла или связи')).toBeInTheDocument();
   });
 });

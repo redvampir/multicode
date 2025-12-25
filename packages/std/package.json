@@ -1,0 +1,450 @@
+{
+  "$schema": "../../schemas/multicode-package.schema.json",
+  "name": "@multicode/std",
+  "version": "0.5.0",
+  "displayName": "Standard Library",
+  "displayNameRu": "Стандартная библиотека",
+  "description": "Core nodes for MultiCode visual programming",
+  "descriptionRu": "Базовые узлы для визуального программирования MultiCode",
+  "author": {
+    "name": "MultiCode Team"
+  },
+  "license": "MIT",
+  "keywords": ["multicode", "nodes", "standard", "core"],
+  "engines": {
+    "multicode": ">=0.5.0"
+  },
+  "categories": [
+    {
+      "id": "flow",
+      "label": "Flow Control",
+      "labelRu": "Управление потоком",
+      "icon": "▶",
+      "color": "#7C4DFF"
+    },
+    {
+      "id": "math",
+      "label": "Math",
+      "labelRu": "Математика",
+      "icon": "∑",
+      "color": "#4CAF50"
+    },
+    {
+      "id": "io",
+      "label": "Input/Output",
+      "labelRu": "Ввод/Вывод",
+      "icon": "📤",
+      "color": "#00BCD4"
+    }
+  ],
+  "nodes": [
+    {
+      "type": "Start",
+      "label": "Event Begin Play",
+      "labelRu": "Начало",
+      "category": "flow",
+      "description": "Entry point of the graph",
+      "descriptionRu": "Точка входа в граф",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        { "id": "exec-out", "name": "", "dataType": "execution" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "// {{node.labelRu}}\nint main() {",
+          "after": "    return 0;\n}"
+        }
+      }
+    },
+    {
+      "type": "End",
+      "label": "Return",
+      "labelRu": "Конец",
+      "category": "flow",
+      "headerColor": "#E53935",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" }
+      ],
+      "outputs": [],
+      "codegen": {
+        "cpp": {
+          "template": "// {{node.labelRu}}"
+        }
+      }
+    },
+    {
+      "type": "Branch",
+      "label": "Branch",
+      "labelRu": "Ветвление",
+      "category": "flow",
+      "description": "If/Else conditional",
+      "descriptionRu": "Условный переход",
+      "headerColor": "#7C4DFF",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" },
+        { "id": "condition", "name": "Condition", "nameRu": "Условие", "dataType": "bool" }
+      ],
+      "outputs": [
+        { "id": "true", "name": "True", "nameRu": "Истина", "dataType": "execution" },
+        { "id": "false", "name": "False", "nameRu": "Ложь", "dataType": "execution" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "if ({{input.condition}}) {\n    {{output.true}}\n} else {\n    {{output.false}}\n}"
+        }
+      }
+    },
+    {
+      "type": "ForLoop",
+      "label": "For Loop",
+      "labelRu": "Цикл For",
+      "category": "flow",
+      "headerColor": "#7C4DFF",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" },
+        { "id": "first", "name": "First Index", "nameRu": "Начальный индекс", "dataType": "int32", "defaultValue": 0 },
+        { "id": "last", "name": "Last Index", "nameRu": "Конечный индекс", "dataType": "int32", "defaultValue": 10 }
+      ],
+      "outputs": [
+        { "id": "loop-body", "name": "Loop Body", "nameRu": "Тело цикла", "dataType": "execution" },
+        { "id": "index", "name": "Index", "nameRu": "Индекс", "dataType": "int32" },
+        { "id": "completed", "name": "Completed", "nameRu": "Завершено", "dataType": "execution" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "for (int {{output.index}} = {{input.first}}; {{output.index}} <= {{input.last}}; ++{{output.index}}) {\n    {{output.loop-body}}\n}\n{{output.completed}}"
+        }
+      }
+    },
+    {
+      "type": "Add",
+      "label": "Add",
+      "labelRu": "Сложение",
+      "category": "math",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
+        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} + {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Subtract",
+      "label": "Subtract",
+      "labelRu": "Вычитание",
+      "category": "math",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
+        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} - {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Multiply",
+      "label": "Multiply",
+      "labelRu": "Умножение",
+      "category": "math",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
+        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} * {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Divide",
+      "label": "Divide",
+      "labelRu": "Деление",
+      "category": "math",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
+        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 1 }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} / {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Print",
+      "label": "Print String",
+      "labelRu": "Вывод строки",
+      "category": "io",
+      "headerColor": "#00BCD4",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" },
+        { "id": "string", "name": "In String", "nameRu": "Строка", "dataType": "string", "defaultValue": "" }
+      ],
+      "outputs": [
+        { "id": "exec-out", "name": "", "dataType": "execution" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "std::cout << {{input.string}} << std::endl;",
+          "includes": ["<iostream>"]
+        }
+      }
+    },
+    {
+      "type": "Input",
+      "label": "Read Input",
+      "labelRu": "Ввод",
+      "category": "io",
+      "headerColor": "#00BCD4",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" },
+        { "id": "prompt", "name": "Prompt", "nameRu": "Приглашение", "dataType": "string", "defaultValue": "" }
+      ],
+      "outputs": [
+        { "id": "exec-out", "name": "", "dataType": "execution" },
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "string" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "std::cout << {{input.prompt}};\nstd::string {{output.value}};\nstd::getline(std::cin, {{output.value}});",
+          "includes": ["<iostream>", "<string>"]
+        }
+      }
+    },
+    {
+      "type": "Variable",
+      "label": "Variable",
+      "labelRu": "Переменная",
+      "category": "variable",
+      "headerColor": "#4CAF50",
+      "inputs": [],
+      "outputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+      ],
+      "properties": [
+        {
+          "id": "varName",
+          "name": "Variable Name",
+          "nameRu": "Имя переменной",
+          "type": "string",
+          "default": "myVar"
+        },
+        {
+          "id": "varType",
+          "name": "Type",
+          "nameRu": "Тип",
+          "type": "enum",
+          "default": "int",
+          "enum": [
+            { "value": "int", "label": "Integer", "labelRu": "Целое" },
+            { "value": "float", "label": "Float", "labelRu": "Вещественное" },
+            { "value": "string", "label": "String", "labelRu": "Строка" },
+            { "value": "bool", "label": "Boolean", "labelRu": "Логическое" }
+          ]
+        },
+        {
+          "id": "initialValue",
+          "name": "Initial Value",
+          "nameRu": "Начальное значение",
+          "type": "string",
+          "default": "0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{prop.varType}} {{prop.varName}} = {{prop.initialValue}};"
+        }
+      }
+    },
+    {
+      "type": "SetVariable",
+      "label": "Set",
+      "labelRu": "Установить",
+      "category": "variable",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "exec-in", "name": "", "dataType": "execution" },
+        { "id": "value", "name": "", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "exec-out", "name": "", "dataType": "execution" },
+        { "id": "value", "name": "", "dataType": "any" }
+      ],
+      "properties": [
+        {
+          "id": "varName",
+          "name": "Variable",
+          "nameRu": "Переменная",
+          "type": "string",
+          "default": "myVar"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{prop.varName}} = {{input.value}};"
+        }
+      }
+    },
+    {
+      "type": "GetVariable",
+      "label": "Get",
+      "labelRu": "Получить",
+      "category": "variable",
+      "headerColor": "#4CAF50",
+      "inputs": [],
+      "outputs": [
+        { "id": "value", "name": "", "dataType": "any" }
+      ],
+      "properties": [
+        {
+          "id": "varName",
+          "name": "Variable",
+          "nameRu": "Переменная",
+          "type": "string",
+          "default": "myVar"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{prop.varName}}"
+        }
+      }
+    },
+    {
+      "type": "Equal",
+      "label": "==",
+      "labelRu": "Равно",
+      "category": "comparison",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "any" },
+        { "id": "b", "name": "B", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} == {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Greater",
+      "label": ">",
+      "labelRu": "Больше",
+      "category": "comparison",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float" },
+        { "id": "b", "name": "B", "dataType": "float" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} > {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Less",
+      "label": "<",
+      "labelRu": "Меньше",
+      "category": "comparison",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "float" },
+        { "id": "b", "name": "B", "dataType": "float" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} < {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "And",
+      "label": "AND",
+      "labelRu": "И",
+      "category": "logic",
+      "headerColor": "#E53935",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "bool" },
+        { "id": "b", "name": "B", "dataType": "bool" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} && {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Or",
+      "label": "OR",
+      "labelRu": "ИЛИ",
+      "category": "logic",
+      "headerColor": "#E53935",
+      "inputs": [
+        { "id": "a", "name": "A", "dataType": "bool" },
+        { "id": "b", "name": "B", "dataType": "bool" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} || {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Not",
+      "label": "NOT",
+      "labelRu": "НЕ",
+      "category": "logic",
+      "headerColor": "#E53935",
+      "inputs": [
+        { "id": "a", "name": "", "dataType": "bool" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "", "dataType": "bool" }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "(!{{input.a}})"
+        }
+      }
+    }
+  ]
+}

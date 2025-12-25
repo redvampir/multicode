@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://multicode.dev/schemas/multicode-package.schema.json",
+  "title": "MultiCode Package",
+  "description": "Схема пакета узлов для MultiCode",
+  "type": "object",
+  "required": ["name", "version", "displayName", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Ссылка на JSON Schema"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^@?[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)?$",
+      "description": "Уникальное имя пакета (npm-style: @scope/name или name)",
+      "examples": ["@multicode/std", "@multicode/math", "my-custom-nodes"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?(\\+[a-zA-Z0-9.]+)?$",
+      "description": "Версия пакета в формате SemVer",
+      "examples": ["1.0.0", "0.1.0-alpha", "2.3.1+build.123"]
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Отображаемое название пакета на английском"
+    },
+    "displayNameRu": {
+      "type": "string",
+      "description": "Отображаемое название пакета на русском"
+    },
+    "description": {
+      "type": "string",
+      "description": "Описание пакета на английском"
+    },
+    "descriptionRu": {
+      "type": "string",
+      "description": "Описание пакета на русском"
+    },
+    "author": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "email": { "type": "string", "format": "email" },
+            "url": { "type": "string", "format": "uri" }
+          }
+        }
+      ],
+      "description": "Автор пакета"
+    },
+    "license": {
+      "type": "string",
+      "description": "Лицензия пакета (SPDX identifier)",
+      "examples": ["MIT", "Apache-2.0", "GPL-3.0-only"]
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL домашней страницы пакета"
+    },
+    "repository": {
+      "oneOf": [
+        { "type": "string", "format": "uri" },
+        {
+          "type": "object",
+          "required": ["type", "url"],
+          "properties": {
+            "type": { "type": "string", "enum": ["git", "svn", "mercurial"] },
+            "url": { "type": "string", "format": "uri" },
+            "directory": { "type": "string" }
+          }
+        }
+      ],
+      "description": "Репозиторий исходного кода"
+    },
+    "bugs": {
+      "oneOf": [
+        { "type": "string", "format": "uri" },
+        {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "email": { "type": "string", "format": "email" }
+          }
+        }
+      ],
+      "description": "URL для отчётов об ошибках"
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ключевые слова для поиска"
+    },
+    "engines": {
+      "type": "object",
+      "properties": {
+        "multicode": {
+          "type": "string",
+          "description": "Требуемая версия MultiCode (SemVer range)"
+        },
+        "vscode": {
+          "type": "string",
+          "description": "Требуемая версия VS Code (SemVer range)"
+        }
+      },
+      "description": "Требования к версиям"
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Зависимости от других пакетов MultiCode"
+    },
+    "categories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/category" },
+      "description": "Пользовательские категории узлов (дополняют стандартные)"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "node.schema.json" },
+      "description": "Определения узлов пакета"
+    },
+    "contributes": {
+      "type": "object",
+      "description": "Дополнительные вклады пакета",
+      "properties": {
+        "portTypes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/portType" },
+          "description": "Пользовательские типы портов"
+        },
+        "themes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/theme" },
+          "description": "Цветовые темы для узлов"
+        },
+        "snippets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/snippet" },
+          "description": "Шаблоны графов (snippets)"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "category": {
+      "type": "object",
+      "required": ["id", "label", "labelRu"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Уникальный ID категории"
+        },
+        "label": {
+          "type": "string",
+          "description": "Название категории на английском"
+        },
+        "labelRu": {
+          "type": "string",
+          "description": "Название категории на русском"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Иконка категории"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Цвет категории"
+        },
+        "parent": {
+          "type": "string",
+          "description": "ID родительской категории (для подкатегорий)"
+        }
+      }
+    },
+    "portType": {
+      "type": "object",
+      "required": ["id", "name", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Уникальный ID типа порта"
+        },
+        "name": {
+          "type": "string",
+          "description": "Отображаемое имя типа"
+        },
+        "nameRu": {
+          "type": "string",
+          "description": "Отображаемое имя типа на русском"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Цвет порта"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Иконка типа"
+        },
+        "compatibleWith": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Список совместимых типов"
+        },
+        "cppType": {
+          "type": "string",
+          "description": "Соответствующий тип C++"
+        },
+        "rustType": {
+          "type": "string",
+          "description": "Соответствующий тип Rust"
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "required": ["id", "name", "colors"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Уникальный ID темы"
+        },
+        "name": {
+          "type": "string",
+          "description": "Название темы"
+        },
+        "colors": {
+          "type": "object",
+          "description": "Цвета темы",
+          "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        }
+      }
+    },
+    "snippet": {
+      "type": "object",
+      "required": ["id", "name", "graph"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Уникальный ID сниппета"
+        },
+        "name": {
+          "type": "string",
+          "description": "Название сниппета"
+        },
+        "nameRu": {
+          "type": "string",
+          "description": "Название сниппета на русском"
+        },
+        "description": {
+          "type": "string",
+          "description": "Описание сниппета"
+        },
+        "descriptionRu": {
+          "type": "string",
+          "description": "Описание сниппета на русском"
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ключевые слова для поиска"
+        },
+        "graph": {
+          "type": "object",
+          "description": "Граф сниппета (узлы и связи)"
+        }
+      }
+    }
+  }
+}

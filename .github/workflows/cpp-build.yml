@@ -16,7 +16,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v5.0.0
       
     - name: Setup MSVC
       uses: microsoft/setup-msbuild@v2
@@ -57,7 +57,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v5.0.0
       
     - name: Install dependencies
       run: |
@@ -97,7 +97,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v5.0.0
       
     - name: Install build tools
       run: |
@@ -130,7 +130,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v5.0.0
       
     - name: Install dependencies
       run: |

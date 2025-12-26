@@ -376,6 +376,11 @@ export const GraphEditor: React.FC<{
     }
     selectionActionsAnchorRef.current = anchor;
     setSelectionActionsAnchor(anchor);
+    if (Number.isFinite(anchor.x) && Number.isFinite(anchor.y)) {
+      setSelectionActionsAnchor(anchor);
+    } else {
+      setSelectionActionsAnchor(null);
+    }
   }, []);
 
   const closePalette = (): void => setPaletteAnchor(null);

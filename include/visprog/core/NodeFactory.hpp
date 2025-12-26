@@ -15,7 +15,8 @@ public:
     /// @brief Creates a node of a specified type.
     /// @param type The type of node to create.
     /// @param instance_name Optional name for the node instance.
-    /// @return A unique_ptr to the newly created node, or nullptr if type is unknown.
+    /// @return A unique_ptr to the newly created node, or nullptr if type is
+    /// unknown.
     [[nodiscard]] static auto create(const NodeType& type, std::string instance_name = "")
         -> std::unique_ptr<Node>;
 

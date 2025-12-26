@@ -146,7 +146,8 @@ public:
     // ========================================================================
 
     /// @brief Perform topological sort on the graph
-    /// @return Sorted list of NodeIds (execution order) or Error if cycle detected
+    /// @return Sorted list of NodeIds (execution order) or Error if cycle
+    /// detected
     [[nodiscard]] auto topological_sort() const -> Result<std::vector<NodeId>>;
 
     /// @brief Find all nodes reachable from given node

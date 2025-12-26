@@ -19,10 +19,11 @@ TEST_CASE("GraphSerializer: Round-trip with New Property System", "[graph][seria
 
     // Modify the default property
     node->set_property("value", std::string("Custom Message"));
-    node->set_property("speed", (int64_t)100);
+    node->set_property("speed", static_cast<int64_t>(100));
 
     const auto node_id = node->get_id();
-    original_graph.add_node(std::move(node));
+    const auto added_node_id = original_graph.add_node(std::move(node));
+    REQUIRE(added_node_id == node_id);
 
     // 2. Serialize the graph to JSON
     const nlohmann::json json_doc = GraphSerializer::to_json(original_graph);
@@ -86,8 +87,10 @@ TEST_CASE("GraphSerializer: Connect two nodes and serialize", "[graph][serializa
     const auto* start_exec_port = start_node->get_exec_output_ports()[0];
     const auto* print_exec_port = print_node->get_exec_input_ports()[0];
 
-    graph.add_node(std::move(start_node));
-    graph.add_node(std::move(print_node));
+    const auto inserted_start_id = graph.add_node(std::move(start_node));
+    const auto inserted_print_id = graph.add_node(std::move(print_node));
+    REQUIRE(inserted_start_id == start_id);
+    REQUIRE(inserted_print_id == print_id);
 
     auto conn_res =
         graph.connect(start_id, start_exec_port->get_id(), print_id, print_exec_port->get_id());

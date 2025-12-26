@@ -36,7 +36,8 @@ void NodeFactory::configure_ports(Node& node) {
         node.set_property("value", std::string("Hello, World!"));
     }
     // Here we will add more `else if` statements for other core nodes.
-    // In the future, this will be replaced by a system that reads .nodedef.json files.
+    // In the future, this will be replaced by a system that reads .nodedef.json
+    // files.
 }
 
 auto NodeFactory::generate_node_id() -> NodeId {

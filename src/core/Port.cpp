@@ -611,7 +611,8 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
         return true;
     }
 
-    // Numeric promotions (integral widening, integral -> floating, float -> double)
+    // Numeric promotions (integral widening, integral -> floating, float ->
+    // double)
     if (is_numeric_widening(data_type_, other.data_type_) ||
         is_integral_to_floating(data_type_, other.data_type_) ||
         is_float_promotion(data_type_, other.data_type_)) {

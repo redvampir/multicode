@@ -10,7 +10,8 @@
 namespace visprog::core::compat {
 
 /// Simple string concatenation helper for GCC 11/12 compatibility
-/// Usage: format("Node ", id, " does not exist") instead of std::format("Node {} does not exist", id)
+/// Usage: format("Node ", id, " does not exist") instead of std::format("Node {} does not exist",
+/// id)
 
 template <typename... Args>
 [[nodiscard]] auto format(Args&&... args) -> std::string {

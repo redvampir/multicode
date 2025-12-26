@@ -432,8 +432,8 @@ auto Graph::validate() const -> ValidationResult {
         for (const auto& node : nodes_) {
             if (!reachable.contains(node->get_id()) && node->get_type() != NodeTypes::Start) {
                 result.errors.push_back(Error{
-                    .message = format("Node '", node->get_instance_name(),
-                                      "' is not reachable from Start"),
+                    .message = format(
+                        "Node '", node->get_instance_name(), "' is not reachable from Start"),
                     .code = 503  // Unreachable nodes
                 });
                 result.is_valid = false;
@@ -487,10 +487,14 @@ auto Graph::validate_connection(NodeId from_node,
     if (!from_port_ptr->can_connect_to(*to_port_ptr)) {
         return Result<void>(Error{
             .message = format("Ports are not compatible: ",
-                             from_node_ptr->get_instance_name(), " (",
-                             from_port_ptr->get_name(), ") -> ",
-                             to_node_ptr->get_instance_name(), " (",
-                             to_port_ptr->get_name(), ")"),
+                              from_node_ptr->get_instance_name(),
+                              " (",
+                              from_port_ptr->get_name(),
+                              ") -> ",
+                              to_node_ptr->get_instance_name(),
+                              " (",
+                              to_port_ptr->get_name(),
+                              ")"),
             .code = 300  // Port incompatibility
         });
     }
@@ -716,9 +720,8 @@ auto Graph::append_connection(Connection connection) -> Result<void> {
     }
 
     if (connection_lookup_.contains(connection.id)) {
-        return Result<void>(
-            Error{.message = format("Connection ", connection.id.value, " already exists"),
-                  .code = 306});
+        return Result<void>(Error{
+            .message = format("Connection ", connection.id.value, " already exists"), .code = 306});
     }
 
     if (auto result = validate_connection(
@@ -740,12 +743,15 @@ auto Graph::append_connection(Connection connection) -> Result<void> {
         from_port_ptr->is_execution() ? ConnectionType::Execution : ConnectionType::Data;
 
     if (expected_type != connection.type) {
-        return Result<void>(Error{
-            .message = format("Connection ", connection.id.value, " type mismatch: expected ",
+        return Result<void>(
+            Error{.message =
+                      format("Connection ",
+                             connection.id.value,
+                             " type mismatch: expected ",
                              (expected_type == ConnectionType::Execution ? "Execution" : "Data"),
                              " but got ",
                              (connection.type == ConnectionType::Execution ? "Execution" : "Data")),
-            .code = 308});
+                  .code = 308});
     }
 
     const auto index = connections_.size();

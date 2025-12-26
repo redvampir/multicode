@@ -14,12 +14,14 @@ auto NodeFactory::create(const NodeType& type, std::string instance_name) -> std
     return create_with_id(node_id, type, std::move(instance_name));
 }
 
+// clang-format off
 auto NodeFactory::create_with_id(NodeId node_id, const NodeType& type, std::string instance_name)
     -> std::unique_ptr<Node> {
     auto node = std::make_unique<Node>(node_id, type, std::move(instance_name));
     configure_ports(*node);
     return node;
 }
+// clang-format on
 
 void NodeFactory::configure_ports(Node& node) {
     const auto type = node.get_type();

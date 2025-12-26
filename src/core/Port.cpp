@@ -302,6 +302,7 @@ private:
     return serialize_segments(segments);
 }
 
+// clang-format off
 [[nodiscard]] auto are_type_names_compatible(std::string_view lhs, std::string_view rhs) noexcept
     -> bool {
     const auto lhs_trimmed = trim(lhs);
@@ -320,6 +321,7 @@ private:
 
     return lhs_normalized == rhs_normalized;
 }
+// clang-format on
 
 [[nodiscard]] constexpr auto requires_type_name(DataType type) noexcept -> bool {
     switch (type) {

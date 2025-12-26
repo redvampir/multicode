@@ -113,8 +113,10 @@ public:
     /// @param to_node Target node
     /// @param to_port Target port
     /// @return Result with ConnectionId or Error
+    // clang-format off
     [[nodiscard]] auto connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
         -> Result<ConnectionId>;
+    // clang-format on
 
     /// @brief Remove a connection
     /// @param id Connection to remove

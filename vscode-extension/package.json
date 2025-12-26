@@ -2,14 +2,14 @@
   "$schema": "../schemas/package.schema.json",
   "name": "multicode-visual-programming",
   "displayName": "МультиКод - Visual Programming",
-  "description": "Visual programming for C++, Rust, and Assembly - Blueprint-style graph editor",
+  "description": "Визуальное программирование для C++ — Blueprint-редактор с генерацией кода и поддержкой русского языка",
   "version": "0.3.0",
   "publisher": "multicode-team",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/multicode"
+    "url": "https://github.com/redvampir/multicode"
   },
   "engines": {
     "vscode": "^1.85.0"

@@ -3,7 +3,7 @@
   "name": "multicode-visual-programming",
   "displayName": "МультиКод - Visual Programming",
   "description": "Визуальное программирование для C++ — Blueprint-редактор с генерацией кода и поддержкой русского языка",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "multicode-team",
   "license": "MIT",
   "icon": "media/icon.png",

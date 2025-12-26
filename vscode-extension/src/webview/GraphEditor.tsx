@@ -315,6 +315,7 @@ export const GraphEditor: React.FC<{
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [selectionActionsAnchor, setSelectionActionsAnchor] = useState<{ x: number; y: number } | null>(null);
+  const selectionActionsAnchorRef = useRef<{ x: number; y: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const isPanningRef = useRef(false);
   const spacePanRef = useRef(false);
@@ -336,6 +337,7 @@ export const GraphEditor: React.FC<{
     setSelection({ nodeIds: [], edgeIds: [] });
     selectionRef.current = [];
     edgeSelectionRef.current = [];
+    selectionActionsAnchorRef.current = null;
     setSelectionActionsAnchor(null);
   }, [setSelection]);
 
@@ -343,10 +345,12 @@ export const GraphEditor: React.FC<{
     const cy = cyRef.current;
     const container = containerRef.current;
     if (!cy || !container) {
+      selectionActionsAnchorRef.current = null;
       setSelectionActionsAnchor(null);
       return;
     }
     if (!selectionRef.current.length && !edgeSelectionRef.current.length) {
+      selectionActionsAnchorRef.current = null;
       setSelectionActionsAnchor(null);
       return;
     }
@@ -359,6 +363,19 @@ export const GraphEditor: React.FC<{
       x: bbox.x2 - rect.left + 8,
       y: bbox.y1 - rect.top - 8
     };
+    if (!Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+      selectionActionsAnchorRef.current = null;
+      setSelectionActionsAnchor(null);
+      return;
+    }
+
+    const prev = selectionActionsAnchorRef.current;
+    const isSame = prev && Math.abs(prev.x - anchor.x) < 0.5 && Math.abs(prev.y - anchor.y) < 0.5;
+    if (isSame) {
+      return;
+    }
+    selectionActionsAnchorRef.current = anchor;
+    setSelectionActionsAnchor(anchor);
     if (Number.isFinite(anchor.x) && Number.isFinite(anchor.y)) {
       setSelectionActionsAnchor(anchor);
     } else {

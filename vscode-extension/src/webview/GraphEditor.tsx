@@ -314,6 +314,10 @@ export const GraphEditor: React.FC<{
   const miniMapRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectionActionsAnchor, setSelectionActionsAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const isPanningRef = useRef(false);
+  const spacePanRef = useRef(false);
 
   const translate = useMemo(
     () =>
@@ -332,7 +336,34 @@ export const GraphEditor: React.FC<{
     setSelection({ nodeIds: [], edgeIds: [] });
     selectionRef.current = [];
     edgeSelectionRef.current = [];
+    setSelectionActionsAnchor(null);
   }, [setSelection]);
+
+  const recalcSelectionActions = useCallback((): void => {
+    const cy = cyRef.current;
+    const container = containerRef.current;
+    if (!cy || !container) {
+      setSelectionActionsAnchor(null);
+      return;
+    }
+    if (!selectionRef.current.length && !edgeSelectionRef.current.length) {
+      setSelectionActionsAnchor(null);
+      return;
+    }
+    const ids = [...selectionRef.current, ...edgeSelectionRef.current];
+    const collection = cy.collection(ids.map((id) => cy.$id(id)));
+    const bbox = collection.renderedBoundingBox({ includeLabels: true, includeOverlays: true });
+    const rect = container.getBoundingClientRect();
+    const anchor = {
+      x: bbox.x2 - rect.left + 8,
+      y: bbox.y1 - rect.top - 8
+    };
+    if (Number.isFinite(anchor.x) && Number.isFinite(anchor.y)) {
+      setSelectionActionsAnchor(anchor);
+    } else {
+      setSelectionActionsAnchor(null);
+    }
+  }, []);
 
   const closePalette = (): void => setPaletteAnchor(null);
   const openPaletteAt = (point?: { x: number; y: number }): void => {
@@ -346,11 +377,46 @@ export const GraphEditor: React.FC<{
   }, []);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.code !== 'Space') {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const isInputTarget =
+        target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable;
+      if (isInputTarget) {
+        return;
+      }
+      event.preventDefault();
+      spacePanRef.current = true;
+    };
+
+    const handleKeyUp = (event: KeyboardEvent): void => {
+      if (event.code === 'Space') {
+        spacePanRef.current = false;
+      }
+    };
+
+    const handleWindowBlur = (): void => {
+      spacePanRef.current = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!containerRef.current) {
       return;
     }
-    let rightPanStart: { x: number; y: number } | null = null;
-    let rightPanOffset: { x: number; y: number } | null = null;
+    let panStart: { x: number; y: number } | null = null;
+    let panOffset: { x: number; y: number } | null = null;
     const cy = cytoscape({
       container: containerRef.current,
       elements: buildElements(graph),
@@ -382,6 +448,7 @@ export const GraphEditor: React.FC<{
       setSelection({ nodeIds: nodeSelection, edgeIds: edgeSelection });
       selectionRef.current = nodeSelection;
       edgeSelectionRef.current = edgeSelection;
+      recalcSelectionActions();
     };
 
     const clearSelection = (): void => {
@@ -467,6 +534,9 @@ export const GraphEditor: React.FC<{
       const originalEvent = event.originalEvent as MouseEvent | undefined;
       // Allow box selection on background with left click (button 0)
       // Unreal Engine style: Left click drag = box select
+      if (spacePanRef.current || isPanningRef.current) {
+        return;
+      }
       if (event.target !== cy || !originalEvent || originalEvent.button !== 0) {
         return;
       }
@@ -480,6 +550,9 @@ export const GraphEditor: React.FC<{
 
     cy.on('tapdrag', (event) => {
       if (!dragStartRef.current) {
+        return;
+      }
+      if (isPanningRef.current) {
         return;
       }
       const originalEvent = event.originalEvent as MouseEvent | undefined;
@@ -498,6 +571,11 @@ export const GraphEditor: React.FC<{
 
     cy.on('tapend', (event) => {
       if (!dragStartRef.current) {
+        return;
+      }
+      if (isPanningRef.current) {
+        dragStartRef.current = null;
+        setSelectionBox(null);
         return;
       }
       const originalEvent = event.originalEvent as MouseEvent | undefined;
@@ -603,32 +681,45 @@ export const GraphEditor: React.FC<{
 
     cy.on('mousedown', (event) => {
       const mouse = event.originalEvent as MouseEvent | undefined;
-      if (event.target === cy && mouse?.button === 2) {
-        rightPanStart = { x: mouse.clientX, y: mouse.clientY };
-        rightPanOffset = cy.pan();
+      if (!mouse) {
+        return;
+      }
+      const isMiddleButton = mouse.button === 1;
+      const isSpacePan = mouse.button === 0 && spacePanRef.current;
+      if (event.target === cy && (isMiddleButton || isSpacePan)) {
+        panStart = { x: mouse.clientX, y: mouse.clientY };
+        panOffset = cy.pan();
+        setIsPanning(true);
+        isPanningRef.current = true;
         mouse.preventDefault();
       }
     });
 
     cy.on('mouseup', (event) => {
       const mouse = event.originalEvent as MouseEvent | undefined;
-      if (mouse?.button === 2) {
-        rightPanStart = null;
-        rightPanOffset = null;
+      if (!mouse) {
+        return;
+      }
+      const isPanButton = mouse.button === 1 || mouse.button === 0;
+      if (panStart && panOffset && isPanButton) {
+        panStart = null;
+        panOffset = null;
+        setIsPanning(false);
+        isPanningRef.current = false;
       }
     });
 
     cy.on('mousemove', (event) => {
-      if (!rightPanStart || !rightPanOffset) {
+      if (!panStart || !panOffset) {
         return;
       }
       const mouse = event.originalEvent as MouseEvent | undefined;
       if (!mouse) {
         return;
       }
-      const dx = mouse.clientX - rightPanStart.x;
-      const dy = mouse.clientY - rightPanStart.y;
-      cy.pan({ x: rightPanOffset.x + dx, y: rightPanOffset.y + dy });
+      const dx = mouse.clientX - panStart.x;
+      const dy = mouse.clientY - panStart.y;
+      cy.pan({ x: panOffset.x + dx, y: panOffset.y + dy });
     });
 
     const updateMiniMap = (): void => {
@@ -639,9 +730,11 @@ export const GraphEditor: React.FC<{
 
     updateMiniMap();
     cy.on('render zoom pan add remove position', updateMiniMap);
+    cy.on('render zoom pan', recalcSelectionActions);
 
     return () => {
       cy.off('render zoom pan add remove position', updateMiniMap);
+      cy.off('render zoom pan', recalcSelectionActions);
       cy.destroy();
       cyRef.current = null;
     };
@@ -688,6 +781,7 @@ export const GraphEditor: React.FC<{
       cy.$id(id).select();
     });
     selectionRef.current = [...selectedNodeIds];
+    recalcSelectionActions();
   }, [selectedNodeIds]);
 
   useEffect(() => {
@@ -702,6 +796,7 @@ export const GraphEditor: React.FC<{
     cy.edges().removeClass('edge--active');
     cy.edges(':selected').addClass('edge--active');
     edgeSelectionRef.current = [...selectedEdgeIds];
+    recalcSelectionActions();
   }, [selectedEdgeIds]);
 
   useEffect(() => {
@@ -1065,6 +1160,16 @@ export const GraphEditor: React.FC<{
     setContextMenu(null);
   };
 
+  const handleDeleteSelection = (): void => {
+    if (!selectionRef.current.length && !edgeSelectionRef.current.length) {
+      return;
+    }
+    deleteEdges([...edgeSelectionRef.current]);
+    deleteNodes([...selectionRef.current]);
+    resetSelection();
+    setSelectionActionsAnchor(null);
+  };
+
   const renderSearchItem = (item: SearchResult, index: number): React.ReactNode => {
     const isActive = index === searchIndex;
     return (
@@ -1200,6 +1305,15 @@ export const GraphEditor: React.FC<{
         >
           {hasResults ? searchResults.map(renderSearchItem) : null}
         </ul>
+        <div className="graph-hints">
+          <div className="graph-hints__title">{translate('hints.title', 'Подсказки')}</div>
+          <ul className="graph-hints__list">
+            <li>{translate('hints.contextDelete', 'ПКМ по узлу — меню → Удалить')}</li>
+            <li>{translate('hints.deleteKeys', 'Delete/Backspace — удалить выделенное')}</li>
+            <li>{translate('hints.copyPaste', 'Ctrl+C/V/D — копия/вставка/дубликат')}</li>
+            <li>{translate('hints.pan', 'Средняя кнопка или пробел + перетаскивание — панорама')}</li>
+          </ul>
+        </div>
       </div>
     );
   };
@@ -1354,6 +1468,24 @@ export const GraphEditor: React.FC<{
     );
   };
 
+  const renderSelectionActions = (): React.ReactNode => {
+    if (!selectionActionsAnchor || (!selectionRef.current.length && !edgeSelectionRef.current.length)) {
+      return null;
+    }
+    return (
+      <div className="selection-actions" style={{ left: selectionActionsAnchor.x, top: selectionActionsAnchor.y }}>
+        <button
+          type="button"
+          className="selection-actions__btn"
+          onClick={handleDeleteSelection}
+          title={translate('context.delete', 'Удалить')}
+        >
+          🗑 {translate('context.delete', 'Удалить')}
+        </button>
+      </div>
+    );
+  };
+
   const renderMiniMap = (): React.ReactNode => {
     if (!miniMap.src) {
       return null;
@@ -1416,7 +1548,7 @@ export const GraphEditor: React.FC<{
       tabIndex={0}
     >
       <div
-        className="graph-canvas"
+        className={`graph-canvas${isPanning ? ' graph-canvas--panning' : ''}`}
         ref={containerRef}
         style={{
           backgroundColor: theme.canvas.background,
@@ -1445,6 +1577,7 @@ export const GraphEditor: React.FC<{
           }}
         />
       ) : null}
+      {renderSelectionActions()}
       {renderMiniMap()}
       {renderPalette()}
       {renderSearchPanel()}

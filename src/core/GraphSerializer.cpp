@@ -241,8 +241,8 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         const auto& node_json = nodes_it->at(i);
         const std::string ctx = format("nodes[", i, "]");
         if (!node_json.is_object()) {
-            return Result<Graph>(Error{.message = format(ctx, " must be an object"),
-                                       .code = kErrorInvalidDocument});
+            return Result<Graph>(
+                Error{.message = format(ctx, " must be an object"), .code = kErrorInvalidDocument});
         }
 
         const auto node_id_res = require_uint64(node_json, "id", ctx);
@@ -257,9 +257,9 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 
         auto it = node_type_lookup.find(type_name_res.value());
         if (it == node_type_lookup.end()) {
-            return Result<Graph>(Error{
-                .message = format(ctx, ": unknown node type '", type_name_res.value(), "'"),
-                .code = kErrorInvalidEnum});
+            return Result<Graph>(
+                Error{.message = format(ctx, ": unknown node type '", type_name_res.value(), "'"),
+                      .code = kErrorInvalidEnum});
         }
         const NodeType* node_type = it->second;
 
@@ -280,9 +280,8 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         }
 
         if (!graph.add_node(std::move(node))) {
-            return Result<Graph>(
-                Error{.message = format("Failed to add node ", node_id.value),
-                      .code = kErrorInvalidDocument});
+            return Result<Graph>(Error{.message = format("Failed to add node ", node_id.value),
+                                       .code = kErrorInvalidDocument});
         }
     }
 

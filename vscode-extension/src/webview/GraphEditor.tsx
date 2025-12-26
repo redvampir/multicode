@@ -783,7 +783,7 @@ export const GraphEditor: React.FC<{
     });
     selectionRef.current = [...selectedNodeIds];
     recalcSelectionActions();
-  }, [selectedNodeIds]);
+  }, [selectedNodeIds, recalcSelectionActions]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -798,7 +798,7 @@ export const GraphEditor: React.FC<{
     cy.edges(':selected').addClass('edge--active');
     edgeSelectionRef.current = [...selectedEdgeIds];
     recalcSelectionActions();
-  }, [selectedEdgeIds]);
+  }, [selectedEdgeIds, recalcSelectionActions]);
 
   useEffect(() => {
     const cy = cyRef.current;

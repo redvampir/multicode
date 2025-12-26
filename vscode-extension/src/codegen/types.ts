@@ -5,7 +5,7 @@
  * Поддерживает русские названия узлов — они сохраняются в комментариях.
  */
 
-import type { BlueprintGraphState, BlueprintNode, BlueprintNodeType } from '../shared/blueprintTypes';
+import type { BlueprintGraphState, BlueprintNode, BlueprintNodeType, BlueprintFunction } from '../shared/blueprintTypes';
 import type { GraphLanguage } from '../shared/blueprintTypes';
 
 /** Ошибка генерации кода */
@@ -138,6 +138,10 @@ export interface CodeGenContext {
   sourceMap: SourceMapEntry[];
   /** Текущая строка кода */
   currentLine: number;
+  /** Текущая функция (при генерации тела функции) */
+  currentFunction?: BlueprintFunction;
+  /** Все функции графа */
+  functions?: BlueprintFunction[];
 }
 
 /** Информация о переменной */

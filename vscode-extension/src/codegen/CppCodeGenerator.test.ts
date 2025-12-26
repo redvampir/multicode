@@ -10,9 +10,11 @@ import {
   BlueprintGraphState, 
   BlueprintNode, 
   BlueprintNodeType,
+  BlueprintFunction,
   createNode, 
   createEdge 
 } from '../shared/blueprintTypes';
+import { PortDataType } from '../shared/portTypes';
 
 /**
  * Создать минимальный тестовый граф
@@ -1113,6 +1115,465 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
       expect(result.code).toContain('#include <fstream>');
       expect(result.code).toContain('#include <filesystem>');
+    });
+  });
+  
+  // ============================================
+  // Тесты пользовательских функций
+  // ============================================
+  
+  describe('generate - User Functions', () => {
+    /**
+     * Создать тестовую функцию с входами и выходом
+     */
+    function createTestFunction(overrides?: Partial<BlueprintFunction>): BlueprintFunction {
+      return {
+        id: 'func-test',
+        name: 'testFunction',
+        nameRu: 'Тестовая функция',
+        description: 'Описание тестовой функции',
+        parameters: [],
+        graph: {
+          nodes: [],
+          edges: [],
+        },
+        isPure: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...overrides,
+      };
+    }
+    
+    /**
+     * Создать edge для графа функции
+     */
+    function createFuncEdge(sourceNode: string, sourcePort: string, targetNode: string, targetPort: string) {
+      return { 
+        id: `${sourceNode}-${targetNode}`,
+        sourceNode, 
+        sourcePort, 
+        targetNode, 
+        targetPort,
+        kind: 'execution' as const,
+      };
+    }
+    
+    /**
+     * Создать порт с index
+     */
+    function port(id: string, name: string, dataType: PortDataType, direction: 'input' | 'output', index: number, value?: number) {
+      return { id, name, dataType, direction, index, ...(value !== undefined && { value }) };
+    }
+    
+    it('should generate void function without parameters', () => {
+      const func = createTestFunction({
+        name: 'doNothing',
+        nameRu: 'Ничего не делать',
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-test' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-test' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('void doNothing()');
+      expect(result.code).toContain('return;');
+    });
+    
+    it('should generate function with input parameters', () => {
+      const func = createTestFunction({
+        name: 'add',
+        nameRu: 'Сложение',
+        parameters: [
+          { id: 'a', name: 'a', nameRu: 'а', dataType: 'int32', direction: 'input' },
+          { id: 'b', name: 'b', nameRu: 'б', dataType: 'int32', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-1-a', 'a', 'int32', 'output', 1),
+                port('entry-1-b', 'b', 'int32', 'output', 2),
+              ],
+              properties: { functionId: 'func-test' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-1-result', 'result', 'int32', 'input', 1, 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-test' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('int add(int a, int b)');
+      expect(result.code).toContain('return');
+    });
+    
+    it('should generate function with Russian name (transliterated)', () => {
+      const func = createTestFunction({
+        name: 'вычислить',
+        nameRu: 'Вычислить',
+        parameters: [
+          { id: 'значение', name: 'значение', nameRu: 'значение', dataType: 'int32', direction: 'input' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-test' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-test' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      // Проверяем что имя транслитерировано
+      expect(result.code).toContain('vychislit');
+      expect(result.code).toContain('znachenie');
+    });
+    
+    it('should include Russian comment with function name', () => {
+      const func = createTestFunction({
+        name: 'myFunction',
+        nameRu: 'Моя функция',
+        description: 'Это описание функции',
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph, { includeRussianComments: true });
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('// Функция: Моя функция');
+      expect(result.code).toContain('// Это описание функции');
+    });
+    
+    it('should generate function call from main', () => {
+      // Функция
+      const func = createTestFunction({
+        id: 'func-greet',
+        name: 'greet',
+        nameRu: 'Приветствие',
+        parameters: [],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-greet' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-greet' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+      
+      // Узел вызова функции
+      const callNode: BlueprintNode = {
+        id: 'call-1',
+        type: 'CallUserFunction',
+        label: 'Вызов: greet',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-1-exec-in', 'exec', 'execution', 'input', 0),
+        ],
+        outputs: [
+          port('call-1-exec-out', 'exec', 'execution', 'output', 0),
+        ],
+        properties: { functionId: 'func-greet', functionName: 'greet' },
+      };
+      
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      
+      const graph = createTestGraph(
+        [startNode, callNode],
+        [createEdge('start', 'start-exec-out', 'call-1', 'call-1-exec-in')]
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      // Функция должна быть определена перед main
+      expect(result.code).toContain('void greet()');
+      // Вызов функции внутри main
+      expect(result.code).toContain('greet();');
+      
+      // Проверим порядок: функция перед main
+      const funcPos = result.code.indexOf('void greet()');
+      const mainPos = result.code.indexOf('int main()');
+      expect(funcPos).toBeLessThan(mainPos);
+    });
+    
+    it('should generate function with return value used in main', () => {
+      // Функция возвращающая число
+      const func = createTestFunction({
+        id: 'func-getvalue',
+        name: 'getValue',
+        nameRu: 'Получить значение',
+        parameters: [
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-getvalue' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-1-result', 'result', 'int32', 'input', 1, 42),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-getvalue' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+      
+      // Узел вызова функции с выходом
+      const callNode: BlueprintNode = {
+        id: 'call-1',
+        type: 'CallUserFunction',
+        label: 'Вызов: getValue',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-1-exec-in', 'exec', 'execution', 'input', 0),
+        ],
+        outputs: [
+          port('call-1-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-1-result', 'result', 'int32', 'output', 1),
+        ],
+        properties: { functionId: 'func-getvalue', functionName: 'getValue' },
+      };
+      
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      
+      const graph = createTestGraph(
+        [startNode, callNode],
+        [createEdge('start', 'start-exec-out', 'call-1', 'call-1-exec-in')]
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('int getValue()');
+      expect(result.code).toContain('auto result_');
+      expect(result.code).toContain('= getValue()');
+    });
+    
+    it('should generate multiple functions', () => {
+      const func1 = createTestFunction({
+        id: 'func-1',
+        name: 'funcOne',
+        nameRu: 'Первая функция',
+      });
+      
+      const func2 = createTestFunction({
+        id: 'func-2',
+        name: 'funcTwo',
+        nameRu: 'Вторая функция',
+        parameters: [
+          { id: 'x', name: 'x', nameRu: 'x', dataType: 'int32', direction: 'input' },
+        ],
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func1, func2];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('void funcOne()');
+      expect(result.code).toContain('void funcTwo(int x)');
+    });
+    
+    it('should generate function with string parameters', () => {
+      const func = createTestFunction({
+        name: 'greet',
+        nameRu: 'Приветствие',
+        parameters: [
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'input' },
+          { id: 'greeting', name: 'greeting', nameRu: 'приветствие', dataType: 'string', direction: 'output' },
+        ],
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::string greet(std::string name)');
+    });
+    
+    it('should handle empty functions array', () => {
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('int main()');
+    });
+    
+    it('should handle function without FunctionEntry node', () => {
+      const func = createTestFunction({
+        name: 'emptyFunc',
+        nameRu: 'Пустая функция',
+        graph: {
+          nodes: [],  // Нет FunctionEntry
+          edges: [],
+        },
+      });
+      
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+      
+      const result = generator.generate(graph);
+      
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('void emptyFunc()');
+      expect(result.code).toContain('// Пустая функция');
     });
   });
 });

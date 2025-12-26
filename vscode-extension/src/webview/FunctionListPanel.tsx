@@ -7,11 +7,10 @@
  * - Переключения между EventGraph и функциями
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import type { 
   BlueprintFunction, 
   BlueprintGraphState,
-  FunctionParameter,
 } from '../shared/blueprintTypes';
 import type { PortDataType } from '../shared/portTypes';
 import { 
@@ -61,7 +60,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   activeFunctionId,
   displayLanguage,
 }) => {
-  const functions = graphState.functions ?? [];
+  const functions = useMemo(() => graphState.functions ?? [], [graphState.functions]);
   const isRu = displayLanguage === 'ru';
   
   // Состояние диалога функции

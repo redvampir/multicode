@@ -1,6 +1,6 @@
 # Roadmap MultiCode
 
-> **Обновлено:** 2025-12-24
+> **Обновлено:** 2025-12-25
 
 ## v0.1 — «Граф можно создать и сохранить» ✅ ЗАВЕРШЁН
 
@@ -90,13 +90,42 @@
 - [x] 74 теста для системы пакетов (PackageLoader: 30, usePackageRegistry: 8, TemplateNodeGenerator: 21, PackageManagerPanel: 23, интеграция: 3)
 - [ ] Загрузка пакетов из npm (отложено)
 
+## v0.6 — «Пользовательские функции» ✅ ЗАВЕРШЁН
+
+- [x] UI панель для управления функциями (`FunctionListPanel`)
+  - [x] Создание/редактирование/удаление функций
+  - [x] Добавление входных и выходных параметров
+  - [x] Переключение между EventGraph и графом функции
+  - [x] Локализация RU/EN
+- [x] Типы для функций в `blueprintTypes.ts`:
+  - [x] `BlueprintFunction` — описание функции с параметрами и графом
+  - [x] `FunctionParameter` — параметр функции (input/output)
+  - [x] `FunctionEntry`, `FunctionReturn`, `CallUserFunction` — типы узлов
+- [x] Фабричные функции (`createUserFunction`, `addFunctionInputParameter`, etc.)
+- [x] Кодогенерация пользовательских функций:
+  - [x] `FunctionEntryNodeGenerator` — точка входа в функцию
+  - [x] `FunctionReturnNodeGenerator` — возврат из функции
+  - [x] `CallUserFunctionNodeGenerator` — вызов функции
+  - [x] Генерация сигнатуры функции с типами C++
+  - [x] Поддержка множественных выходных параметров (через `std::tuple`)
+  - [x] Транслитерация русских имён функций и параметров
+  - [x] Русские комментарии с названием функции
+- [x] Расширенный `CodeGenContext` с `currentFunction` и `functions`
+- [x] `CppCodeGenerator.generateUserFunction()` — полная генерация тела функции
+- [x] 48 тестов для функций (generators/functions.test.ts: 38, интеграционные: 10)
+
 ## v1.0 — «Production Ready»
 
 - [ ] Стабильный API
 - [ ] 80%+ code coverage
 - [ ] Документация для пользователей
 - [ ] Marketplace публикация
-- [ ] CI/CD pipeline
+- [x] CI/CD pipeline:
+  - [x] C++ Build & Test (Windows MSVC, Linux GCC)
+  - [x] Code Format Check (clang-format)
+  - [x] C++ Code Coverage (lcov + Codecov)
+  - [x] VS Code Extension CI (TypeScript, lint, tests, build)
+  - [x] VSIX packaging на main branch
 
 ---
 

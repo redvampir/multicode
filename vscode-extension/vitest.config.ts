@@ -6,9 +6,16 @@ export default defineConfig({
     globals: true,
     setupFiles: './vitest.setup.ts',
     include: ['src/**/*.test.{ts,tsx}'],
+    // Решает проблему зависания тестов при использовании jsdom
+    pool: 'forks',
+    teardownTimeout: 1000,
+    // Изолирует тесты и предотвращает зависание
+    isolate: true,
+    // Отключаем watch mode для CI
+    watch: false,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'text-summary', 'html'],
+      reporter: ['text', 'text-summary', 'html', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.test.{ts,tsx}',

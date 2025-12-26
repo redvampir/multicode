@@ -23,6 +23,7 @@ import type {
   BlueprintGraphState, 
   BlueprintNode, 
   BlueprintNodeType,
+  BlueprintFunction,
 } from '../shared/blueprintTypes';
 import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
 import type { GraphLanguage } from '../shared/blueprintTypes';
@@ -45,6 +46,7 @@ import {
   createRegistryWithPackages,
   TemplateNodeGenerator,
   NodeDefinitionGetter,
+  FunctionEntryNodeGenerator,
 } from './generators';
 
 export class CppCodeGenerator implements ICodeGenerator {
@@ -154,6 +156,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       warnings: [],
       sourceMap: [],
       currentLine: 1,
+      functions: graph.functions ?? [],
     };
     
     // Создать helpers для генераторов
@@ -164,6 +167,15 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     // Генерировать тело кода (нужно сделать до headers, чтобы собрать includes)
     const bodyLines: string[] = [];
+    
+    // Генерируем пользовательские функции перед main()
+    if (graph.functions && graph.functions.length > 0) {
+      for (const func of graph.functions) {
+        const funcLines = this.generateUserFunction(func, context, helpers);
+        bodyLines.push(...funcLines);
+        bodyLines.push('');
+      }
+    }
     
     // main() обёртка — открытие
     if (opts.generateMainWrapper) {
@@ -316,6 +328,339 @@ export class CppCodeGenerator implements ICodeGenerator {
     }
     
     return lines;
+  }
+  
+  /**
+   * Генерировать код пользовательской функции
+   * 
+   * @param func Определение функции
+   * @param context Контекст генерации (будет модифицирован)
+   * @param helpers Вспомогательные функции
+   * @returns Строки C++ кода функции
+   */
+  private generateUserFunction(
+    func: BlueprintFunction,
+    context: CodeGenContext,
+    _helpers: GeneratorHelpers
+  ): string[] {
+    const lines: string[] = [];
+    const opts = context.options;
+    
+    // Комментарий с русским названием
+    if (opts.includeRussianComments && func.nameRu) {
+      lines.push(`// Функция: ${func.nameRu}`);
+      if (func.description) {
+        lines.push(`// ${func.description}`);
+      }
+    }
+    
+    // Сигнатура функции
+    const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
+    lines.push(`${signature} {`);
+    
+    // Сохраняем текущее состояние контекста
+    const savedIndentLevel = context.indentLevel;
+    const savedCurrentFunction = context.currentFunction;
+    // Не сохраняем processedNodes и declaredVariables — они специфичны для функции
+    
+    // Устанавливаем контекст функции
+    context.currentFunction = func;
+    context.indentLevel = 1;
+    
+    // Находим FunctionEntry в графе функции
+    const entryNode = func.graph.nodes.find(n => n.type === 'FunctionEntry');
+    
+    if (entryNode) {
+      // Создаём временный контекст для графа функции
+      const funcContext: CodeGenContext = {
+        ...context,
+        graph: {
+          ...context.graph,
+          nodes: func.graph.nodes,
+          edges: func.graph.edges,
+        },
+        processedNodes: new Set<string>(),
+        declaredVariables: new Map(),
+        currentFunction: func,
+        indentLevel: 1,
+      };
+      
+      // Создаём helpers для контекста функции
+      const funcHelpers = this.createHelpersForContext(funcContext);
+      
+      // Отмечаем FunctionEntry как обработанный
+      funcContext.processedNodes.add(entryNode.id);
+      
+      // Находим следующий узел после FunctionEntry
+      const nextNode = this.getNextExecutionNodeInGraph(entryNode, func.graph.nodes, func.graph.edges);
+      
+      if (nextNode) {
+        const bodyLines = this.generateFromNodeInContext(nextNode, funcContext, funcHelpers);
+        lines.push(...bodyLines);
+      }
+      
+      // Объединяем ошибки и предупреждения
+      context.errors.push(...funcContext.errors);
+      context.warnings.push(...funcContext.warnings);
+    } else {
+      // Нет FunctionEntry — пустая функция
+      const ind = indent(1, opts.indentSize);
+      lines.push(`${ind}// Пустая функция`);
+      
+      // Добавляем return по умолчанию
+      const outputParams = func.parameters.filter(p => p.direction === 'output');
+      if (outputParams.length === 0) {
+        lines.push(`${ind}return;`);
+      } else if (outputParams.length === 1) {
+        const defaultVal = this.getDefaultValueForType(outputParams[0].dataType);
+        lines.push(`${ind}return ${defaultVal};`);
+      } else {
+        const defaults = outputParams.map(p => this.getDefaultValueForType(p.dataType));
+        lines.push(`${ind}return std::make_tuple(${defaults.join(', ')});`);
+      }
+    }
+    
+    lines.push('}');
+    
+    // Восстанавливаем контекст
+    context.indentLevel = savedIndentLevel;
+    context.currentFunction = savedCurrentFunction;
+    // Не восстанавливаем processedNodes и declaredVariables,
+    // чтобы не помечать узлы функций как неиспользованные
+    
+    return lines;
+  }
+  
+  /**
+   * Получить значение по умолчанию для типа данных
+   */
+  private getDefaultValueForType(dataType: string): string {
+    const defaults: Record<string, string> = {
+      'bool': 'false',
+      'int32': '0',
+      'int64': '0LL',
+      'float': '0.0f',
+      'double': '0.0',
+      'string': '""',
+      'vector': '{}',
+      'array': '{}',
+      'object': 'nullptr',
+    };
+    return defaults[dataType] ?? '0';
+  }
+  
+  /**
+   * Получить следующий execution узел в заданном графе
+   */
+  private getNextExecutionNodeInGraph(
+    node: BlueprintNode,
+    nodes: BlueprintNode[],
+    edges: Array<{ sourceNode: string; sourcePort: string; targetNode: string; targetPort: string }>
+  ): BlueprintNode | null {
+    const edge = edges.find(e => 
+      e.sourceNode === node.id && 
+      (e.sourcePort.includes('exec-out') || e.sourcePort.includes('exec_out'))
+    );
+    
+    if (!edge) return null;
+    
+    return nodes.find(n => n.id === edge.targetNode) ?? null;
+  }
+  
+  /**
+   * Генерация кода из узла в заданном контексте
+   */
+  private generateFromNodeInContext(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string[] {
+    const lines: string[] = [];
+    
+    if (context.processedNodes.has(node.id)) {
+      return lines;
+    }
+    context.processedNodes.add(node.id);
+    
+    const startLine = context.currentLine;
+    
+    const generator = this.registry.get(node.type);
+    if (!generator) {
+      lines.push(`${indent(context.indentLevel, context.options.indentSize)}// Неподдерживаемый тип: ${node.type}`);
+      return lines;
+    }
+    
+    // Добавить русский комментарий
+    if (context.options.includeRussianComments) {
+      const def = NODE_TYPE_DEFINITIONS[node.type];
+      const russianName = def?.labelRu ?? node.type;
+      if (node.label !== def?.label && node.label !== def?.labelRu) {
+        lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${russianName}: ${node.label}`);
+      }
+    }
+    
+    const result = generator.generate(node, context, helpers);
+    lines.push(...result.lines);
+    context.currentLine += result.lines.length;
+    
+    if (result.lines.length > 0) {
+      context.sourceMap.push({
+        nodeId: node.id,
+        startLine,
+        endLine: context.currentLine - 1,
+      });
+    }
+    
+    // Следовать по execution flow
+    if (result.followExecutionFlow && !result.customExecutionHandling) {
+      const funcGraph = context.currentFunction?.graph;
+      if (funcGraph) {
+        const nextNode = this.getNextExecutionNodeInGraph(node, funcGraph.nodes, funcGraph.edges);
+        if (nextNode) {
+          const nextLines = this.generateFromNodeInContext(nextNode, context, helpers);
+          lines.push(...nextLines);
+        }
+      }
+    }
+    
+    return lines;
+  }
+  
+  /**
+   * Создать helpers для указанного контекста
+   */
+  private createHelpersForContext(context: CodeGenContext): GeneratorHelpers {
+    const helpers: GeneratorHelpers = {
+      indent: (): string => {
+        return indent(context.indentLevel, context.options.indentSize);
+      },
+      
+      getInputExpression: (node: BlueprintNode, portSuffix: string): string | null => {
+        return this.getInputExpressionInContext(node, portSuffix, context);
+      },
+      
+      getOutputExpression: (node: BlueprintNode, portId: string): string => {
+        return this.getOutputExpressionInContext(node, portId, context);
+      },
+      
+      getExecutionTarget: (node: BlueprintNode, portSuffix: string): BlueprintNode | null => {
+        const funcGraph = context.currentFunction?.graph;
+        if (!funcGraph) return null;
+        
+        const edge = funcGraph.edges.find(e => 
+          e.sourceNode === node.id && 
+          (e.sourcePort.includes(portSuffix) || e.sourcePort.endsWith(portSuffix))
+        );
+        
+        if (!edge) return null;
+        return funcGraph.nodes.find(n => n.id === edge.targetNode) ?? null;
+      },
+      
+      generateFromNode: (node: BlueprintNode): string[] => {
+        return this.generateFromNodeInContext(node, context, helpers);
+      },
+      
+      pushIndent: (): void => {
+        context.indentLevel++;
+      },
+      
+      popIndent: (): void => {
+        context.indentLevel--;
+      },
+      
+      addWarning: (nodeId: string, code: string, message: string): void => {
+        context.warnings.push({ nodeId, code: code as CodeGenWarningCode, message });
+      },
+      
+      addError: (nodeId: string, code: string, message: string, messageEn: string): void => {
+        context.errors.push({ nodeId, code: code as CodeGenErrorCode, message, messageEn });
+      },
+      
+      isVariableDeclared: (name: string): boolean => {
+        return context.declaredVariables.has(name);
+      },
+      
+      declareVariable: (id: string, codeName: string, originalName: string, cppType: string, nodeId: string): void => {
+        context.declaredVariables.set(id, { codeName, originalName, cppType, nodeId });
+      },
+      
+      getVariable: (idOrName: string): { codeName: string; cppType: string } | null => {
+        const info = context.declaredVariables.get(idOrName);
+        if (info) {
+          return { codeName: info.codeName, cppType: info.cppType };
+        }
+        return null;
+      },
+    };
+    
+    return helpers;
+  }
+  
+  /**
+   * Получить выражение для входного порта в контексте функции
+   */
+  private getInputExpressionInContext(
+    node: BlueprintNode,
+    portSuffix: string,
+    context: CodeGenContext
+  ): string | null {
+    const port = node.inputs.find(p => 
+      p.id.includes(portSuffix) || p.id.endsWith(portSuffix)
+    );
+    
+    if (!port) return null;
+    
+    const funcGraph = context.currentFunction?.graph;
+    const edges = funcGraph?.edges ?? context.graph.edges;
+    const nodes = funcGraph?.nodes ?? context.graph.nodes;
+    
+    // Найти входящую связь
+    const edge = edges.find(e => 
+      e.targetNode === node.id && 
+      (e.targetPort.includes(portSuffix) || e.targetPort.endsWith(portSuffix))
+    );
+    
+    if (edge) {
+      const sourceNode = nodes.find(n => n.id === edge.sourceNode);
+      if (sourceNode) {
+        return this.getOutputExpressionInContext(sourceNode, edge.sourcePort, context);
+      }
+    }
+    
+    // Значение по умолчанию
+    if (port.value !== undefined) {
+      if (port.dataType === 'string') {
+        return `"${port.value}"`;
+      }
+      return String(port.value);
+    }
+    
+    if (port.defaultValue !== undefined) {
+      if (port.dataType === 'string') {
+        return `"${port.defaultValue}"`;
+      }
+      return String(port.defaultValue);
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Получить выражение для выходного порта в контексте функции
+   */
+  private getOutputExpressionInContext(
+    node: BlueprintNode,
+    portId: string,
+    context: CodeGenContext
+  ): string {
+    const generator = this.registry.get(node.type);
+    
+    if (generator?.getOutputExpression) {
+      const helpers = this.createHelpersForContext(context);
+      return generator.getOutputExpression(node, portId, context, helpers);
+    }
+    
+    return '0';
   }
   
   /**

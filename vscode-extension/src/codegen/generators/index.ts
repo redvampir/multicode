@@ -18,6 +18,7 @@ export { createMathLogicGenerators } from './mathLogic';
 export { createVariableGenerators } from './variables';
 export { createIOGenerators } from './io';
 export { createOtherGenerators } from './other';
+export { createFunctionGenerators, FunctionEntryNodeGenerator, FunctionAwareContext } from './functions';
 
 // Генератор на основе шаблонов из пакетов
 export { 
@@ -34,6 +35,7 @@ import { createMathLogicGenerators } from './mathLogic';
 import { createVariableGenerators } from './variables';
 import { createIOGenerators } from './io';
 import { createOtherGenerators } from './other';
+import { createFunctionGenerators } from './functions';
 
 /**
  * Создать реестр со всеми стандартными генераторами
@@ -48,6 +50,7 @@ export function createDefaultRegistry(): NodeGeneratorRegistry {
     ...createVariableGenerators(),
     ...createIOGenerators(),
     ...createOtherGenerators(),
+    ...createFunctionGenerators(),
   ];
   
   for (const generator of allGenerators) {
@@ -82,6 +85,7 @@ export function createRegistryWithPackages(
     ...createVariableGenerators(),
     ...createIOGenerators(),
     ...createOtherGenerators(),
+    ...createFunctionGenerators(),
   ];
   
   for (const generator of standardGenerators) {

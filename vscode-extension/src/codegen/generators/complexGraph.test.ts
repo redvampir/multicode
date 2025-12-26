@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import { CppCodeGenerator } from '../CppCodeGenerator';
 import type { BlueprintGraphState, BlueprintNode, BlueprintEdge } from '../../shared/blueprintTypes';
-import type { NodePort } from '../../shared/blueprintTypes';
 
 describe('CppCodeGenerator: Сложные графы с ветвлениями', () => {
   // Вспомогательная функция для создания тестового графа

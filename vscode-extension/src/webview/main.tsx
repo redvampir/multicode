@@ -624,7 +624,6 @@ const App: React.FC = () => {
   
   // Code preview state
   const [showCodePreview, setShowCodePreview] = useState(false);
-  const [selectedNodeIdForCode, setSelectedNodeIdForCode] = useState<string | null>(null);
   
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
@@ -846,13 +845,6 @@ const App: React.FC = () => {
     pushToast('success', translate('toolbar.copyId.ok', 'ID скопирован'));
   };
 
-  // Обработчик выбора узла из кодогенератора
-  const handleNodeSelect = (nodeId: string): void => {
-    setSelectedNodeIdForCode(nodeId);
-    // Здесь можно добавить фокусировку на узел в редакторе
-    // Например: focusNode(nodeId);
-  };
-
   useEffect(() => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
   }, [graph.displayLanguage]);
@@ -914,7 +906,6 @@ const App: React.FC = () => {
               <EnhancedCodePreviewPanel
                 graph={blueprintGraph}
                 locale={locale}
-                onNodeSelect={setSelectedNodeIdForCode}
                 onGenerateComplete={(result) => {
                   pushToast('success', result.success 
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')

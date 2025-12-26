@@ -9,8 +9,8 @@
  * - Визуализация проблем и предупреждений
  */
 
-import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import type { BlueprintGraphState, BlueprintNode } from '../shared/blueprintTypes';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import type { BlueprintGraphState } from '../shared/blueprintTypes';
 import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
 import type { CodeGenerationResult, CodeGenErrorCode } from '../codegen/types';
 
@@ -201,68 +201,6 @@ const styles = {
 // Вспомогательные функции
 // ============================================
 
-/**
- * Простая подсветка синтаксиса C++
- */
-const highlightSyntax = (code: string): JSX.Element[] => {
-  const lines = code.split('\n');
-  const elements: JSX.Element[] = [];
-  
-  const patterns = {
-    keywords: /\b(int|char|float|double|long|short|void|bool|if|else|for|while|do|switch|case|default|break|continue|return|include|using|namespace|std|string|vector|array|class|struct|public|private|protected|const|static|auto|virtual|override|final|constexpr)\b/g,
-    strings: /"([^"\\]|\\.)*"/g,
-    comments: /(\/\/.*$|\/\*[\s\S]*?\*\/)/gm,
-    numbers: /\b(\d+\.?\d*|\.\d+)\b/g,
-    directives: /#include|#define|#if|#else|#endif/g,
-    functions: /\b(\w+)\s*\(/g,
-    types: /\b(std::[a-zA-Z_][a-zA-Z0-9_]*)\b/g,
-    operators: /(\+\+|--|===|==|!=|<=|>=|&&|\|\||[+\-*/%=<>!&|^~?:])/g,
-  };
-
-  lines.forEach((line, lineIndex) => {
-    let highlightedLine = line;
-    let replaced: boolean[] = new Array(line.length).fill(false);
-    
-    // Проверяем каждый паттерн
-    Object.entries(patterns).forEach(([type, pattern]) => {
-      const matches = [...highlightedLine.matchAll(pattern)];
-      matches.forEach(match => {
-        if (match.index !== undefined) {
-          // Проверяем что не заменяли уже эту часть
-          let alreadyReplaced = false;
-          for (let i = match.index; i < match.index + match[0].length; i++) {
-            if (replaced[i]) {
-              alreadyReplaced = true;
-              break;
-            }
-          }
-          
-          if (!alreadyReplaced) {
-            const before = highlightedLine.substring(0, match.index);
-            const matchText = highlightedLine.substring(match.index, match.index + match[0].length);
-            const after = highlightedLine.substring(match.index + match[0].length);
-            
-            highlightedLine = before + `<span class="syntax-${type}">${matchText}</span>` + after;
-            
-            // Отмечаем как замененное
-            for (let i = match.index; i < match.index + match[0].length + `<span class="syntax-${type}"></span>`.length; i++) {
-              if (i < replaced.length) {
-                replaced[i] = true;
-              }
-            }
-          }
-        }
-      });
-    });
-
-    elements.push(
-      <div key={lineIndex} dangerouslySetInnerHTML={{ __html: highlightedLine }} />
-    );
-  });
-  
-  return elements;
-};
-
 // ============================================
 // Типы для улучшенной панели
 // ============================================
@@ -410,8 +348,6 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     if (!result?.code) return null;
     
     const lines = result.code.split('\n');
-    const highlightedCode = highlightSyntax(result.code);
-    
     return lines.map((line, index) => {
       const lineNumber = index + 1;
       const lineInfo = lineInfos.find(info => info.line === lineNumber);

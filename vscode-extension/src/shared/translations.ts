@@ -83,6 +83,11 @@ export type TranslationKey =
   | 'context.delete'
   | 'context.group'
   | 'context.alignGrid'
+  | 'hints.title'
+  | 'hints.contextDelete'
+  | 'hints.deleteKeys'
+  | 'hints.copyPaste'
+  | 'hints.pan'
   | 'errors.connectionExists'
   | 'errors.connectionSelf'
   | 'errors.connectionMissing'
@@ -203,6 +208,11 @@ const translations: Record<Locale, TranslationMap> = {
     'context.delete': 'Удалить',
     'context.group': 'Сгруппировать',
     'context.alignGrid': 'Выровнять по сетке',
+    'hints.title': 'Подсказки',
+    'hints.contextDelete': 'ПКМ по узлу — меню → Удалить',
+    'hints.deleteKeys': 'Delete/Backspace — удалить выделенное',
+    'hints.copyPaste': 'Ctrl+C/V/D — копия/вставка/дубликат',
+    'hints.pan': 'Средняя кнопка или пробел + перетаскивание — панорама',
     'errors.connectionExists': 'Такая связь уже есть',
     'errors.connectionSelf': 'Связь с самим собой запрещена',
     'errors.connectionMissing': 'Укажите оба узла для связи',
@@ -320,6 +330,11 @@ const translations: Record<Locale, TranslationMap> = {
     'context.delete': 'Delete',
     'context.group': 'Group selection',
     'context.alignGrid': 'Align to grid',
+    'hints.title': 'Shortcuts',
+    'hints.contextDelete': 'Right click on node → menu → Delete',
+    'hints.deleteKeys': 'Delete/Backspace — remove selection',
+    'hints.copyPaste': 'Ctrl+C/V/D — copy/paste/duplicate',
+    'hints.pan': 'Middle mouse or Space + drag — pan view',
     'errors.connectionExists': 'Connection already exists',
     'errors.connectionSelf': 'Cannot connect node to itself',
     'errors.connectionMissing': 'Select existing nodes',

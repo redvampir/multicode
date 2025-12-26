@@ -32,7 +32,8 @@ TEST_CASE("GraphSerializer: Round-trip with New Property System", "[graph][seria
 
     // 3. Verify the serialized JSON structure
     REQUIRE(json_doc["schema"]["version"].get<std::string>() == "1.1.0");
-    REQUIRE(json_doc["nodes"][0]["type"].get<std::string>() == std::string(NodeTypes::PrintString.name));
+    REQUIRE(json_doc["nodes"][0]["type"].get<std::string>() ==
+            std::string(NodeTypes::PrintString.name));
     REQUIRE(json_doc["nodes"][0]["instanceName"].get<std::string>() == "MyPrinter");
     REQUIRE(json_doc["nodes"][0]["properties"]["value"].get<std::string>() == "Custom Message");
     REQUIRE(json_doc["nodes"][0]["properties"]["speed"].get<int64_t>() == 100);
@@ -64,14 +65,10 @@ TEST_CASE("GraphSerializer: Invalid or Unknown Node Type", "[graph][serializatio
     const nlohmann::json invalid_json = {
         {"schema", {{"version", "1.1.0"}, {"coreMin", "1.1.0"}, {"coreMax", "1.1.x"}}},
         {"graph", {{"id", 1}, {"name", "TestGraph"}}},
-        {"nodes", {
-            {
-                {"id", 101},
-                {"type", "core.unknown.node"}, // This type does not exist
-                {"instanceName", "InvalidNode"}
-            }
-        }}
-    };
+        {"nodes",
+         {{{"id", 101},
+           {"type", "core.unknown.node"},  // This type does not exist
+           {"instanceName", "InvalidNode"}}}}};
 
     auto result = GraphSerializer::from_json(invalid_json);
     REQUIRE(!result.has_value());
@@ -92,11 +89,12 @@ TEST_CASE("GraphSerializer: Connect two nodes and serialize", "[graph][serializa
     graph.add_node(std::move(start_node));
     graph.add_node(std::move(print_node));
 
-    auto conn_res = graph.connect(start_id, start_exec_port->get_id(), print_id, print_exec_port->get_id());
+    auto conn_res =
+        graph.connect(start_id, start_exec_port->get_id(), print_id, print_exec_port->get_id());
     REQUIRE(conn_res.has_value());
 
     const nlohmann::json json_doc = GraphSerializer::to_json(graph);
-    
+
     // Verify connection is serialized
     REQUIRE(json_doc.contains("connections"));
     REQUIRE(json_doc["connections"].is_array());
@@ -109,6 +107,6 @@ TEST_CASE("GraphSerializer: Connect two nodes and serialize", "[graph][serializa
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(restored_result.has_value());
-    // Connection parsing is not fully implemented in the from_json mock, 
+    // Connection parsing is not fully implemented in the from_json mock,
     // so we only check if the deserialization succeeds without error.
 }

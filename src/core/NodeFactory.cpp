@@ -14,7 +14,8 @@ auto NodeFactory::create(const NodeType& type, std::string instance_name) -> std
     return create_with_id(node_id, type, std::move(instance_name));
 }
 
-auto NodeFactory::create_with_id(NodeId node_id, const NodeType& type, std::string instance_name) -> std::unique_ptr<Node> {
+auto NodeFactory::create_with_id(NodeId node_id, const NodeType& type, std::string instance_name)
+    -> std::unique_ptr<Node> {
     auto node = std::make_unique<Node>(node_id, type, std::move(instance_name));
     configure_ports(*node);
     return node;
@@ -50,8 +51,8 @@ void NodeFactory::synchronize_id_counters(NodeId max_node_id, PortId max_port_id
     auto sync_atomic = [](std::atomic<uint64_t>& atomic, uint64_t new_value) {
         auto current = atomic.load(std::memory_order_relaxed);
         while (current < new_value &&
-               !atomic.compare_exchange_weak(current, new_value, std::memory_order_relaxed, std::memory_order_relaxed)) {
-        }
+               !atomic.compare_exchange_weak(
+                   current, new_value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
     };
     sync_atomic(next_node_id_, max_node_id.value + 1);
     sync_atomic(next_port_id_, max_port_id.value + 1);

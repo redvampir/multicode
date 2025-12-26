@@ -119,7 +119,7 @@ function groupNodesByCategory(
 export function usePackageRegistry(): UsePackageRegistryResult {
   const [ready, setReady] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  const [version, setVersion] = useState(0); // Для триггера перерендера
+  const [, setVersion] = useState(0); // Для триггера перерендера
   
   // Загрузка стандартного пакета при монтировании
   useEffect(() => {
@@ -163,15 +163,15 @@ export function usePackageRegistry(): UsePackageRegistryResult {
   
   // Мемоизированные данные
   // version используется для инвалидации кэша при изменении реестра
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const nodeDefinitions = useMemo(
     () => mergeNodeDefinitions(globalRegistry),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [version]
   );
   
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const categories = useMemo(
     () => mergeCategories(globalRegistry),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [version]
   );
   
@@ -180,9 +180,9 @@ export function usePackageRegistry(): UsePackageRegistryResult {
     [nodeDefinitions]
   );
   
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const packages = useMemo(
     () => globalRegistry.getPackageList(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [version]
   );
   

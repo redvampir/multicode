@@ -302,8 +302,8 @@ private:
     return serialize_segments(segments);
 }
 
-[[nodiscard]] auto are_type_names_compatible(std::string_view lhs,
-                                             std::string_view rhs) noexcept -> bool {
+[[nodiscard]] auto are_type_names_compatible(std::string_view lhs, std::string_view rhs) noexcept
+    -> bool {
     const auto lhs_trimmed = trim(lhs);
     const auto rhs_trimmed = trim(rhs);
 

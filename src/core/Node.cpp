@@ -101,23 +101,29 @@ auto Node::remove_port(PortId id) -> Result<void> {
 // ============================================================================
 
 auto Node::validate() const -> Result<void> {
-    if (instance_name_.empty() && type_.name != NodeTypes::Start.name && type_.name != NodeTypes::End.name) {
-        return Result<void>(Error{.message = "Node instance name cannot be empty for most nodes", .code = 100});
+    if (instance_name_.empty() && type_.name != NodeTypes::Start.name &&
+        type_.name != NodeTypes::End.name) {
+        return Result<void>(
+            Error{.message = "Node instance name cannot be empty for most nodes", .code = 100});
     }
 
     if (type_.name == NodeTypes::Start.name) {
         if (!get_exec_input_ports().empty()) {
-            return Result<void>(Error{.message = "Start node should not have execution inputs", .code = 103});
+            return Result<void>(
+                Error{.message = "Start node should not have execution inputs", .code = 103});
         }
         if (get_exec_output_ports().empty()) {
-            return Result<void>(Error{.message = "Start node must have at least one execution output", .code = 104});
+            return Result<void>(Error{
+                .message = "Start node must have at least one execution output", .code = 104});
         }
     } else if (type_.name == NodeTypes::End.name) {
         if (!get_exec_output_ports().empty()) {
-            return Result<void>(Error{.message = "End node should not have execution outputs", .code = 105});
+            return Result<void>(
+                Error{.message = "End node should not have execution outputs", .code = 105});
         }
         if (get_exec_input_ports().empty()) {
-            return Result<void>(Error{.message = "End node must have at least one execution input", .code = 106});
+            return Result<void>(
+                Error{.message = "End node must have at least one execution input", .code = 106});
         }
     }
     // Further validation can be added for custom nodes based on their definitions.

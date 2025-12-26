@@ -16,10 +16,13 @@ public:
     /// @param type The type of node to create.
     /// @param instance_name Optional name for the node instance.
     /// @return A unique_ptr to the newly created node, or nullptr if type is unknown.
-    [[nodiscard]] static auto create(const NodeType& type, std::string instance_name = "") -> std::unique_ptr<Node>;
+    [[nodiscard]] static auto create(const NodeType& type, std::string instance_name = "")
+        -> std::unique_ptr<Node>;
 
     /// @brief Creates a node with a specific ID, used during deserialization.
-    [[nodiscard]] static auto create_with_id(NodeId node_id, const NodeType& type, std::string instance_name) -> std::unique_ptr<Node>;
+    [[nodiscard]] static auto create_with_id(NodeId node_id,
+                                             const NodeType& type,
+                                             std::string instance_name) -> std::unique_ptr<Node>;
 
     /// @brief Ensures the next generated ID is greater than the given value.
     static auto synchronize_id_counters(NodeId max_node_id, PortId max_port_id) -> void;

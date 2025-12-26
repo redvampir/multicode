@@ -65,8 +65,8 @@ struct GraphId {
 /// @brief Defines a type of node in the visual graph.
 /// This is now a struct to allow for dynamic, string-based node definitions.
 struct NodeType {
-    std::string_view name;  // Unique identifier, e.g., "core.flow.start"
-    std::string_view label; // Human-readable label, e.g., "Start"
+    std::string_view name;   // Unique identifier, e.g., "core.flow.start"
+    std::string_view label;  // Human-readable label, e.g., "Start"
 
     [[nodiscard]] auto operator<=>(const NodeType&) const noexcept = default;
 };
@@ -74,15 +74,15 @@ struct NodeType {
 /// @brief Predefined core node types.
 /// Custom nodes will be loaded dynamically, but core nodes are defined here.
 namespace NodeTypes {
-    // Core Flow
-    inline constexpr NodeType Start{.name = "core.flow.start", .label = "Start"};
-    inline constexpr NodeType End{.name = "core.flow.end", .label = "End"};
+// Core Flow
+inline constexpr NodeType Start{.name = "core.flow.start", .label = "Start"};
+inline constexpr NodeType End{.name = "core.flow.end", .label = "End"};
 
-    // I/O (New node for our prototype)
-    inline constexpr NodeType PrintString{.name = "core.io.print_string", .label = "Print String"};
-    
-    // ... other core nodes like If, ForLoop, etc. will be added here
-}
+// I/O (New node for our prototype)
+inline constexpr NodeType PrintString{.name = "core.io.print_string", .label = "Print String"};
+
+// ... other core nodes like If, ForLoop, etc. will be added here
+}  // namespace NodeTypes
 
 /// @brief Type of connection between nodes
 enum class ConnectionType : std::uint8_t {
@@ -112,7 +112,7 @@ enum class DataType : std::uint8_t {
     UInt64,
     Float,
     Double,
-    
+
     // Strings
     String,
     StringView,
@@ -120,27 +120,27 @@ enum class DataType : std::uint8_t {
     WChar,
 
     // Pointers and References
-    Pointer,      ///< Pointer type (requires type_name)
-    Reference,    ///< Reference type (requires type_name)
-    
+    Pointer,    ///< Pointer type (requires type_name)
+    Reference,  ///< Reference type (requires type_name)
+
     // Containers
-    Array,        ///< Fixed-size array (requires type_name)
-    Vector,       ///< Dynamic array (requires type_name)
-    Map,          ///< Key-value map (requires type_name)
-    Set,          ///< Unique set (requires type_name)
-    
+    Array,   ///< Fixed-size array (requires type_name)
+    Vector,  ///< Dynamic array (requires type_name)
+    Map,     ///< Key-value map (requires type_name)
+    Set,     ///< Unique set (requires type_name)
+
     // User-defined types
-    Struct,       ///< Struct type (requires type_name)
-    Class,        ///< Class type (requires type_name)
-    Enum,         ///< Enum type (requires type_name)
-    Template,     ///< Template type (requires type_name)
-    Object,       ///< Generic object
+    Struct,    ///< Struct type (requires type_name)
+    Class,     ///< Class type (requires type_name)
+    Enum,      ///< Enum type (requires type_name)
+    Template,  ///< Template type (requires type_name)
+    Object,    ///< Generic object
 
     // Special
-    Execution,    ///< Execution flow (special type)
-    Any,          ///< Any type (for generic nodes)
-    Auto,         ///< Auto-deduced type
-    Unknown,      ///< Unknown type
+    Execution,  ///< Execution flow (special type)
+    Any,        ///< Any type (for generic nodes)
+    Auto,       ///< Auto-deduced type
+    Unknown,    ///< Unknown type
 };
 
 /// @brief Programming language target
@@ -237,10 +237,18 @@ public:
     Result() noexcept : has_value_(true) {}
     explicit Result(Error error) noexcept : error_(std::move(error)), has_value_(false) {}
 
-    [[nodiscard]] auto has_value() const noexcept -> bool { return has_value_; }
-    [[nodiscard]] auto has_error() const noexcept -> bool { return !has_value_; }
-    [[nodiscard]] auto error() const& -> const Error& { return error_; }
-    [[nodiscard]] explicit operator bool() const noexcept { return has_value_; }
+    [[nodiscard]] auto has_value() const noexcept -> bool {
+        return has_value_;
+    }
+    [[nodiscard]] auto has_error() const noexcept -> bool {
+        return !has_value_;
+    }
+    [[nodiscard]] auto error() const& -> const Error& {
+        return error_;
+    }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return has_value_;
+    }
 
 private:
     Error error_{};

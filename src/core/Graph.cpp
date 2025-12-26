@@ -138,10 +138,8 @@ auto Graph::has_node(NodeId id) const noexcept -> bool {
 // Connection Management
 // ============================================================================
 
-auto Graph::connect(NodeId from_node,
-                    PortId from_port,
-                    NodeId to_node,
-                    PortId to_port) -> Result<ConnectionId> {
+auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
+    -> Result<ConnectionId> {
     // Validate connection
     if (auto result = validate_connection(from_node, from_port, to_node, to_port); !result) {
         return Result<ConnectionId>(result.error());
@@ -430,8 +428,8 @@ auto Graph::validate() const -> ValidationResult {
         for (const auto& node : nodes_) {
             if (!reachable.contains(node->get_id()) && node->get_type() != NodeTypes::Start) {
                 result.errors.push_back(Error{
-                    .message =
-                        std::format("Node '{}' is not reachable from Start", node->get_instance_name()),
+                    .message = std::format("Node '{}' is not reachable from Start",
+                                           node->get_instance_name()),
                     .code = 503  // Unreachable nodes
                 });
                 result.is_valid = false;

@@ -49,16 +49,28 @@ public:
     // Immutable Properties (const, noexcept)
     // ========================================================================
 
-    [[nodiscard]] auto get_id() const noexcept -> NodeId { return id_; }
-    [[nodiscard]] auto get_type() const noexcept -> NodeType { return type_; }
-    [[nodiscard]] auto get_instance_name() const noexcept -> std::string_view { return instance_name_; }
+    [[nodiscard]] auto get_id() const noexcept -> NodeId {
+        return id_;
+    }
+    [[nodiscard]] auto get_type() const noexcept -> NodeType {
+        return type_;
+    }
+    [[nodiscard]] auto get_instance_name() const noexcept -> std::string_view {
+        return instance_name_;
+    }
     [[nodiscard]] auto get_display_name() const noexcept -> std::string_view {
         return display_name_.empty() ? instance_name_ : display_name_;
     }
-    [[nodiscard]] auto get_ports() const noexcept -> std::span<const Port> { return ports_; }
+    [[nodiscard]] auto get_ports() const noexcept -> std::span<const Port> {
+        return ports_;
+    }
     [[nodiscard]] auto find_port(PortId id) const -> const Port*;
-    [[nodiscard]] auto has_execution_flow() const noexcept -> bool { return has_execution_flow_; }
-    [[nodiscard]] auto get_description() const noexcept -> std::string_view { return description_; }
+    [[nodiscard]] auto has_execution_flow() const noexcept -> bool {
+        return has_execution_flow_;
+    }
+    [[nodiscard]] auto get_description() const noexcept -> std::string_view {
+        return description_;
+    }
 
     // ========================================================================
     // Computed Port Views
@@ -73,8 +85,12 @@ public:
     // Mutators
     // ========================================================================
 
-    auto set_display_name(std::string name) -> void { display_name_ = std::move(name); }
-    auto set_description(std::string description) -> void { description_ = std::move(description); }
+    auto set_display_name(std::string name) -> void {
+        display_name_ = std::move(name);
+    }
+    auto set_description(std::string description) -> void {
+        description_ = std::move(description);
+    }
     auto add_input_port(DataType data_type, std::string name, PortId id) -> Port&;
     auto add_output_port(DataType data_type, std::string name, PortId id) -> Port&;
     auto remove_port(PortId id) -> Result<void>;
@@ -111,26 +127,30 @@ public:
     // ========================================================================
 
     [[nodiscard]] auto validate() const -> Result<void>;
-    [[nodiscard]] auto operator==(const Node& other) const noexcept -> bool { return id_ == other.id_; }
-    [[nodiscard]] auto operator<=>(const Node& other) const noexcept { return id_ <=> other.id_; }
+    [[nodiscard]] auto operator==(const Node& other) const noexcept -> bool {
+        return id_ == other.id_;
+    }
+    [[nodiscard]] auto operator<=>(const Node& other) const noexcept {
+        return id_ <=> other.id_;
+    }
 
 private:
     friend class GraphSerializer;
     friend class NodeFactory;
 
-    auto append_port(Port port) -> void; 
+    auto append_port(Port port) -> void;
     auto update_execution_flow_flag() -> void;
 
     // Core immutable state
     NodeId id_;
     NodeType type_;
-    std::string instance_name_; // User-defined name for this instance
+    std::string instance_name_;  // User-defined name for this instance
 
     // Mutable state
-    std::string display_name_; // AI-generated or user-set pretty name
+    std::string display_name_;  // AI-generated or user-set pretty name
     std::string description_;
     std::vector<Port> ports_;
-    std::unordered_map<std::string, NodeProperty> properties_; // Typed key-value data
+    std::unordered_map<std::string, NodeProperty> properties_;  // Typed key-value data
 
     // Cached flags
     bool has_execution_flow_{false};

@@ -48,13 +48,16 @@ constexpr int kErrorSchemaVersion = 606;
 
 // --- String Conversion Utilities ---
 
-[[nodiscard]] constexpr auto port_direction_to_string(PortDirection dir) noexcept -> std::string_view {
+[[nodiscard]] constexpr auto port_direction_to_string(PortDirection dir) noexcept
+    -> std::string_view {
     return dir == PortDirection::Input ? "Input" : "Output";
 }
 
 [[nodiscard]] auto parse_port_direction(std::string_view val) -> std::optional<PortDirection> {
-    if (val == "Input") return PortDirection::Input;
-    if (val == "Output") return PortDirection::Output;
+    if (val == "Input")
+        return PortDirection::Input;
+    if (val == "Output")
+        return PortDirection::Output;
     return std::nullopt;
 }
 
@@ -85,7 +88,8 @@ constexpr int kErrorSchemaVersion = 606;
     return std::nullopt;
 }
 
-[[nodiscard]] auto build_node_type_lookup() -> std::unordered_map<std::string_view, const NodeType*> {
+[[nodiscard]] auto build_node_type_lookup()
+    -> std::unordered_map<std::string_view, const NodeType*> {
     return {
         {NodeTypes::Start.name, &NodeTypes::Start},
         {NodeTypes::End.name, &NodeTypes::End},
@@ -93,7 +97,8 @@ constexpr int kErrorSchemaVersion = 606;
     };
 }
 
-[[nodiscard]] auto get_node_type_lookup() -> const std::unordered_map<std::string_view, const NodeType*>& {
+[[nodiscard]] auto get_node_type_lookup()
+    -> const std::unordered_map<std::string_view, const NodeType*>& {
     static const auto lookup = build_node_type_lookup();
     return lookup;
 }
@@ -107,16 +112,23 @@ template <typename T>
     if (auto it = obj.find(key); it != obj.end() && it->is_string()) {
         return Result<T>(it->get<T>());
     }
-    return Result<T>(Error{.message = std::format("{}: missing or invalid field '{}'", ctx, key), .code = kErrorMissingField});
+    return Result<T>(Error{.message = std::format("{}: missing or invalid field '{}'", ctx, key),
+                           .code = kErrorMissingField});
 }
 
 [[nodiscard]] auto require_uint64(const nlohmann::json& obj,
                                   std::string_view key,
                                   std::string_view ctx) -> Result<uint64_t> {
-    if (auto it = obj.find(key); it != obj.end() && it->is_number_unsigned()) {
-        return Result<uint64_t>(it->get<uint64_t>());
+    if (auto it = obj.find(key); it != obj.end() && it->is_number_integer()) {
+        // Accept both signed and unsigned integers, as JSON doesn't distinguish them
+        auto value = it->get<int64_t>();
+        if (value >= 0) {
+            return Result<uint64_t>(static_cast<uint64_t>(value));
+        }
     }
-    return Result<uint64_t>(Error{.message = std::format("{}: missing or invalid uint64 field '{}'", ctx, key), .code = kErrorMissingField});
+    return Result<uint64_t>(
+        Error{.message = std::format("{}: missing or invalid uint64 field '{}'", ctx, key),
+              .code = kErrorMissingField});
 }
 
 // --- Property Parsers ---
@@ -124,7 +136,8 @@ template <typename T>
                                          Node& node,
                                          std::string_view ctx) -> Result<void> {
     if (!props_json.is_object()) {
-        return Result<void>(Error{.message = std::format("{}: 'properties' must be an object", ctx), .code = kErrorInvalidDocument});
+        return Result<void>(Error{.message = std::format("{}: 'properties' must be an object", ctx),
+                                  .code = kErrorInvalidDocument});
     }
 
     for (const auto& [key, value] : props_json.items()) {
@@ -137,7 +150,9 @@ template <typename T>
         } else if (value.is_boolean()) {
             node.set_property(key, value.get<bool>());
         } else {
-            return Result<void>(Error{.message = std::format("{}: property '{}' has unsupported type", ctx, key), .code = kErrorPropertyValue});
+            return Result<void>(
+                Error{.message = std::format("{}: property '{}' has unsupported type", ctx, key),
+                      .code = kErrorPropertyValue});
         }
     }
     return Result<void>();
@@ -168,7 +183,7 @@ auto GraphSerializer::to_json(const Graph& graph) -> nlohmann::json {
         if (!props_json.empty()) {
             node_json["properties"] = std::move(props_json);
         }
-        
+
         nodes_json.push_back(std::move(node_json));
     }
     doc["nodes"] = std::move(nodes_json);
@@ -189,16 +204,19 @@ auto GraphSerializer::to_json(const Graph& graph) -> nlohmann::json {
 
 auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
     if (!doc.is_object()) {
-        return Result<Graph>(Error{.message = "Root JSON must be an object", .code = kErrorInvalidDocument});
+        return Result<Graph>(
+            Error{.message = "Root JSON must be an object", .code = kErrorInvalidDocument});
     }
 
     const auto graph_it = doc.find("graph");
     if (graph_it == doc.end() || !graph_it->is_object()) {
-        return Result<Graph>(Error{.message = "Missing 'graph' object", .code = kErrorMissingField});
+        return Result<Graph>(
+            Error{.message = "Missing 'graph' object", .code = kErrorMissingField});
     }
 
     const auto graph_id_res = require_uint64(*graph_it, "id", "graph");
-    if (!graph_id_res) return Result<Graph>(graph_id_res.error());
+    if (!graph_id_res)
+        return Result<Graph>(graph_id_res.error());
 
     Graph graph(GraphId{graph_id_res.value()});
     if (auto name_res = require_field<std::string>(*graph_it, "name", "graph"); name_res) {
@@ -211,33 +229,39 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
     }
 
     uint64_t max_node_id = 0;
-    uint64_t max_port_id = 0; 
-    
+    uint64_t max_port_id = 0;
+
     const auto& node_type_lookup = get_node_type_lookup();
 
     for (std::size_t i = 0; i < nodes_it->size(); ++i) {
         const auto& node_json = nodes_it->at(i);
         const std::string ctx = std::format("nodes[{}]", i);
         if (!node_json.is_object()) {
-            return Result<Graph>(Error{.message = std::format("{} must be an object", ctx), .code = kErrorInvalidDocument});
+            return Result<Graph>(Error{.message = std::format("{} must be an object", ctx),
+                                       .code = kErrorInvalidDocument});
         }
-        
+
         const auto node_id_res = require_uint64(node_json, "id", ctx);
-        if (!node_id_res) return Result<Graph>(node_id_res.error());
+        if (!node_id_res)
+            return Result<Graph>(node_id_res.error());
         const NodeId node_id{node_id_res.value()};
         max_node_id = std::max(max_node_id, node_id.value);
 
         const auto type_name_res = require_field<std::string>(node_json, "type", ctx);
-        if (!type_name_res) return Result<Graph>(type_name_res.error());
+        if (!type_name_res)
+            return Result<Graph>(type_name_res.error());
 
         auto it = node_type_lookup.find(type_name_res.value());
         if (it == node_type_lookup.end()) {
-             return Result<Graph>(Error{.message = std::format("{}: unknown node type '{}'", ctx, type_name_res.value()), .code = kErrorInvalidEnum});
+            return Result<Graph>(Error{
+                .message = std::format("{}: unknown node type '{}'", ctx, type_name_res.value()),
+                .code = kErrorInvalidEnum});
         }
         const NodeType* node_type = it->second;
 
         const auto name_res = require_field<std::string>(node_json, "instanceName", ctx);
-        if (!name_res) return Result<Graph>(name_res.error());
+        if (!name_res)
+            return Result<Graph>(name_res.error());
 
         auto node = NodeFactory::create_with_id(node_id, *node_type, name_res.value());
 
@@ -246,20 +270,22 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
                 return Result<Graph>(res.error());
             }
         }
-        
-        for(const auto& port : node->get_ports()) {
+
+        for (const auto& port : node->get_ports()) {
             max_port_id = std::max(max_port_id, port.get_id().value);
         }
 
         if (!graph.add_node(std::move(node))) {
-             return Result<Graph>(Error{.message = std::format("Failed to add node {}", node_id.value), .code = kErrorInvalidDocument});
+            return Result<Graph>(
+                Error{.message = std::format("Failed to add node {}", node_id.value),
+                      .code = kErrorInvalidDocument});
         }
     }
 
     NodeFactory::synchronize_id_counters(NodeId{max_node_id}, PortId{max_port_id});
 
     // ... (connection parsing would go here, it's omitted for brevity but is unchanged)
-    
+
     return Result<Graph>(std::move(graph));
 }
 

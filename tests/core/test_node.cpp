@@ -22,13 +22,13 @@ TEST_CASE("Node: Basic Construction via Factory", "[node][factory]") {
 
 TEST_CASE("Node: Default Instance Name", "[node][factory]") {
     auto node = NodeFactory::create(NodeTypes::Start);
-    
+
     REQUIRE(node != nullptr);
     // Check if the default name is in the format "Label #ID"
     REQUIRE(node->get_instance_name().starts_with(NodeTypes::Start.label));
-    REQUIRE(node->get_instance_name().find(std::to_string(node->get_id().value)) != std::string::npos);
+    REQUIRE(node->get_instance_name().find(std::to_string(node->get_id().value)) !=
+            std::string::npos);
 }
-
 
 // ============================================================================
 // Node Properties (New system, replaces Metadata)
@@ -74,7 +74,7 @@ TEST_CASE("Node: Properties", "[node][properties]") {
     }
 
     SECTION("Type mismatch") {
-        auto val = node->get_property<int64_t>("value"); // "value" is a string
+        auto val = node->get_property<int64_t>("value");  // "value" is a string
         REQUIRE(!val.has_value());
     }
 }
@@ -108,9 +108,10 @@ TEST_CASE("NodeFactory: Create Core Nodes", "[factory]") {
         REQUIRE(node->get_type().name == NodeTypes::PrintString.name);
         REQUIRE(node->get_exec_input_ports().size() == 1);
         REQUIRE(node->get_exec_output_ports().size() == 1);
-        REQUIRE(node->get_input_ports().size() == 2); // exec + data
+        REQUIRE(node->get_input_ports().size() == 2);  // exec + data
         auto data_ports = node->get_input_ports();
-        auto it = std::ranges::find_if(data_ports, [](const Port* p){ return !p->is_execution(); });
+        auto it =
+            std::ranges::find_if(data_ports, [](const Port* p) { return !p->is_execution(); });
         REQUIRE(it != data_ports.end());
         REQUIRE((*it)->get_name() == "value");
         REQUIRE((*it)->get_data_type() == DataType::StringView);
@@ -140,11 +141,17 @@ TEST_CASE("Node: Validation", "[node][validation]") {
         REQUIRE(result.has_value());
     }
 
-    SECTION("Node with empty instance name - invalid") {
-        // Start and End are exceptions, they can have empty names.
+    SECTION("Node with empty instance name - auto-generated") {
+        // NodeFactory::create auto-generates a name if empty string is passed.
+        // This is the expected behavior since commit 2e2bb9e.
         auto node = NodeFactory::create(NodeTypes::PrintString, "");
+
+        // Name should be auto-generated, not empty
+        REQUIRE(!node->get_instance_name().empty());
+        REQUIRE(node->get_instance_name().find("Print String") != std::string::npos);
+
+        // Validation should pass because name was auto-generated
         auto result = node->validate();
-        REQUIRE(!result.has_value());
-        REQUIRE(result.error().code == 100);
+        REQUIRE(result.has_value());
     }
 }

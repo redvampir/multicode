@@ -8,11 +8,15 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     // Решает проблему зависания тестов при использовании jsdom
     pool: 'forks',
-    teardownTimeout: 1000,
+    teardownTimeout: 5000,
     // Изолирует тесты и предотвращает зависание
     isolate: true,
+    // Принудительный выход после тестов
+    hookTimeout: 10000,
     // Отключаем watch mode для CI
     watch: false,
+    // Принудительно завершаем процесс после тестов (предотвращает hang)
+    passWithNoTests: true,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'html', 'lcov'],

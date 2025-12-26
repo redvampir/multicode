@@ -3,14 +3,16 @@
 #include "visprog/core/Graph.hpp"
 
 #include <algorithm>
-#include <format>
 #include <queue>
 #include <ranges>
 #include <stack>
 
+#include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
 
 namespace visprog::core {
+
+using compat::format;
 
 // ============================================================================
 // Construction
@@ -430,8 +432,8 @@ auto Graph::validate() const -> ValidationResult {
         for (const auto& node : nodes_) {
             if (!reachable.contains(node->get_id()) && node->get_type() != NodeTypes::Start) {
                 result.errors.push_back(Error{
-                    .message = std::format("Node '{}' is not reachable from Start",
-                                           node->get_instance_name()),
+                    .message = format("Node '", node->get_instance_name(),
+                                      "' is not reachable from Start"),
                     .code = 503  // Unreachable nodes
                 });
                 result.is_valid = false;
@@ -484,11 +486,11 @@ auto Graph::validate_connection(NodeId from_node,
     // Check port compatibility
     if (!from_port_ptr->can_connect_to(*to_port_ptr)) {
         return Result<void>(Error{
-            .message = std::format("Ports are not compatible: {} ({}) -> {} ({})",
-                                   from_node_ptr->get_instance_name(),
-                                   from_port_ptr->get_name(),
-                                   to_node_ptr->get_instance_name(),
-                                   to_port_ptr->get_name()),
+            .message = format("Ports are not compatible: ",
+                             from_node_ptr->get_instance_name(), " (",
+                             from_port_ptr->get_name(), ") -> ",
+                             to_node_ptr->get_instance_name(), " (",
+                             to_port_ptr->get_name(), ")"),
             .code = 300  // Port incompatibility
         });
     }
@@ -681,7 +683,7 @@ auto Graph::remove_node_connections(NodeId node) -> void {
 auto Graph::validate_node_exists(NodeId node) const -> Result<void> {
     if (!has_node(node)) {
         return Result<void>(Error{
-            .message = std::format("Node {} does not exist", node.value),
+            .message = format("Node ", node.value, " does not exist"),
             .code = 301  // Node not found
         });
     }
@@ -692,7 +694,7 @@ auto Graph::validate_port_exists(NodeId node, PortId port) const -> Result<void>
     const auto* node_ptr = get_node(node);
     if (!node_ptr) {
         return Result<void>(Error{
-            .message = std::format("Node {} does not exist", node.value),
+            .message = format("Node ", node.value, " does not exist"),
             .code = 301  // Node not found
         });
     }
@@ -700,7 +702,7 @@ auto Graph::validate_port_exists(NodeId node, PortId port) const -> Result<void>
     const auto* port_ptr = node_ptr->find_port(port);
     if (!port_ptr) {
         return Result<void>(Error{
-            .message = std::format("Port {} does not exist on node {}", port.value, node.value),
+            .message = format("Port ", port.value, " does not exist on node ", node.value),
             .code = 302  // Port not found
         });
     }
@@ -715,7 +717,7 @@ auto Graph::append_connection(Connection connection) -> Result<void> {
 
     if (connection_lookup_.contains(connection.id)) {
         return Result<void>(
-            Error{.message = std::format("Connection {} already exists", connection.id.value),
+            Error{.message = format("Connection ", connection.id.value, " already exists"),
                   .code = 306});
     }
 
@@ -739,11 +741,10 @@ auto Graph::append_connection(Connection connection) -> Result<void> {
 
     if (expected_type != connection.type) {
         return Result<void>(Error{
-            .message =
-                std::format("Connection {} type mismatch: expected {} but got {}",
-                            connection.id.value,
-                            expected_type == ConnectionType::Execution ? "Execution" : "Data",
-                            connection.type == ConnectionType::Execution ? "Execution" : "Data"),
+            .message = format("Connection ", connection.id.value, " type mismatch: expected ",
+                             (expected_type == ConnectionType::Execution ? "Execution" : "Data"),
+                             " but got ",
+                             (connection.type == ConnectionType::Execution ? "Execution" : "Data")),
             .code = 308});
     }
 

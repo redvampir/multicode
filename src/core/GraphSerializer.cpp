@@ -1,20 +1,22 @@
-// Copyright (c) 2025 Р СљРЎС“Р В»РЎРЉРЎвЂљР С‘Р С™Р С•Р Т‘ Team. MIT License.
+// Copyright (c) 2025 МультиКод Team. MIT License.
 
 #include "visprog/core/GraphSerializer.hpp"
 
 #include <algorithm>
 #include <cstdint>
-#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 
+#include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
 #include "visprog/core/Port.hpp"
 
 namespace {
+
+using visprog::core::compat::format;
 
 using visprog::core::Connection;
 using visprog::core::ConnectionId;
@@ -114,7 +116,7 @@ template <typename T>
     if (auto it = obj.find(key); it != obj.end() && it->is_string()) {
         return Result<T>(it->get<T>());
     }
-    return Result<T>(Error{.message = std::format("{}: missing or invalid field '{}'", ctx, key),
+    return Result<T>(Error{.message = format(ctx, ": missing or invalid field '", key, "'"),
                            .code = kErrorMissingField});
 }
 
@@ -129,7 +131,7 @@ template <typename T>
         }
     }
     return Result<uint64_t>(
-        Error{.message = std::format("{}: missing or invalid uint64 field '{}'", ctx, key),
+        Error{.message = format(ctx, ": missing or invalid uint64 field '", key, "'"),
               .code = kErrorMissingField});
 }
 
@@ -138,7 +140,7 @@ template <typename T>
                                          Node& node,
                                          std::string_view ctx) -> Result<void> {
     if (!props_json.is_object()) {
-        return Result<void>(Error{.message = std::format("{}: 'properties' must be an object", ctx),
+        return Result<void>(Error{.message = format(ctx, ": 'properties' must be an object"),
                                   .code = kErrorInvalidDocument});
     }
 
@@ -153,7 +155,7 @@ template <typename T>
             node.set_property(key, value.get<bool>());
         } else {
             return Result<void>(
-                Error{.message = std::format("{}: property '{}' has unsupported type", ctx, key),
+                Error{.message = format(ctx, ": property '", key, "' has unsupported type"),
                       .code = kErrorPropertyValue});
         }
     }
@@ -237,9 +239,9 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 
     for (std::size_t i = 0; i < nodes_it->size(); ++i) {
         const auto& node_json = nodes_it->at(i);
-        const std::string ctx = std::format("nodes[{}]", i);
+        const std::string ctx = format("nodes[", i, "]");
         if (!node_json.is_object()) {
-            return Result<Graph>(Error{.message = std::format("{} must be an object", ctx),
+            return Result<Graph>(Error{.message = format(ctx, " must be an object"),
                                        .code = kErrorInvalidDocument});
         }
 
@@ -256,7 +258,7 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         auto it = node_type_lookup.find(type_name_res.value());
         if (it == node_type_lookup.end()) {
             return Result<Graph>(Error{
-                .message = std::format("{}: unknown node type '{}'", ctx, type_name_res.value()),
+                .message = format(ctx, ": unknown node type '", type_name_res.value(), "'"),
                 .code = kErrorInvalidEnum});
         }
         const NodeType* node_type = it->second;
@@ -279,7 +281,7 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 
         if (!graph.add_node(std::move(node))) {
             return Result<Graph>(
-                Error{.message = std::format("Failed to add node {}", node_id.value),
+                Error{.message = format("Failed to add node ", node_id.value),
                       .code = kErrorInvalidDocument});
         }
     }

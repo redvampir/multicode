@@ -2,14 +2,14 @@
 
 #include "visprog/core/NodeFactory.hpp"
 
-#include <format>
+#include <string>
 
 namespace visprog::core {
 
 auto NodeFactory::create(const NodeType& type, std::string instance_name) -> std::unique_ptr<Node> {
     const auto node_id = generate_node_id();
     if (instance_name.empty()) {
-        instance_name = std::format("{} #{}", type.label, node_id.value);
+        instance_name = std::string(type.label) + " #" + std::to_string(node_id.value);
     }
     return create_with_id(node_id, type, std::move(instance_name));
 }

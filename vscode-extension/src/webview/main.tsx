@@ -11,6 +11,7 @@ import type { ValidationIssue, ValidationResult } from '../shared/validator';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import { GraphEditor } from './GraphEditor';
 import { BlueprintEditor } from './BlueprintEditor';
+import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
 import {
   BlueprintGraphState,
   migrateToBlueprintFormat,
@@ -37,7 +38,7 @@ import {
   type WebviewToExtensionMessage
 } from '../shared/messages';
 
-// Feature toggle: 'blueprint' = React Flow (новый), 'cytoscape' = Cytoscape (старый)
+// Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape';
 const EDITOR_MODE_KEY = 'multicode.editorMode';
 
@@ -50,7 +51,7 @@ const getInitialEditorMode = (): EditorMode => {
   } catch {
     // Ignore localStorage errors
   }
-  // По умолчанию используем новый Blueprint редактор
+  // По умолчанию используем новый Visual Flow редактор
   return 'blueprint';
 };
 
@@ -177,7 +178,7 @@ const Toolbar: React.FC<{
             value={editorMode}
             onChange={(event) => onEditorModeChange(event.target.value as EditorMode)}
           >
-            <option value="blueprint">{locale === 'ru' ? 'Blueprint' : 'Blueprint'}</option>
+            <option value="blueprint">{locale === 'ru' ? 'Визуальный' : 'Visual Flow'}</option>
             <option value="cytoscape">{locale === 'ru' ? 'Классический' : 'Classic'}</option>
           </select>
         </label>
@@ -234,11 +235,18 @@ const Toolbar: React.FC<{
           {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
         <button
+          onClick={() => setShowCodePreview(!showCodePreview)}
+          disabled={pending}
+          title={showCodePreview ? translate('toolbar.hideCode', 'Скрыть код') : translate('toolbar.showCode', 'Показать код')}
+        >
+          {showCodePreview ? '📋' : '🎯'}
+        </button>
+        <button
           onClick={() => send('requestGenerate')}
           disabled={pending}
-          title={translate('tooltip.generateCode', 'Сгенерировать код из графа')}
+          title={translate('toolbar.generate', 'Генерировать код')}
         >
-          {translate('toolbar.generateGraph', 'Генерировать код')}
+          {translate('toolbar.generate', 'Генерировать код')}
         </button>
       </div>
     </div>
@@ -626,6 +634,10 @@ const App: React.FC = () => {
   // Editor mode: 'blueprint' (React Flow) or 'cytoscape' (classic)
   const [editorMode, setEditorMode] = useState<EditorMode>(getInitialEditorMode);
   
+  // Code preview state
+  const [showCodePreview, setShowCodePreview] = useState(false);
+  const [selectedNodeIdForCode, setSelectedNodeIdForCode] = useState<string | null>(null);
+  
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
     migrateToBlueprintFormat(graph)
@@ -841,20 +853,18 @@ const App: React.FC = () => {
     sendToExtension({ type: 'requestTranslate', payload: { direction: translationDirection } });
   };
 
-  const handleCopyGraphId = (): void => {
-    const snippet = `// multicode-graph:${graph.id}`;
-    const write = async (): Promise<void> => {
-      try {
-        await navigator.clipboard.writeText(snippet);
-        pushToast('success', translate('toolbar.copyId.ok' as TranslationKey, 'ID графа скопирован'));
-      } catch (error) {
-        console.warn('Clipboard error', error);
-        pushToast(
-          'warning',
-          translate('toolbar.copyId.fallback' as TranslationKey, 'Не удалось записать в буфер')
-        );
-      }
-    };
+const handleCopyGraphId = (): void => {
+  const id = computeGraphId(graph);
+  navigator.clipboard.writeText(id);
+  pushToast('success', translate('toolbar.copyId.ok', 'ID скопирован'));
+};
+
+// Обработчик выбора узла из кодогенератора
+const handleNodeSelect = (nodeId: string): void => {
+  setSelectedNodeIdForCode(nodeId);
+  // Здесь можно добавить фокусировку на узел в редакторе
+  // Например: focusNode(nodeId);
+};
     void write();
   };
 
@@ -908,25 +918,45 @@ const App: React.FC = () => {
         <div className="canvas-wrapper">
           {renderEditor()}
         </div>
-        {/* Side panel only for classic editor */}
-        {editorMode === 'cytoscape' && (
+        
+        {/* Side panels */}
+        {(editorMode === 'cytoscape' || showCodePreview) && (
           <div className="side-panel">
-            <TranslationActions
-              direction={translationDirection}
-              pending={translationPending}
-              onDirectionChange={setTranslationDirection}
-              onTranslate={handleTranslate}
-              translate={translate}
-            />
-            <LayoutSettingsPanel translate={translate} />
-            <NodeActions
-              onAddNode={handleAddNode}
-              onConnectNodes={handleConnectNodes}
-              lastNodeAddedToken={lastNodeAddedToken}
-              lastConnectionToken={lastConnectionToken}
-            />
-            <GraphFacts translate={translate} />
-            <ValidationPanel validation={validation} translate={translate} />
+            {/* Enhanced Code Preview for blueprint editor */}
+            {editorMode === 'blueprint' && showCodePreview && (
+              <EnhancedCodePreviewPanel
+                graph={blueprintGraph}
+                locale={locale}
+                onNodeSelect={setSelectedNodeIdForCode}
+                onGenerateComplete={(result) => {
+                  pushToast('success', result.success 
+                    ? translate('toast.generation.success', 'Код успешно сгенерирован')
+                    : translate('toast.generation.error', 'Ошибка генерации кода'));
+                }}
+              />
+            )}
+            
+            {/* Classic panels for cytoscape editor */}
+            {editorMode === 'cytoscape' && (
+              <>
+                <TranslationActions
+                  direction={translationDirection}
+                  pending={translationPending}
+                  onDirectionChange={setTranslationDirection}
+                  onTranslate={handleTranslate}
+                  translate={translate}
+                />
+                <LayoutSettingsPanel translate={translate} />
+                <NodeActions
+                  onAddNode={handleAddNode}
+                  onConnectNodes={handleConnectNodes}
+                  lastNodeAddedToken={lastNodeAddedToken}
+                  lastConnectionToken={lastConnectionToken}
+                />
+                <GraphFacts translate={translate} />
+                <ValidationPanel validation={validation} translate={translate} />
+              </>
+            )}
           </div>
         )}
       </div>

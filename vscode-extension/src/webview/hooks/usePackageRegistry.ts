@@ -119,7 +119,7 @@ function groupNodesByCategory(
 export function usePackageRegistry(): UsePackageRegistryResult {
   const [ready, setReady] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  const [, setVersion] = useState(0); // Для триггера перерендера
+  const [version, setVersion] = useState(0); // Для триггера перерендера
   
   // Загрузка стандартного пакета при монтировании
   useEffect(() => {

@@ -1,6 +1,6 @@
 /**
  * BlueprintNode — кастомный компонент узла для React Flow
- * Визуальный стиль вдохновлён Unreal Engine Blueprints
+ * Визуальный стиль в стиле flow-based программирования
  */
 
 import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
@@ -64,8 +64,8 @@ const styles = {
   execHandle: {
     width: 12,
     height: 12,
-    background: '#FFFFFF',
-    border: '2px solid #89b4fa',
+    background: '#e0e0e0',
+    border: '2px solid #666666',
     borderRadius: 2,
     transform: 'rotate(45deg)',
   } as React.CSSProperties,

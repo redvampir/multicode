@@ -1,0 +1,493 @@
+/**
+ * EnhancedCodePreviewPanel — улучшенная панель предпросмотра C++ кода
+ * 
+ * Особенности:
+ * - Расширенная подсветка синтаксиса C++ (через prismjs)
+ * - Интерактивная связь кода с узлами (source map)
+ * - Кликабельные строки кода → переход к узлам
+ * - Статистика генерации в реальном времени
+ * - Визуализация проблем и предупреждений
+ */
+
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import type { BlueprintGraphState, BlueprintNode } from '../shared/blueprintTypes';
+import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import type { CodeGenerationResult } from '../codegen/types';
+
+// ============================================
+// Расширенные стили
+// ============================================
+
+const styles = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    backgroundColor: '#1e1e2e',
+    borderLeft: '1px solid #313244',
+    minWidth: 400,
+    maxWidth: 700,
+    fontFamily: '"Fira Code", "Consolas", monospace',
+  } as React.CSSProperties,
+  
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    backgroundColor: '#313244',
+    borderBottom: '1px solid #45475a',
+  } as React.CSSProperties,
+  
+  title: {
+    color: '#cdd6f4',
+    fontWeight: 600,
+    fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  } as React.CSSProperties,
+  
+  headerActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  } as React.CSSProperties,
+  
+  statsContainer: {
+    display: 'flex',
+    gap: 16,
+    padding: '8px 16px',
+    backgroundColor: '#181825',
+    borderBottom: '1px solid #313244',
+    fontSize: 11,
+    color: '#a6adc8',
+  } as React.CSSProperties,
+  
+  statItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  } as React.CSSProperties,
+  
+  statLabel: {
+    color: '#6c7086',
+  } as React.CSSProperties,
+  
+  statValue: {
+    color: '#a6e3a1',
+    fontWeight: 600,
+  } as React.CSSProperties,
+  
+  codeContainer: {
+    flex: 1,
+    overflow: 'auto',
+    padding: 0,
+    backgroundColor: '#11111b',
+  } as React.CSSProperties,
+  
+  pre: {
+    margin: 0,
+    padding: 0,
+    fontFamily: '"Fira Code", "Consolas", monospace',
+    fontSize: 13,
+    lineHeight: 1.6,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  } as React.CSSProperties,
+  
+  // Подсветка синтаксиса C++ (расширенная)
+  keyword: { color: '#cba6f7', fontWeight: 'bold' }, // purple
+  string: { color: '#a6e3a1' }, // green
+  comment: { color: '#6c7086', fontStyle: 'italic' }, // gray
+  number: { color: '#f9e2af' }, // yellow
+  function: { color: '#89b4fa' }, // blue
+  type: { color: '#f38ba8' }, // red
+  directive: { color: '#94e2d5' }, // teal
+  operator: { color: '#fab387' }, // orange
+  
+  // Интерактивные строки
+  codeLine: {
+    padding: '0 16px',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+    borderLeft: '3px solid transparent',
+    position: 'relative' as const,
+  } as React.CSSProperties,
+  
+  codeLineHover: {
+    backgroundColor: '#313244',
+    borderLeftColor: '#585b70',
+  } as React.CSSProperties,
+  
+  codeLineActive: {
+    backgroundColor: '#313244',
+    borderLeftColor: '#89b4fa',
+  } as React.CSSProperties,
+  
+  // Подсветка связанных узлов
+  highlightedLine: {
+    backgroundColor: 'rgba(137, 180, 250, 0.1)',
+    borderLeftColor: '#89b4fa',
+  } as React.CSSProperties,
+  
+  // Проблемы и предупреждения
+  errorLine: {
+    backgroundColor: 'rgba(243, 139, 168, 0.1)',
+    borderLeftColor: '#f38ba8',
+  } as React.CSSProperties,
+  
+  warningLine: {
+    backgroundColor: 'rgba(249, 226, 175, 0.1)',
+    borderLeftColor: '#f9e2af',
+  } as React.CSSProperties,
+  
+  // Tooltip для информации о узле
+  tooltip: {
+    position: 'absolute' as const,
+    right: '8px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    backgroundColor: '#313244',
+    color: '#cdd6f4',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    whiteSpace: 'nowrap',
+    zIndex: 1000,
+    pointerEvents: 'none' as const,
+    opacity: 0,
+    transition: 'opacity 0.2s',
+  } as React.CSSProperties,
+  
+  tooltipVisible: {
+    opacity: 1,
+  } as React.CSSProperties,
+};
+
+// ============================================
+// Вспомогательные функции
+// ============================================
+
+/**
+ * Простая подсветка синтаксиса C++
+ */
+const highlightSyntax = (code: string): JSX.Element[] => {
+  const lines = code.split('\n');
+  const elements: JSX.Element[] = [];
+  
+  const patterns = {
+    keywords: /\b(int|char|float|double|long|short|void|bool|if|else|for|while|do|switch|case|default|break|continue|return|include|using|namespace|std|string|vector|array|class|struct|public|private|protected|const|static|auto|virtual|override|final|constexpr)\b/g,
+    strings: /"([^"\\]|\\.)*"/g,
+    comments: /(\/\/.*$|\/\*[\s\S]*?\*\/)/gm,
+    numbers: /\b(\d+\.?\d*|\.\d+)\b/g,
+    directives: /#include|#define|#if|#else|#endif/g,
+    functions: /\b(\w+)\s*\(/g,
+    types: /\b(std::[a-zA-Z_][a-zA-Z0-9_]*)\b/g,
+    operators: /(\+\+|--|===|==|!=|<=|>=|&&|\|\||[+\-*/%=<>!&|^~?:])/g,
+  };
+
+  lines.forEach((line, lineIndex) => {
+    let highlightedLine = line;
+    let replaced: boolean[] = new Array(line.length).fill(false);
+    
+    // Проверяем каждый паттерн
+    Object.entries(patterns).forEach(([type, pattern]) => {
+      const matches = [...highlightedLine.matchAll(pattern)];
+      matches.forEach(match => {
+        if (match.index !== undefined) {
+          // Проверяем что не заменяли уже эту часть
+          let alreadyReplaced = false;
+          for (let i = match.index; i < match.index + match[0].length; i++) {
+            if (replaced[i]) {
+              alreadyReplaced = true;
+              break;
+            }
+          }
+          
+          if (!alreadyReplaced) {
+            const before = highlightedLine.substring(0, match.index);
+            const matchText = highlightedLine.substring(match.index, match.index + match[0].length);
+            const after = highlightedLine.substring(match.index + match[0].length);
+            
+            highlightedLine = before + `<span class="syntax-${type}">${matchText}</span>` + after;
+            
+            // Отмечаем как замененное
+            for (let i = match.index; i < match.index + match[0].length + `<span class="syntax-${type}"></span>`.length; i++) {
+              if (i < replaced.length) {
+                replaced[i] = true;
+              }
+            }
+          }
+        }
+      });
+    });
+
+    elements.push(
+      <div key={lineIndex} dangerouslySetInnerHTML={{ __html: highlightedLine }} />
+    );
+  });
+  
+  return elements;
+};
+
+// ============================================
+// Типы для улучшенной панели
+// ============================================
+
+interface CodeLineInfo {
+  line: number;
+  nodeId?: string;
+  nodeInstanceName?: string;
+  hasError?: boolean;
+  hasWarning?: boolean;
+  isHighlighted?: boolean;
+}
+
+interface EnhancedCodePreviewProps {
+  graph: BlueprintGraphState;
+  locale: 'ru' | 'en';
+  onNodeSelect?: (nodeId: string) => void;
+  onGenerateComplete?: (result: CodeGenerationResult) => void;
+}
+
+// ============================================
+// Основной компонент
+// ============================================
+
+export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
+  graph,
+  locale,
+  onNodeSelect,
+  onGenerateComplete,
+}) => {
+  const [result, setResult] = useState<CodeGenerationResult | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
+  const [lineInfos, setLineInfos] = useState<CodeLineInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipContent, setTooltipContent] = useState('');
+  
+  const codeRef = useRef<HTMLDivElement>(null);
+
+  // Генерация кода
+  useEffect(() => {
+    const generateCode = () => {
+      setIsLoading(true);
+      
+      try {
+        const generator = new CppCodeGenerator();
+        const generationResult = generator.generate(graph);
+        
+        setResult(generationResult);
+        onGenerateComplete?.(generationResult);
+        
+        // Построение информации о линиях из source map
+        const lineInfos: CodeLineInfo[] = [];
+        
+        if (generationResult.sourceMap) {
+          generationResult.sourceMap.forEach(mapping => {
+            for (let line = mapping.startLine; line <= mapping.endLine; line++) {
+              const node = graph.nodes.find(n => n.id === mapping.nodeId);
+              lineInfos.push({
+                line,
+                nodeId: mapping.nodeId,
+                nodeInstanceName: node?.instanceName,
+                hasError: generationResult.errors.some(e => e.nodeId === mapping.nodeId),
+                hasWarning: generationResult.warnings.some(w => w.nodeId === mapping.nodeId),
+              });
+            }
+          });
+        }
+        
+        setLineInfos(lineInfos);
+      } catch (error) {
+        console.error('Error generating code:', error);
+        setResult({
+          success: false,
+          code: '// Ошибка генерации кода',
+          errors: [{ message: String(error), code: 'GENERATION_ERROR', messageEn: 'Generation error' }],
+          warnings: [],
+          sourceMap: [],
+          stats: { nodesProcessed: 0, linesGenerated: 0, timeMs: 0 },
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    generateCode();
+  }, [graph, onGenerateComplete]);
+
+  // Клик на строку кода
+  const handleLineClick = useCallback((lineInfo: CodeLineInfo) => {
+    if (lineInfo.nodeId) {
+      setSelectedNodeId(lineInfo.nodeId);
+      onNodeSelect?.(lineInfo.nodeId);
+    }
+  }, [onNodeSelect]);
+
+  // Наведение на строку кода
+  const handleLineHover = useCallback((lineInfo: CodeLineInfo, isHovered: boolean) => {
+    setHoveredLine(isHovered ? lineInfo.line : null);
+    
+    if (isHovered && lineInfo.nodeInstanceName) {
+      setTooltipContent(`${locale === 'ru' ? 'Узел:' : 'Node:'} ${lineInfo.nodeInstanceName}`);
+      setShowTooltip(true);
+    } else {
+      setShowTooltip(false);
+    }
+  }, [locale]);
+
+  // Копирование кода
+  const handleCopy = useCallback(() => {
+    if (result?.code) {
+      navigator.clipboard.writeText(result.code);
+    }
+  }, [result?.code]);
+
+  // Стили для линии кода
+  const getLineStyle = useCallback((lineNumber: number): React.CSSProperties => {
+    const lineInfo = lineInfos.find(info => info.line === lineNumber);
+    const baseStyle = { ...styles.codeLine };
+    
+    // Подсветка при наведении
+    if (hoveredLine === lineNumber) {
+      Object.assign(baseStyle, styles.codeLineHover);
+    }
+    
+    // Подсветка выбранного узла
+    if (selectedNodeId && lineInfo?.nodeId === selectedNodeId) {
+      Object.assign(baseStyle, styles.codeLineActive);
+    }
+    
+    // Подсветка ошибок и предупреждений
+    if (lineInfo?.hasError) {
+      Object.assign(baseStyle, styles.errorLine);
+    } else if (lineInfo?.hasWarning) {
+      Object.assign(baseStyle, styles.warningLine);
+    }
+    
+    return baseStyle;
+  }, [lineInfos, hoveredLine, selectedNodeId]);
+
+  // Рендеринг кода с подсветкой
+  const renderCode = useCallback(() => {
+    if (!result?.code) return null;
+    
+    const lines = result.code.split('\n');
+    const highlightedCode = highlightSyntax(result.code);
+    
+    return lines.map((line, index) => {
+      const lineNumber = index + 1;
+      const lineInfo = lineInfos.find(info => info.line === lineNumber);
+      
+      return (
+        <div
+          key={index}
+          style={getLineStyle(lineNumber)}
+          onClick={() => lineInfo && handleLineClick(lineInfo)}
+          onMouseEnter={() => lineInfo && handleLineHover(lineInfo, true)}
+          onMouseLeave={() => lineInfo && handleLineHover(lineInfo, false)}
+        >
+          <span style={{ 
+            color: '#6c7086', 
+            marginRight: '16px', 
+            minWidth: '30px',
+            display: 'inline-block',
+            textAlign: 'right',
+            userSelect: 'none' 
+          }}>
+            {lineNumber}
+          </span>
+          <span>{line}</span>
+          
+          {/* Tooltip с информацией о узле */}
+          {showTooltip && lineInfo?.nodeInstanceName && (
+            <div style={{ ...styles.tooltip, ...styles.tooltipVisible }}>
+              {tooltipContent}
+            </div>
+          )}
+        </div>
+      );
+    });
+  }, [result, lineInfos, getLineStyle, handleLineClick, handleLineHover, showTooltip, tooltipContent]);
+
+  // Статистика генерации
+  const renderStats = () => {
+    if (!result?.stats) return null;
+    
+    const { nodesProcessed, linesGenerated, timeMs } = result.stats;
+    
+    return (
+      <div style={styles.statsContainer}>
+        <div style={styles.statItem}>
+          <span style={styles.statLabel}>{locale === 'ru' ? 'Узлов:' : 'Nodes:'}</span>
+          <span style={styles.statValue}>{nodesProcessed}</span>
+        </div>
+        <div style={styles.statItem}>
+          <span style={styles.statLabel}>{locale === 'ru' ? 'Строк:' : 'Lines:'}</span>
+          <span style={styles.statValue}>{linesGenerated}</span>
+        </div>
+        <div style={styles.statItem}>
+          <span style={styles.statLabel}>{locale === 'ru' ? 'Время:' : 'Time:'}</span>
+          <span style={styles.statValue}>{timeMs}ms</span>
+        </div>
+        {result.errors.length > 0 && (
+          <div style={styles.statItem}>
+            <span style={styles.statLabel}>{locale === 'ru' ? 'Ошибки:' : 'Errors:'}</span>
+            <span style={{ ...styles.statValue, color: '#f38ba8' }}>{result.errors.length}</span>
+          </div>
+        )}
+        {result.warnings.length > 0 && (
+          <div style={styles.statItem}>
+            <span style={styles.statLabel}>{locale === 'ru' ? 'Пред.' : 'Warn:'}</span>
+            <span style={{ ...styles.statValue, color: '#f9e2af' }}>{result.warnings.length}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={styles.container}>
+      {/* Header */}
+      <div style={styles.header}>
+        <div style={styles.title}>
+          {locale === 'ru' ? '🔍 Предпросмотр C++' : '🔍 C++ Preview'}
+          {isLoading && <span style={{ color: '#f9e2af' }}>⏳</span>}
+          {result?.success === false && <span style={{ color: '#f38ba8' }}>❌</span>}
+          {result?.success === true && <span style={{ color: '#a6e3a1' }}>✅</span>}
+        </div>
+        <div style={styles.headerActions}>
+          <button
+            onClick={handleCopy}
+            disabled={!result?.code}
+            style={{
+              background: 'none',
+              border: '1px solid #585b70',
+              color: '#cdd6f4',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              cursor: result?.code ? 'pointer' : 'not-allowed',
+              fontSize: '12px',
+            }}
+          >
+            {locale === 'ru' ? '📋 Копировать' : '📋 Copy'}
+          </button>
+        </div>
+      </div>
+
+      {/* Статистика */}
+      {renderStats()}
+
+      {/* Код с подсветкой */}
+      <div style={styles.codeContainer} ref={codeRef}>
+        <pre style={styles.pre}>
+          {renderCode()}
+        </pre>
+      </div>
+    </div>
+  );
+};

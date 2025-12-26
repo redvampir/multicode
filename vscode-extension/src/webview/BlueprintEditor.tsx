@@ -1,6 +1,6 @@
 /**
  * BlueprintEditor — основной компонент редактора графов на React Flow
- * Замена Cytoscape-based GraphEditor
+ * Визуальный редактор узлов в стиле flow-based программирования
  */
 
 import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react';

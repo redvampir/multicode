@@ -1,0 +1,117 @@
+{
+  "name": "Сложный граф с ветвлениями",
+  "description": "Тест для проверки генерации сложных if/else конструкций",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "core.flow.start",
+      "instanceName": "Начало",
+      "position": { "x": 100, "y": 100 },
+      "data": {}
+    },
+    {
+      "id": "branch",
+      "type": "core.control.branch",
+      "instanceName": "Ветвление",
+      "position": { "x": 300, "y": 100 },
+      "data": {
+        "condition": "x > 5"
+      }
+    },
+    {
+      "id": "branchTrue",
+      "type": "core.control.branch",
+      "instanceName": "ВетвлениеИстина",
+      "position": { "x": 500, "y": 50 },
+      "data": {
+        "condition": "y > 10"
+      }
+    },
+    {
+      "id": "print1",
+      "type": "core.io.print_string",
+      "instanceName": "Вывод1",
+      "position": { "x": 700, "y": 50 },
+      "data": {
+        "value": "Условие истинно"
+      }
+    },
+    {
+      "id": "print2", 
+      "type": "core.io.print_string",
+      "instanceName": "Вывод2",
+      "position": { "x": 700, "y": 150 },
+      "data": {
+        "value": "Условие ложно"
+      }
+    },
+    {
+      "id": "print3",
+      "type": "core.io.print_string",
+      "instanceName": "Вывод3",
+      "position": { "x": 500, "y": 200 },
+      "data": {
+        "value": "Вложенное условие"
+      }
+    },
+    {
+      "id": "end",
+      "type": "core.flow.end",
+      "instanceName": "Конец",
+      "position": { "x": 900, "y": 100 },
+      "data": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "sourceNode": "start",
+      "sourcePort": "exec-out",
+      "targetNode": "branch",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge2",
+      "sourceNode": "branch",
+      "sourcePort": "exec-true",
+      "targetNode": "branchTrue",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge3",
+      "sourceNode": "branch",
+      "sourcePort": "exec-false",
+      "targetNode": "print2",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge4",
+      "sourceNode": "branchTrue",
+      "sourcePort": "exec-out",
+      "targetNode": "print1",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge5",
+      "sourceNode": "branchTrue",
+      "sourcePort": "exec-false",
+      "targetNode": "print3",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge6",
+      "sourceNode": "print1",
+      "sourcePort": "exec-out",
+      "targetNode": "end",
+      "targetPort": "exec-in"
+    },
+    {
+      "id": "edge7",
+      "sourceNode": "print2",
+      "sourcePort": "exec-out",
+      "targetNode": "end",
+      "targetPort": "exec-in"
+    }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

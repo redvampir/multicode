@@ -165,91 +165,77 @@ const Toolbar: React.FC<{
 
   return (
     <div className="toolbar">
-      <div>
+      {/* Информация о графе */}
+      <div className="toolbar-info">
         <div className="toolbar-title">{graph.name}</div>
         <div className="toolbar-subtitle">
-          {translate('toolbar.targetPlatform', 'Целевая платформа: {language}', {
-            language: graph.language.toUpperCase()
-          })}
+          {translate('toolbar.targetPlatform', '{language}', { language: graph.language.toUpperCase() })}
         </div>
       </div>
+      
       <div className="toolbar-actions">
-        <label className="toolbar-language" title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}>
-          <span>{locale === 'ru' ? 'Редактор' : 'Editor'}</span>
+        {/* Группа: Настройки */}
+        <div className="toolbar-group">
           <select
             value={editorMode}
             onChange={(event) => onEditorModeChange(event.target.value as EditorMode)}
+            title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}
+            className="toolbar-select"
           >
-            <option value="blueprint">{locale === 'ru' ? 'Визуальный' : 'Visual Flow'}</option>
-            <option value="cytoscape">{locale === 'ru' ? 'Классический' : 'Classic'}</option>
+            <option value="blueprint">{locale === 'ru' ? '🎨 Визуальный' : '🎨 Visual'}</option>
+            <option value="cytoscape">{locale === 'ru' ? '📊 Классический' : '📊 Classic'}</option>
           </select>
-        </label>
-        <label className="toolbar-language">
-          <span>{translate('toolbar.languageSwitch', 'Язык интерфейса')}</span>
           <select
             value={locale}
             onChange={(event) => onLocaleChange(event.target.value as GraphDisplayLanguage)}
+            title={translate('toolbar.languageSwitch', 'Язык интерфейса')}
+            className="toolbar-select"
           >
-            <option value="ru">RU</option>
-            <option value="en">EN</option>
+            <option value="ru">🇷🇺 RU</option>
+            <option value="en">🇺🇸 EN</option>
           </select>
-        </label>
-        <button
-          onClick={() => send('requestNewGraph')}
-          disabled={pending}
-          title={translate('tooltip.newGraph', 'Создать новый граф')}
-        >
-          {translate('toolbar.newGraph', 'Новый граф')}
-        </button>
-        <button
-          onClick={() => send('requestLoad')}
-          disabled={pending}
-          title={translate('tooltip.loadGraph', 'Загрузить граф из файла')}
-        >
-          {translate('toolbar.loadGraph', 'Загрузить')}
-        </button>
-        <button
-          onClick={() => send('requestSave')}
-          disabled={pending}
-          title={translate('tooltip.saveGraph', 'Сохранить граф в файл')}
-        >
-          {translate('toolbar.saveGraph', 'Сохранить')}
-        </button>
-        <button
-          onClick={() => send('requestValidate')}
-          disabled={pending}
-          title={translate('tooltip.validateGraph', 'Проверить граф на ошибки')}
-        >
-          {translate('toolbar.validateGraph', 'Проверить')}
-        </button>
-        <button
-          onClick={onCopyGraphId}
-          disabled={pending}
-          title={translate('tooltip.copyId', 'Скопировать ID графа в буфер обмена')}
-        >
-          {translate('toolbar.copyId' as TranslationKey, 'ID графа в буфер')}
-        </button>
-        <button
-          onClick={onCalculate}
-          disabled={pending}
-          title={translate('tooltip.calculateLayout', 'Пересчитать расположение узлов')}
-        >
-          {translate('toolbar.calculateLayout', 'Рассчитать')}
-        </button>
-        <button
-          onClick={() => onShowCodePreviewChange(!showCodePreview)}
-          disabled={pending}
-          title={showCodePreview ? translate('toolbar.hideCode' as TranslationKey, 'Скрыть код') : translate('toolbar.showCode' as TranslationKey, 'Показать код')}
-        >
-          {showCodePreview ? '📋' : '🎯'}
-        </button>
-        <button
-          onClick={() => send('requestGenerate')}
-          disabled={pending}
-          title={translate('toolbar.generate', 'Генерировать код')}
-        >
-          {translate('toolbar.generate', 'Генерировать код')}
-        </button>
+        </div>
+        
+        {/* Группа: Файл */}
+        <div className="toolbar-group">
+          <button onClick={() => send('requestNewGraph')} disabled={pending} title={translate('tooltip.newGraph', 'Новый граф')}>
+            📄 {translate('toolbar.newGraph', 'Новый')}
+          </button>
+          <button onClick={() => send('requestLoad')} disabled={pending} title={translate('tooltip.loadGraph', 'Загрузить')}>
+            📂 {translate('toolbar.loadGraph', 'Открыть')}
+          </button>
+          <button onClick={() => send('requestSave')} disabled={pending} title={translate('tooltip.saveGraph', 'Сохранить')}>
+            💾 {translate('toolbar.saveGraph', 'Сохранить')}
+          </button>
+        </div>
+        
+        {/* Группа: Действия */}
+        <div className="toolbar-group">
+          <button onClick={() => send('requestValidate')} disabled={pending} title={translate('tooltip.validateGraph', 'Проверить')}>
+            ✅ {translate('toolbar.validateGraph', 'Проверить')}
+          </button>
+          <button onClick={onCalculate} disabled={pending} title={translate('tooltip.calculateLayout', 'Рассчитать')}>
+            🔄 {translate('toolbar.calculateLayout', 'Лэйаут')}
+          </button>
+          <button onClick={onCopyGraphId} disabled={pending} title={translate('tooltip.copyId', 'Скопировать ID')}>
+            🆔
+          </button>
+        </div>
+        
+        {/* Группа: Код */}
+        <div className="toolbar-group">
+          <button
+            onClick={() => onShowCodePreviewChange(!showCodePreview)}
+            disabled={pending}
+            title={showCodePreview ? translate('toolbar.hideCode' as TranslationKey, 'Скрыть код') : translate('toolbar.showCode' as TranslationKey, 'Показать код')}
+            className={showCodePreview ? 'btn-active' : ''}
+          >
+            {showCodePreview ? '👁️ Код' : '👁️‍🗨️ Код'}
+          </button>
+          <button onClick={() => send('requestGenerate')} disabled={pending} title={translate('toolbar.generate', 'Генерировать')}>
+            ⚡ {translate('toolbar.generate', 'Генерировать')}
+          </button>
+        </div>
       </div>
     </div>
   );

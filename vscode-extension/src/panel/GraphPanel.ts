@@ -775,53 +775,100 @@ export class GraphPanel {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 14px 18px;
+        padding: 8px 16px;
         background: linear-gradient(135deg, var(--mc-toolbar-from), var(--mc-toolbar-to));
         border-bottom: 1px solid var(--mc-toolbar-border);
         box-shadow: var(--mc-shadow);
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .toolbar-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 120px;
       }
       .toolbar-title {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
       }
       .toolbar-subtitle {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--mc-muted);
+        white-space: nowrap;
       }
       .toolbar-actions {
         display: flex;
-        gap: 8px;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .toolbar-group {
+        display: flex;
+        gap: 4px;
+        padding: 0 8px;
+        border-right: 1px solid var(--mc-surface-border);
+      }
+      .toolbar-group:last-child {
+        border-right: none;
+        padding-right: 0;
       }
       .toolbar button {
         background: var(--mc-button-bg);
         color: var(--mc-button-text);
         border: 1px solid var(--mc-button-border);
-        border-radius: 6px;
-        padding: 8px 12px;
+        border-radius: 4px;
+        padding: 6px 10px;
         cursor: pointer;
-        box-shadow: var(--mc-shadow);
-        transition: transform 0.08s ease, box-shadow 0.08s ease;
+        font-size: 12px;
+        white-space: nowrap;
+        transition: all 0.1s ease;
       }
       .toolbar button:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--mc-button-hover-shadow);
+        background: var(--mc-surface-strong);
+        border-color: var(--mc-panel-title);
       }
       .toolbar button:disabled {
-        opacity: 0.6;
-        cursor: progress;
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .toolbar button.btn-icon {
+        padding: 6px 8px;
+        font-size: 14px;
+      }
+      .toolbar button.btn-active {
+        background: var(--mc-badge-ok-bg);
+        border-color: var(--mc-badge-ok-border);
+      }
+      .toolbar-select,
+      .toolbar select {
+        background: var(--mc-button-bg);
+        color: var(--mc-button-text);
+        border: 1px solid var(--mc-button-border);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+      }
+      .toolbar-select:hover,
+      .toolbar select:hover {
+        background: var(--mc-surface-strong);
+        border-color: var(--mc-panel-title);
       }
       .workspace {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+      .workspace.with-sidebar {
         display: grid;
         grid-template-columns: 1fr 320px;
-        gap: 12px;
-        flex: 1;
-        padding: 12px;
       }
       .canvas-wrapper {
         background: var(--mc-surface-strong);
-        border: 1px solid var(--mc-surface-border);
-        border-radius: 12px;
-        box-shadow: var(--mc-shadow);
+        flex: 1;
         position: relative;
         overflow: hidden;
       }
@@ -833,7 +880,12 @@ export class GraphPanel {
       .side-panel {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
+        padding: 8px;
+        background: var(--mc-body-bg);
+        border-left: 1px solid var(--mc-surface-border);
+        overflow-y: auto;
+        max-height: 100%;
       }
       .panel {
         background: var(--mc-surface);

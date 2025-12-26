@@ -141,6 +141,84 @@
   background: #45475a;
 }
 
+/* ============================================ */
+/* Panel кнопки (улучшенный стиль) */
+/* ============================================ */
+
+.panel-btn {
+  padding: 6px 12px;
+  background-color: #45475a;
+  color: #cdd6f4;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.panel-btn:hover {
+  background-color: #585b70;
+  transform: translateY(-1px);
+}
+
+.panel-btn:active {
+  transform: translateY(0);
+}
+
+.panel-btn.active {
+  background-color: #89b4fa;
+  color: #1e1e2e;
+}
+
+.panel-btn.active-purple {
+  background-color: #9C27B0;
+  color: #ffffff;
+}
+
+.panel-btn:disabled {
+  background-color: #313244;
+  color: #6c7086;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.panel-btn-icon {
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.panel-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.panel-divider {
+  width: 1px;
+  background-color: #45475a;
+  margin: 0 8px;
+  align-self: stretch;
+}
+
+/* ============================================ */
+/* Toolbar панель в редакторе */
+/* ============================================ */
+
+.editor-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px;
+  background-color: rgba(30, 30, 46, 0.9);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+}
+
 /* Palette animations */
 @keyframes slideIn {
   from {

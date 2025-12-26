@@ -143,6 +143,38 @@ const styles = {
   } as React.CSSProperties,
   
   // Tooltip для информации о узле
+  // Управление окнами
+  windowControls: {
+    backgroundColor: '#313244',
+    border: '1px solid #585b70',
+    borderRadius: '4px',
+    padding: '4px',
+    marginBottom: '8px',
+  } as React.CSSProperties,
+  
+  controlButton: {
+    background: 'none',
+    border: '1px solid #585b70',
+    color: '#cdd6f4',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '11px',
+    marginRight: '4px',
+    transition: 'all 0.2s',
+  } as React.CSSProperties,
+  
+  controlButtonActive: {
+    backgroundColor: '#89b4fa',
+    borderColor: '#89b4fa',
+    color: '#1e1e2e',
+  } as React.CSSProperties,
+  
+  controlButtonHover: {
+    borderColor: '#89b4fa',
+    backgroundColor: '#45475a',
+  } as React.CSSProperties,
+  
   tooltip: {
     position: 'absolute' as const,
     right: '8px',
@@ -268,7 +300,8 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipContent, setTooltipContent] = useState('');
-  
+  const [showMinimap, setShowMinimap] = useState(true);
+  const [showFunctionsPanel, setShowFunctionsPanel] = useState(false);  
   const codeRef = useRef<HTMLDivElement>(null);
 
   // Генерация кода
@@ -450,6 +483,85 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     );
   };
 
+  // Миникарта графа
+  const renderMinimap = () => {
+    if (!showMinimap) return null;
+    
+    return (
+      <div style={{
+        position: 'absolute' as const,
+        right: '10px',
+        bottom: '10px',
+        width: '200px',
+        height: '150px',
+        backgroundColor: '#1e1e2e',
+        border: '1px solid #45475a',
+        borderRadius: '4px',
+        padding: '8px',
+        fontSize: '10px',
+        color: '#6c7086',
+      }}>
+        <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
+          {locale === 'ru' ? '🗺️ Миникарта' : '🗺️ Minimap'}
+        </div>
+        <div style={{
+          backgroundColor: '#11111b',
+          height: '100px',
+          borderRadius: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          {locale === 'ru' ? '📍 Узлы графа' : '📍 Graph nodes'}
+        </div>
+      </div>
+    );
+  };
+
+  // Панель функций
+  const renderFunctionsPanel = () => {
+    if (!showFunctionsPanel) return null;
+    
+    const functions = result?.sourceMap 
+      ? Array.from(new Set(result.sourceMap.map(m => m.nodeId))).length 
+      : 0;
+    
+    return (
+      <div style={{
+        position: 'absolute' as const,
+        right: '10px',
+        bottom: '170px',
+        width: '200px',
+        backgroundColor: '#1e1e2e',
+        border: '1px solid #45475a',
+        borderRadius: '4px',
+        padding: '8px',
+        fontSize: '10px',
+        color: '#6c7086',
+      }}>
+        <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
+          {locale === 'ru' ? '⚙️ Функции' : '⚙️ Functions'}
+        </div>
+        <div style={{
+          backgroundColor: '#11111b',
+          height: '80px',
+          borderRadius: '2px',
+          padding: '8px',
+        }}>
+          <div style={{ marginBottom: '4px' }}>
+            {locale === 'ru' ? 'Всего функций:' : 'Total functions:'} {functions}
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            {locale === 'ru' ? 'Выполнимых узлов:' : 'Executable nodes:'} {graph.nodes.filter(n => n.type === 'Start' || n.type === 'End' || n.type === 'Branch').length}
+          </div>
+          <div>
+            {locale === 'ru' ? 'Связей:' : 'Connections:'} {graph.edges.length}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={styles.container}>
       {/* Header */}
@@ -461,6 +573,28 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
           {result?.success === true && <span style={{ color: '#a6e3a1' }}>✅</span>}
         </div>
         <div style={styles.headerActions}>
+          <div style={styles.windowControls}>
+            <button
+              onClick={() => setShowMinimap(!showMinimap)}
+              style={{
+                ...styles.controlButton,
+                ...(showMinimap ? styles.controlButtonActive : styles.controlButtonHover)
+              }}
+              title={showMinimap ? 'Скрыть мини-карту' : 'Показать мини-карту'}
+            >
+              {showMinimap ? '🗺' : '🗼'}
+            </button>
+            <button
+              onClick={() => setShowFunctionsPanel(!showFunctionsPanel)}
+              style={{
+                ...styles.controlButton,
+                ...(showFunctionsPanel ? styles.controlButtonActive : styles.controlButtonHover)
+              }}
+              title={showFunctionsPanel ? 'Скрыть функции' : 'Показать функции'}
+            >
+              {showFunctionsPanel ? '⚙️' : '📂'}
+            </button>
+          </div>
           <button
             onClick={handleCopy}
             disabled={!result?.code}
@@ -488,6 +622,10 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
           {renderCode()}
         </pre>
       </div>
+      
+      {/* Регулируемые окна */}
+      {renderMinimap()}
+      {renderFunctionsPanel()}
     </div>
   );
 };

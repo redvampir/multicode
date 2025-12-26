@@ -1261,23 +1261,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
           />
           
           <Panel position="top-left">
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="editor-toolbar">
               {/* Добавить узел */}
               <button
                 onClick={() => setPaletteVisible(v => !v)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#45475a',
-                  color: '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
+                className={`panel-btn ${paletteVisible ? 'active' : ''}`}
               >
                 <span>+</span>
                 <span>{t.add}</span>
@@ -1286,19 +1274,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               {/* Код */}
               <button
                 onClick={() => setCodePreviewVisible(v => !v)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: codePreviewVisible ? '#89b4fa' : '#45475a',
-                  color: codePreviewVisible ? '#1e1e2e' : '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
+                className={`panel-btn ${codePreviewVisible ? 'active' : ''}`}
               >
                 <span>{'</>'}</span>
                 <span>{t.code}</span>
@@ -1307,19 +1283,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               {/* Пакеты */}
               <button
                 onClick={() => setPackageManagerVisible(v => !v)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: packageManagerVisible ? '#89b4fa' : '#45475a',
-                  color: packageManagerVisible ? '#1e1e2e' : '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
+                className={`panel-btn ${packageManagerVisible ? 'active' : ''}`}
               >
                 <span>📦</span>
                 <span>{t.packages}</span>
@@ -1328,43 +1292,21 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               {/* Функции */}
               <button
                 onClick={() => setFunctionPanelVisible(v => !v)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: functionPanelVisible ? '#9C27B0' : '#45475a',
-                  color: functionPanelVisible ? '#ffffff' : '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
+                className={`panel-btn ${functionPanelVisible ? 'active-purple' : ''}`}
               >
                 <span>ƒ</span>
                 <span>{t.functions}</span>
               </button>
               
               {/* Разделитель */}
-              <div style={{ width: 1, backgroundColor: '#45475a', margin: '0 4px' }} />
+              <div className="panel-divider" />
               
               {/* Undo */}
               <button
                 onClick={handleUndo}
                 disabled={!historyState.canUndo}
                 title={`${t.undo} (Ctrl+Z)`}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: historyState.canUndo ? '#45475a' : '#313244',
-                  color: historyState.canUndo ? '#cdd6f4' : '#6c7086',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: historyState.canUndo ? 'pointer' : 'not-allowed',
-                  fontSize: 14,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
+                className="panel-btn panel-btn-icon"
               >
                 ↶
               </button>
@@ -1374,17 +1316,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 onClick={handleRedo}
                 disabled={!historyState.canRedo}
                 title={`${t.redo} (Ctrl+Y)`}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: historyState.canRedo ? '#45475a' : '#313244',
-                  color: historyState.canRedo ? '#cdd6f4' : '#6c7086',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: historyState.canRedo ? 'pointer' : 'not-allowed',
-                  fontSize: 14,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
+                className="panel-btn panel-btn-icon"
               >
                 ↷
               </button>
@@ -1393,17 +1325,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               <button
                 onClick={handleZoomToFit}
                 title={t.fit}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#45475a',
-                  color: '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
+                className="panel-btn panel-btn-icon"
               >
                 ⊡
               </button>
@@ -1412,17 +1334,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               <button
                 onClick={handleAutoLayout}
                 title={t.layout}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#45475a',
-                  color: '#cdd6f4',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
+                className="panel-btn panel-btn-icon"
               >
                 ⊞
               </button>

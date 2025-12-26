@@ -53,7 +53,8 @@ constexpr int kErrorSchemaVersion = 606;
     return dir == PortDirection::Input ? "Input" : "Output";
 }
 
-[[nodiscard]] auto parse_port_direction(std::string_view val) -> std::optional<PortDirection> {
+[[maybe_unused]] [[nodiscard]] auto parse_port_direction(std::string_view val)
+    -> std::optional<PortDirection> {
     if (val == "Input")
         return PortDirection::Input;
     if (val == "Output")
@@ -81,7 +82,8 @@ constexpr int kErrorSchemaVersion = 606;
     return lookup;
 }
 
-[[nodiscard]] auto parse_data_type(std::string_view value) -> std::optional<DataType> {
+[[maybe_unused]] [[nodiscard]] auto parse_data_type(std::string_view value)
+    -> std::optional<DataType> {
     if (auto it = get_data_type_lookup().find(value); it != get_data_type_lookup().end()) {
         return it->second;
     }

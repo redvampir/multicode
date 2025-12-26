@@ -151,7 +151,9 @@ const Toolbar: React.FC<{
   onCopyGraphId: () => void;
   editorMode: EditorMode;
   onEditorModeChange: (mode: EditorMode) => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange }) => {
+  showCodePreview: boolean;
+  onShowCodePreviewChange: (show: boolean) => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -235,9 +237,9 @@ const Toolbar: React.FC<{
           {translate('toolbar.calculateLayout', 'Рассчитать')}
         </button>
         <button
-          onClick={() => setShowCodePreview(!showCodePreview)}
+          onClick={() => onShowCodePreviewChange(!showCodePreview)}
           disabled={pending}
-          title={showCodePreview ? translate('toolbar.hideCode', 'Скрыть код') : translate('toolbar.showCode', 'Показать код')}
+          title={showCodePreview ? translate('toolbar.hideCode' as TranslationKey, 'Скрыть код') : translate('toolbar.showCode' as TranslationKey, 'Показать код')}
         >
           {showCodePreview ? '📋' : '🎯'}
         </button>
@@ -853,19 +855,16 @@ const App: React.FC = () => {
     sendToExtension({ type: 'requestTranslate', payload: { direction: translationDirection } });
   };
 
-const handleCopyGraphId = (): void => {
-  const id = computeGraphId(graph);
-  navigator.clipboard.writeText(id);
-  pushToast('success', translate('toolbar.copyId.ok', 'ID скопирован'));
-};
+  const handleCopyGraphId = (): void => {
+    navigator.clipboard.writeText(graph.id);
+    pushToast('success', translate('toolbar.copyId.ok', 'ID скопирован'));
+  };
 
-// Обработчик выбора узла из кодогенератора
-const handleNodeSelect = (nodeId: string): void => {
-  setSelectedNodeIdForCode(nodeId);
-  // Здесь можно добавить фокусировку на узел в редакторе
-  // Например: focusNode(nodeId);
-};
-    void write();
+  // Обработчик выбора узла из кодогенератора
+  const handleNodeSelect = (nodeId: string): void => {
+    setSelectedNodeIdForCode(nodeId);
+    // Здесь можно добавить фокусировку на узел в редакторе
+    // Например: focusNode(nodeId);
   };
 
   useEffect(() => {
@@ -913,6 +912,8 @@ const handleNodeSelect = (nodeId: string): void => {
         onCopyGraphId={handleCopyGraphId}
         editorMode={editorMode}
         onEditorModeChange={handleEditorModeChange}
+        showCodePreview={showCodePreview}
+        onShowCodePreviewChange={setShowCodePreview}
       />
       <div className="workspace">
         <div className="canvas-wrapper">

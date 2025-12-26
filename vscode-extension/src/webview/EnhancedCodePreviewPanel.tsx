@@ -12,7 +12,7 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { BlueprintGraphState, BlueprintNode } from '../shared/blueprintTypes';
 import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
-import type { CodeGenerationResult } from '../codegen/types';
+import type { CodeGenerationResult, CodeGenErrorCode } from '../codegen/types';
 
 // ============================================
 // Расширенные стили
@@ -293,7 +293,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
               lineInfos.push({
                 line,
                 nodeId: mapping.nodeId,
-                nodeInstanceName: node?.instanceName,
+                nodeInstanceName: node?.customLabel ?? node?.label,
                 hasError: generationResult.errors.some(e => e.nodeId === mapping.nodeId),
                 hasWarning: generationResult.warnings.some(w => w.nodeId === mapping.nodeId),
               });
@@ -307,10 +307,10 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
         setResult({
           success: false,
           code: '// Ошибка генерации кода',
-          errors: [{ message: String(error), code: 'GENERATION_ERROR', messageEn: 'Generation error' }],
+          errors: [{ message: String(error), code: 'INTERNAL_ERROR' as CodeGenErrorCode, messageEn: 'Generation error', nodeId: '' }],
           warnings: [],
           sourceMap: [],
-          stats: { nodesProcessed: 0, linesGenerated: 0, timeMs: 0 },
+          stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
         });
       } finally {
         setIsLoading(false);
@@ -418,7 +418,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const renderStats = () => {
     if (!result?.stats) return null;
     
-    const { nodesProcessed, linesGenerated, timeMs } = result.stats;
+    const { nodesProcessed, linesOfCode, generationTimeMs } = result.stats;
     
     return (
       <div style={styles.statsContainer}>
@@ -428,11 +428,11 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
         </div>
         <div style={styles.statItem}>
           <span style={styles.statLabel}>{locale === 'ru' ? 'Строк:' : 'Lines:'}</span>
-          <span style={styles.statValue}>{linesGenerated}</span>
+          <span style={styles.statValue}>{linesOfCode}</span>
         </div>
         <div style={styles.statItem}>
           <span style={styles.statLabel}>{locale === 'ru' ? 'Время:' : 'Time:'}</span>
-          <span style={styles.statValue}>{timeMs}ms</span>
+          <span style={styles.statValue}>{generationTimeMs}ms</span>
         </div>
         {result.errors.length > 0 && (
           <div style={styles.statItem}>

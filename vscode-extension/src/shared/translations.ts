@@ -66,6 +66,8 @@ export type TranslationKey =
   | 'toasts.connectionCreated'
   | 'toasts.nodesDeleted'
   | 'toast.close'
+  | 'toast.generation.success'
+  | 'toast.generation.error'
   | 'search.placeholder'
   | 'search.hint'
   | 'search.results'
@@ -184,6 +186,8 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Связь создана',
     'toasts.nodesDeleted': '{count} узлов удалено',
     'toast.close': 'Закрыть уведомление',
+    'toast.generation.success': 'Код успешно сгенерирован',
+    'toast.generation.error': 'Ошибка генерации кода',
     'search.placeholder': 'Поиск узла или связи',
     'search.hint': 'Ctrl+F — фокус на поиск, Enter — следующее, Shift+Enter — предыдущее',
     'search.results': 'Совпадений: {count}',
@@ -299,6 +303,8 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Connection created',
     'toasts.nodesDeleted': '{count} nodes removed',
     'toast.close': 'Close notification',
+    'toast.generation.success': 'Code generated successfully',
+    'toast.generation.error': 'Code generation error',
     'search.placeholder': 'Search nodes or edges',
     'search.hint': 'Ctrl+F — focus search, Enter — next, Shift+Enter — previous',
     'search.results': 'Matches: {count}',

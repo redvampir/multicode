@@ -153,7 +153,8 @@ const Toolbar: React.FC<{
   onEditorModeChange: (mode: EditorMode) => void;
   showCodePreview: boolean;
   onShowCodePreviewChange: (show: boolean) => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange }) => {
+  onShowHotkeys: () => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange, onShowHotkeys }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -235,6 +236,64 @@ const Toolbar: React.FC<{
           <button onClick={() => send('requestGenerate')} disabled={pending} title={translate('toolbar.generate', 'Генерировать')}>
             ⚡ {translate('toolbar.generate', 'Генерировать')}
           </button>
+        </div>
+        
+        {/* Группа: Помощь */}
+        <div className="toolbar-group">
+          <button onClick={onShowHotkeys} title={locale === 'ru' ? 'Горячие клавиши (H)' : 'Hotkeys (H)'}>
+            ⌨️
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Панель горячих клавиш */
+const HotkeysPanel: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  locale: GraphDisplayLanguage;
+}> = ({ isOpen, onClose, locale }) => {
+  if (!isOpen) return null;
+
+  const hotkeys = [
+    { key: 'A', action: locale === 'ru' ? 'Добавить узел (палитра)' : 'Add node (palette)' },
+    { key: 'Delete / Backspace', action: locale === 'ru' ? 'Удалить выделенное' : 'Delete selected' },
+    { key: 'Ctrl+Z', action: locale === 'ru' ? 'Отменить' : 'Undo' },
+    { key: 'Ctrl+Y / Ctrl+Shift+Z', action: locale === 'ru' ? 'Повторить' : 'Redo' },
+    { key: 'Ctrl+C', action: locale === 'ru' ? 'Копировать' : 'Copy' },
+    { key: 'Ctrl+V', action: locale === 'ru' ? 'Вставить' : 'Paste' },
+    { key: 'Ctrl+X', action: locale === 'ru' ? 'Вырезать' : 'Cut' },
+    { key: 'Ctrl+A', action: locale === 'ru' ? 'Выделить всё' : 'Select all' },
+    { key: 'Escape', action: locale === 'ru' ? 'Снять выделение' : 'Deselect' },
+    { key: 'L', action: locale === 'ru' ? 'Автолейаут' : 'Auto layout' },
+    { key: 'F', action: locale === 'ru' ? 'Центрировать на выделении' : 'Focus on selection' },
+    { key: 'Space (drag)', action: locale === 'ru' ? 'Перемещение канваса' : 'Pan canvas' },
+    { key: 'Scroll', action: locale === 'ru' ? 'Масштаб' : 'Zoom' },
+    { key: 'Right Click', action: locale === 'ru' ? 'Контекстное меню' : 'Context menu' },
+  ];
+
+  return (
+    <div className="hotkeys-overlay" onClick={onClose}>
+      <div className="hotkeys-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="hotkeys-header">
+          <h3>⌨️ {locale === 'ru' ? 'Горячие клавиши' : 'Keyboard Shortcuts'}</h3>
+          <button className="hotkeys-close" onClick={onClose}>×</button>
+        </div>
+        <div className="hotkeys-list">
+          {hotkeys.map((h, i) => (
+            <div key={i} className="hotkey-row">
+              <kbd className="hotkey-key">{h.key}</kbd>
+              <span className="hotkey-action">{h.action}</span>
+            </div>
+          ))}
+        </div>
+        <div className="hotkeys-footer">
+          <p>{locale === 'ru' 
+            ? '💡 Нажмите ? или H для открытия этой панели' 
+            : '💡 Press ? or H to open this panel'}
+          </p>
         </div>
       </div>
     </div>
@@ -625,6 +684,9 @@ const App: React.FC = () => {
   // Code preview state
   const [showCodePreview, setShowCodePreview] = useState(false);
   
+  // Hotkeys panel state
+  const [showHotkeys, setShowHotkeys] = useState(false);
+  
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
     migrateToBlueprintFormat(graph)
@@ -662,6 +724,27 @@ const App: React.FC = () => {
       // Ignore localStorage errors
     }
   };
+  
+  // Глобальный обработчик клавиш для панели горячих клавиш
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // H или ? для открытия панели горячих клавиш
+      if ((e.key === 'h' || e.key === 'H' || e.key === '?') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Не открывать если фокус в input/textarea
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        setShowHotkeys(prev => !prev);
+      }
+      // Escape для закрытия
+      if (e.key === 'Escape' && showHotkeys) {
+        setShowHotkeys(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showHotkeys]);
 
   // Синхронизация blueprintGraph при изменении graph
   useEffect(() => {
@@ -892,7 +975,16 @@ const App: React.FC = () => {
         onEditorModeChange={handleEditorModeChange}
         showCodePreview={showCodePreview}
         onShowCodePreviewChange={setShowCodePreview}
+        onShowHotkeys={() => setShowHotkeys(true)}
       />
+      
+      {/* Панель горячих клавиш */}
+      <HotkeysPanel
+        isOpen={showHotkeys}
+        onClose={() => setShowHotkeys(false)}
+        locale={locale}
+      />
+      
       <div className="workspace">
         <div className="canvas-wrapper">
           {renderEditor()}

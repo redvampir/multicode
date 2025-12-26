@@ -25,6 +25,12 @@ export type BlueprintNodeType =
   | 'Break'          // Выход из цикла
   | 'Continue'       // Продолжить цикл
   | 'Sequence'       // Последовательное выполнение
+  | 'Parallel'       // Параллельное выполнение (многопоток)
+  | 'Gate'           // Управляемый шлюз (открыть/закрыть поток)
+  | 'DoN'            // Выполнить N раз
+  | 'DoOnce'         // Выполнить один раз
+  | 'FlipFlop'       // Переключатель A/B
+  | 'MultiGate'      // Множественный шлюз (циклический выбор)
   | 'Return'
   // Functions
   | 'Function'
@@ -358,6 +364,114 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     outputs: [
       { id: 'then-0', name: 'Then 0', dataType: 'execution', direction: 'output' },
       { id: 'then-1', name: 'Then 1', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  Parallel: {
+    type: 'Parallel',
+    label: 'Parallel',
+    labelRu: 'Параллельно',
+    category: 'flow',
+    description: 'Execute multiple branches in parallel (threads)',
+    descriptionRu: 'Выполнить несколько веток параллельно (многопоток)',
+    headerColor: '#00BCD4',
+    dynamicPorts: true,
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'thread-0', name: 'Thread 0', dataType: 'execution', direction: 'output' },
+      { id: 'thread-1', name: 'Thread 1', dataType: 'execution', direction: 'output' },
+      { id: 'completed', name: 'All Done', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  Gate: {
+    type: 'Gate',
+    label: 'Gate',
+    labelRu: 'Шлюз',
+    category: 'flow',
+    description: 'Controllable gate - can be opened/closed to control flow',
+    descriptionRu: 'Управляемый шлюз - можно открыть/закрыть для контроля потока',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'enter', name: 'Enter', dataType: 'execution', direction: 'input' },
+      { id: 'open', name: 'Open', dataType: 'execution', direction: 'input' },
+      { id: 'close', name: 'Close', dataType: 'execution', direction: 'input' },
+      { id: 'toggle', name: 'Toggle', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exit', name: 'Exit', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  DoN: {
+    type: 'DoN',
+    label: 'Do N',
+    labelRu: 'Выполнить N раз',
+    category: 'flow',
+    description: 'Execute N times, then stop',
+    descriptionRu: 'Выполнить N раз, затем остановиться',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'exec-in', name: 'Enter', dataType: 'execution', direction: 'input' },
+      { id: 'n', name: 'N', dataType: 'int32', direction: 'input' },
+      { id: 'reset', name: 'Reset', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exit', name: 'Exit', dataType: 'execution', direction: 'output' },
+      { id: 'counter', name: 'Counter', dataType: 'int32', direction: 'output' }
+    ],
+  },
+  DoOnce: {
+    type: 'DoOnce',
+    label: 'Do Once',
+    labelRu: 'Один раз',
+    category: 'flow',
+    description: 'Execute only once, ignore subsequent calls',
+    descriptionRu: 'Выполнить только один раз, игнорировать последующие вызовы',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'reset', name: 'Reset', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'completed', name: 'Completed', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  FlipFlop: {
+    type: 'FlipFlop',
+    label: 'Flip Flop',
+    labelRu: 'Переключатель',
+    category: 'flow',
+    description: 'Alternates between A and B outputs',
+    descriptionRu: 'Переключает между выходами A и B',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'a', name: 'A', dataType: 'execution', direction: 'output' },
+      { id: 'b', name: 'B', dataType: 'execution', direction: 'output' },
+      { id: 'is-a', name: 'Is A', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  MultiGate: {
+    type: 'MultiGate',
+    label: 'Multi Gate',
+    labelRu: 'Мульти-шлюз',
+    category: 'flow',
+    description: 'Cycles through multiple outputs sequentially or randomly',
+    descriptionRu: 'Циклически переключает между несколькими выходами',
+    headerColor: '#FF9800',
+    dynamicPorts: true,
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'reset', name: 'Reset', dataType: 'execution', direction: 'input' },
+      { id: 'is-random', name: 'Random', dataType: 'bool', direction: 'input' },
+      { id: 'loop', name: 'Loop', dataType: 'bool', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'out-0', name: 'Out 0', dataType: 'execution', direction: 'output' },
+      { id: 'out-1', name: 'Out 1', dataType: 'execution', direction: 'output' },
+      { id: 'out-2', name: 'Out 2', dataType: 'execution', direction: 'output' }
     ],
   },
   DoWhile: {

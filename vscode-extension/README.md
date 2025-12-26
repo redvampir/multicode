@@ -183,16 +183,18 @@ scripts/vscode-test-i-sborka.sh
 - [Статус проекта](../Документы/ProjectStatus.md)
 - [VS Code Extension API](https://code.visualstudio.com/api)
 
-## Примечания
+## Переустановка расширения
 
-Этот README описывает **планируемую** функциональность. По мере реализации документ будет обновляться с указанием фактического состояния каждого компонента.
+Если в VS Code застряла старая версия, соберите VSIX так:
 
-## ��� ������������/�������� ���������� �������
+```bash
+cd vscode-extension
+npm install
+npm run compile && npm run package
+npx vsce package --no-dependencies
+```
 
-���� � VS Code ������� ������ ������, ������ VSIX ���:
-- `cd vscode-extension && npm install` � ��������� �����������.
-- `npm run compile-tests && npm run compile && npm run package` � ������� webview � extension.
-- `npx @vscode/vsce package --out multicode-visual-programming.vsix` (��� `vsce package`, ���� ���������� ���������) � ��������� ������ VSIX.
-- � VS Code: Extensions > ��� > Install from VSIX > ������� ����� ���� � ����������� �� ����������.
-- ���� ������ ������ �� ����������, ������� Remove/Uninstall, ����� ��������� Install from VSIX.
+Затем: **Extensions > ... > Install from VSIX** и выберите файл `.vsix`.
+
+Если версия не обновляется — сначала **Remove/Uninstall**, потом **Install from VSIX**.
 

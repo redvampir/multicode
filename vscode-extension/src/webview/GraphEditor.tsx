@@ -351,7 +351,8 @@ export const GraphEditor: React.FC<{
       return;
     }
     const ids = [...selectionRef.current, ...edgeSelectionRef.current];
-    const collection = cy.collection(ids.map((id) => cy.$id(id)));
+    const selector = ids.map((id) => `#${id}`).join(', ');
+    const collection = cy.collection(selector);
     const bbox = collection.renderedBoundingBox({ includeLabels: true, includeOverlays: true });
     const rect = container.getBoundingClientRect();
     const anchor = {

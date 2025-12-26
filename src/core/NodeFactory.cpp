@@ -14,12 +14,14 @@ auto NodeFactory::create(const NodeType& type, std::string instance_name) -> std
     return create_with_id(node_id, type, std::move(instance_name));
 }
 
+// clang-format off
 auto NodeFactory::create_with_id(NodeId node_id, const NodeType& type, std::string instance_name)
     -> std::unique_ptr<Node> {
     auto node = std::make_unique<Node>(node_id, type, std::move(instance_name));
     configure_ports(*node);
     return node;
 }
+// clang-format on
 
 void NodeFactory::configure_ports(Node& node) {
     const auto type = node.get_type();
@@ -36,7 +38,8 @@ void NodeFactory::configure_ports(Node& node) {
         node.set_property("value", std::string("Hello, World!"));
     }
     // Here we will add more `else if` statements for other core nodes.
-    // In the future, this will be replaced by a system that reads .nodedef.json files.
+    // In the future, this will be replaced by a system that reads .nodedef.json
+    // files.
 }
 
 auto NodeFactory::generate_node_id() -> NodeId {

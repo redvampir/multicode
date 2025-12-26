@@ -302,6 +302,7 @@ private:
     return serialize_segments(segments);
 }
 
+// clang-format off
 [[nodiscard]] auto are_type_names_compatible(std::string_view lhs, std::string_view rhs) noexcept
     -> bool {
     const auto lhs_trimmed = trim(lhs);
@@ -320,6 +321,7 @@ private:
 
     return lhs_normalized == rhs_normalized;
 }
+// clang-format on
 
 [[nodiscard]] constexpr auto requires_type_name(DataType type) noexcept -> bool {
     switch (type) {
@@ -611,7 +613,8 @@ auto Port::can_connect_to(const Port& other) const noexcept -> bool {
         return true;
     }
 
-    // Numeric promotions (integral widening, integral -> floating, float -> double)
+    // Numeric promotions (integral widening, integral -> floating, float ->
+    // double)
     if (is_numeric_widening(data_type_, other.data_type_) ||
         is_integral_to_floating(data_type_, other.data_type_) ||
         is_float_promotion(data_type_, other.data_type_)) {

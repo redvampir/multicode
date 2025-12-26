@@ -138,6 +138,7 @@ auto Graph::has_node(NodeId id) const noexcept -> bool {
 // Connection Management
 // ============================================================================
 
+// clang-format off
 auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
     -> Result<ConnectionId> {
     // Validate connection
@@ -176,6 +177,7 @@ auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId t
 
     return Result<ConnectionId>(conn_id);
 }
+// clang-format on
 
 auto Graph::disconnect(ConnectionId id) -> Result<void> {
     // Find connection

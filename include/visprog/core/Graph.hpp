@@ -113,8 +113,10 @@ public:
     /// @param to_node Target node
     /// @param to_port Target port
     /// @return Result with ConnectionId or Error
+    // clang-format off
     [[nodiscard]] auto connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
         -> Result<ConnectionId>;
+    // clang-format on
 
     /// @brief Remove a connection
     /// @param id Connection to remove
@@ -146,7 +148,8 @@ public:
     // ========================================================================
 
     /// @brief Perform topological sort on the graph
-    /// @return Sorted list of NodeIds (execution order) or Error if cycle detected
+    /// @return Sorted list of NodeIds (execution order) or Error if cycle
+    /// detected
     [[nodiscard]] auto topological_sort() const -> Result<std::vector<NodeId>>;
 
     /// @brief Find all nodes reachable from given node

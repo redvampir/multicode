@@ -53,7 +53,7 @@ TEST_CASE("Node: Properties", "[node][properties]") {
 
     SECTION("Set and get other property types") {
         node->set_property("my_number", 123.45);
-        node->set_property("my_integer", (int64_t)99);
+        node->set_property("my_integer", static_cast<int64_t>(99));
         node->set_property("my_bool", true);
 
         auto num_val = node->get_property<double>("my_number");

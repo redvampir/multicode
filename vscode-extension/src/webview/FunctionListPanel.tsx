@@ -19,6 +19,7 @@ import {
   addFunctionOutputParameter,
   removeFunctionParameter 
 } from '../shared/blueprintTypes';
+import { FunctionEditor } from './FunctionEditor';
 
 interface FunctionListPanelProps {
   /** Текущее состояние графа */
@@ -31,6 +32,8 @@ interface FunctionListPanelProps {
   activeFunctionId: string | null;
   /** Язык отображения */
   displayLanguage: 'ru' | 'en';
+  /** Колбэк при сохранении функции */
+  onSaveFunction?: (func: BlueprintFunction) => void;
 }
 
 /** Диалог создания/редактирования функции */
@@ -59,30 +62,12 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   onSelectFunction,
   activeFunctionId,
   displayLanguage,
+  onSaveFunction,
 }) => {
-  const functions = useMemo(() => graphState.functions ?? [], [graphState.functions]);
   const isRu = displayLanguage === 'ru';
+  const [editingFunction, setEditingFunction] = useState<BlueprintFunction | null>(null);
   
-  // Состояние диалога функции
-  const [funcDialog, setFuncDialog] = useState<FunctionDialogState>({
-    isOpen: false,
-    mode: 'create',
-    name: '',
-    nameRu: '',
-    description: '',
-  });
-  
-  // Состояние диалога параметра
-  const [paramDialog, setParamDialog] = useState<ParameterDialogState>({
-    isOpen: false,
-    functionId: '',
-    name: '',
-    nameRu: '',
-    dataType: 'int32',
-    direction: 'input',
-  });
-  
-  // Развёрнутые функции (для показа параметров)
+  const functions = graphState.functions || [];
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
   
   // === Обработчики для функций ===
@@ -358,151 +343,16 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                     {outputParams.length === 0 && (
                       <div className="no-params">{isRu ? 'Нет выходов' : 'No outputs'}</div>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        
-        {functions.length === 0 && (
-          <div className="no-functions">
-            {isRu 
-              ? 'Нет функций. Нажмите "+ Функция" чтобы создать.' 
-              : 'No functions. Click "+ Function" to create one.'}
-          </div>
-        )}
       </div>
       
-      {/* Диалог создания/редактирования функции */}
-      {funcDialog.isOpen && (
-        <div className="dialog-overlay" onClick={() => setFuncDialog(prev => ({ ...prev, isOpen: false }))}>
-          <div className="dialog" onClick={e => e.stopPropagation()}>
-            <h4>
-              {funcDialog.mode === 'create' 
-                ? (isRu ? 'Новая функция' : 'New Function')
-                : (isRu ? 'Редактировать функцию' : 'Edit Function')
-              }
-            </h4>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Имя (для кода)' : 'Name (for code)'}</label>
-              <input
-                type="text"
-                value={funcDialog.name}
-                onChange={e => setFuncDialog(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="myFunction"
-                pattern="[a-zA-Z_][a-zA-Z0-9_]*"
-              />
-            </div>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Отображаемое имя (RU)' : 'Display Name (RU)'}</label>
-              <input
-                type="text"
-                value={funcDialog.nameRu}
-                onChange={e => setFuncDialog(prev => ({ ...prev, nameRu: e.target.value }))}
-                placeholder={isRu ? 'Моя функция' : 'My Function'}
-              />
-            </div>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Описание' : 'Description'}</label>
-              <textarea
-                value={funcDialog.description}
-                onChange={e => setFuncDialog(prev => ({ ...prev, description: e.target.value }))}
-                placeholder={isRu ? 'Описание функции...' : 'Function description...'}
-                rows={3}
-              />
-            </div>
-            
-            <div className="dialog-actions">
-              <button 
-                className="btn-cancel"
-                onClick={() => setFuncDialog(prev => ({ ...prev, isOpen: false }))}
-              >
-                {isRu ? 'Отмена' : 'Cancel'}
-              </button>
-              <button 
-                className="btn-save"
-                onClick={handleSaveFunction}
-                disabled={!funcDialog.name.trim()}
-              >
-                {funcDialog.mode === 'create' 
-                  ? (isRu ? 'Создать' : 'Create')
-                  : (isRu ? 'Сохранить' : 'Save')
-                }
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Диалог добавления параметра */}
-      {paramDialog.isOpen && (
-        <div className="dialog-overlay" onClick={() => setParamDialog(prev => ({ ...prev, isOpen: false }))}>
-          <div className="dialog" onClick={e => e.stopPropagation()}>
-            <h4>
-              {paramDialog.direction === 'input'
-                ? (isRu ? 'Новый входной параметр' : 'New Input Parameter')
-                : (isRu ? 'Новый выходной параметр' : 'New Output Parameter')
-              }
-            </h4>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Имя (для кода)' : 'Name (for code)'}</label>
-              <input
-                type="text"
-                value={paramDialog.name}
-                onChange={e => setParamDialog(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="paramName"
-              />
-            </div>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Отображаемое имя (RU)' : 'Display Name (RU)'}</label>
-              <input
-                type="text"
-                value={paramDialog.nameRu}
-                onChange={e => setParamDialog(prev => ({ ...prev, nameRu: e.target.value }))}
-                placeholder={isRu ? 'Параметр' : 'Parameter'}
-              />
-            </div>
-            
-            <div className="dialog-field">
-              <label>{isRu ? 'Тип данных' : 'Data Type'}</label>
-              <select
-                value={paramDialog.dataType}
-                onChange={e => setParamDialog(prev => ({ 
-                  ...prev, 
-                  dataType: e.target.value as PortDataType 
-                }))}
-              >
-                {dataTypeOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {isRu ? opt.labelRu : opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="dialog-actions">
-              <button 
-                className="btn-cancel"
-                onClick={() => setParamDialog(prev => ({ ...prev, isOpen: false }))}
-              >
-                {isRu ? 'Отмена' : 'Cancel'}
-              </button>
-              <button 
-                className="btn-save"
-                onClick={handleSaveParameter}
-                disabled={!paramDialog.name.trim()}
-              >
-                {isRu ? 'Добавить' : 'Add'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Редактор функции */}
+      {editingFunction && (
+        <FunctionEditor
+          function={editingFunction}
+          onSave={handleSaveFunction}
+          onClose={() => setEditingFunction(null)}
+          onDelete={() => handleDeleteFunction(editingFunction.id)}
+        />
       )}
     </div>
   );

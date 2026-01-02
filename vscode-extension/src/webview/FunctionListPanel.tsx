@@ -98,17 +98,12 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   }, []);
   
   const handleEditFunction = useCallback((func: BlueprintFunction) => {
-    setFuncDialog({
-      isOpen: true,
-      mode: 'edit',
-      functionId: func.id,
-      name: func.name,
-      nameRu: func.nameRu,
-      description: func.description ?? '',
-    });
+    // Open the visual FunctionEditor for this function
+    setEditingFunction(func);
   }, []);
   
   const handleSaveFunction = useCallback(() => {
+    // Keep existing dialog-based create/edit behavior
     if (!funcDialog.name.trim()) {
       return; // Валидация: имя обязательно
     }
@@ -121,7 +116,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
       );
       onFunctionsChange([...functions, newFunc]);
     } else if (funcDialog.functionId) {
-      // Редактирование существующей
+      // Редактирование существующей (dialog)
       const updatedFunctions = functions.map(f => {
         if (f.id === funcDialog.functionId) {
           return {
@@ -139,6 +134,13 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
     
     setFuncDialog(prev => ({ ...prev, isOpen: false }));
   }, [funcDialog, functions, onFunctionsChange]);
+
+  // Handler invoked by visual FunctionEditor when user saves changes
+  const handleEditorSave = useCallback((updatedFunc: BlueprintFunction) => {
+    const updatedFunctions = functions.map(f => f.id === updatedFunc.id ? updatedFunc : f);
+    onFunctionsChange(updatedFunctions);
+    setEditingFunction(null);
+  }, [functions, onFunctionsChange]);
   
   const handleDeleteFunction = useCallback((funcId: string) => {
     // Если удаляемая функция активна — переключаемся на EventGraph
@@ -371,7 +373,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
       {editingFunction && (
         <FunctionEditor
           function={editingFunction}
-          onSave={handleSaveFunction}
+          onSave={handleEditorSave}
           onClose={() => setEditingFunction(null)}
           onDelete={() => handleDeleteFunction(editingFunction.id)}
         />

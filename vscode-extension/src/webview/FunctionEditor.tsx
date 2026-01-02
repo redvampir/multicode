@@ -4,9 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { BlueprintFunction } from '../shared/blueprintTypes';
-// Для быстрого исправления CI используем гибкий тип для параметров функции
-type FunctionParameter = any;
+import type { BlueprintFunction, FunctionParameter } from '../shared/blueprintTypes';
 import type { PortDataType } from '../shared/portTypes';
 
 // ============================================
@@ -14,8 +12,8 @@ import type { PortDataType } from '../shared/portTypes';
 // ============================================
 
 interface FunctionEditorProps {
-  function: any; // using any to remain compatible with current BlueprintFunction shape
-  onSave: (func: any) => void;
+  function: BlueprintFunction;
+  onSave: (func: BlueprintFunction) => void;
   onClose: () => void;
   onDelete?: () => void;
 }
@@ -24,7 +22,6 @@ interface FunctionDialogState {
   name: string;
   nameRu: string;
   description: string;
-  body: string;
 }
 
 // ============================================
@@ -80,8 +77,11 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
     name: func.name,
     nameRu: func.nameRu || func.name,
     description: func.description || '',
-    body: func.body || '',
   });
+
+  const [parameters, setParameters] = useState<FunctionParameter[]>(() => (
+    func.parameters ? func.parameters.map(p => ({ ...p })) : []
+  ));
 
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
 
@@ -90,85 +90,82 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
     setDialogState(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const updateParameter = useCallback((parameterIndex: number, field: keyof FunctionParameter, value: string | PortDataType) => {
-    setDialogState(prev => {
-      const currentData = prev.body ? JSON.parse(prev.body) : func.graph.nodes[0].data;
-      const updatedInputs = [...currentData.inputs];
-      updatedInputs[parameterIndex] = { ...updatedInputs[parameterIndex], [field]: value };
-      
-      const updatedNodes = [...func.graph.nodes];
-      updatedNodes[0].data.inputs = updatedInputs;
-      
-      const updatedFunction = {
-        ...func,
-        graph: { ...func.graph, nodes: updatedNodes }
-      };
-      
-      return { ...prev, body: JSON.stringify(updatedFunction.graph.nodes[0].data) };
-    });
-  }, [func, dialogState.body]);
+  const updateParameter = useCallback((paramId: string, field: keyof FunctionParameter, value: string | PortDataType | boolean | number) => {
+    setParameters(prev => prev.map(p => p.id === paramId ? { ...p, [field]: value } : p));
+  }, []);
 
-  const addParameter = useCallback((type: 'input' | 'output') => {
-    const currentData = dialogState.body ? JSON.parse(dialogState.body) : func.graph.nodes[0].data;
-    const newParameter: any = {
-      id: `param_${Date.now()}`,
-      name: `NewParameter`,
-      nameRu: `NewParameter`,
+  const addParameter = useCallback((direction: 'input' | 'output') => {
+    const newParam: FunctionParameter = {
+      id: `param-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      name: 'NewParam',
+      nameRu: 'NewParam',
       dataType: 'int32',
-      defaultValue: undefined,
-      direction: 'input',
-    };
-    
-    if (type === 'input') {
-      currentData.inputs.push(newParameter);
-    } else {
-      currentData.outputs.push(newParameter);
-    }
-    
-    setDialogState(prev => ({
-      ...prev,
-      body: JSON.stringify(currentData)
-    }));
-  }, [func, dialogState.body]);
+      direction,
+    } as FunctionParameter;
+    setParameters(prev => [...prev, newParam]);
+  }, []);
 
-  const removeParameter = useCallback((parameterIndex: number, type: 'input' | 'output') => {
-    const currentData = dialogState.body ? JSON.parse(dialogState.body) : func.graph.nodes[0].data;
-    
-    if (type === 'input') {
-      currentData.inputs.splice(parameterIndex, 1);
-    } else {
-      currentData.outputs.splice(parameterIndex, 1);
-    }
-    
-    setDialogState(prev => ({
-      ...prev,
-      body: JSON.stringify(currentData)
-    }));
-  }, [func, dialogState.body]);
+  const removeParameter = useCallback((paramId: string) => {
+    setParameters(prev => prev.filter(p => p.id !== paramId));
+  }, []);
 
   const handleSave = useCallback(() => {
     try {
-      const currentData = dialogState.body ? JSON.parse(dialogState.body) : func.graph.nodes[0].data;
-      
+      // Построим граф узлов обновлённой функции: синхронизируем порты в FunctionEntry/FunctionReturn
+      const nodes = func.graph.nodes.map(n => ({ ...n }));
+      const entryNode = nodes.find(n => n.type === 'FunctionEntry');
+      const returnNode = nodes.find(n => n.type === 'FunctionReturn');
+
+      // Сбор входных и выходных параметров
+      const inputParams = parameters.filter(p => p.direction === 'input');
+      const outputParams = parameters.filter(p => p.direction === 'output');
+
+      if (entryNode) {
+        // Сохраняем только стандартный exec-out + параметры как выходные порты
+        const execPorts = entryNode.outputs.filter(o => o.dataType === 'execution');
+        const paramPorts = inputParams.map((p, i) => ({
+          id: `${entryNode.id}-${p.id}`,
+          name: p.nameRu || p.name,
+          dataType: p.dataType,
+          direction: 'output' as const,
+          index: i + execPorts.length,
+          connected: false,
+        }));
+        entryNode.outputs = [...execPorts, ...paramPorts];
+        // Сохраним тело функции в свойствах entryNode
+        entryNode.properties = { ...(entryNode.properties || {}), body };
+      }
+
+      if (returnNode) {
+        const execPorts = returnNode.inputs.filter(o => o.dataType === 'execution');
+        const paramPorts = outputParams.map((p, i) => ({
+          id: `${returnNode.id}-${p.id}`,
+          name: p.nameRu || p.name,
+          dataType: p.dataType,
+          direction: 'input' as const,
+          index: i + execPorts.length,
+          connected: false,
+        }));
+        returnNode.inputs = [...execPorts, ...paramPorts];
+      }
+
       const updatedFunction: BlueprintFunction = {
         ...func,
         name: dialogState.name,
         nameRu: dialogState.nameRu,
-        description: dialogState.description,
+        description: dialogState.description || undefined,
+        parameters: parameters.map(p => ({ ...p })) ,
         graph: {
           ...func.graph,
-          nodes: [
-            { ...func.graph.nodes[0], data: currentData },
-            ...func.graph.nodes.slice(1)
-          ]
+          nodes,
         }
       };
-      
+
       onSave(updatedFunction);
     } catch (error) {
       console.error('Error saving function:', error);
     }
-  }, [func, dialogState, onSave]);
+  }, [func, dialogState, parameters, onSave]);
 
   const handleDelete = useCallback(() => {
     if (window.confirm('Вы действительно хотите удалить эту функцию?')) {
@@ -190,10 +187,15 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown, handleSave]);
 
-  // Получение данных для рендера
-  const currentData = dialogState.body ? JSON.parse(dialogState.body) : func.graph.nodes[0].data;
-  const inputs = currentData.inputs || [];
-  const outputs = currentData.outputs || [];
+  // Локальное тело функции (исходник) хранится в properties FunctionEntry node
+  const [body, setBody] = useState<string>(() => {
+    const entry = func.graph.nodes.find(n => n.type === 'FunctionEntry');
+    return (entry && entry.properties && (entry.properties as any).body) || '';
+  });
+
+  // Параметры для рендера
+  const inputs = parameters.filter(p => p.direction === 'input');
+  const outputs = parameters.filter(p => p.direction === 'output');
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -242,18 +244,18 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>📥 Входные параметры</h3>
             <div style={styles.parametersContainer}>
-              {inputs.map((param: any, index: number) => (
+              {inputs.map((param) => (
                 <div key={param.id} style={styles.parameterRow}>
                   <input
                     style={styles.parameterInput}
                     placeholder="Имя параметра"
                     value={param.name}
-                    onChange={(e) => updateParameter(index, 'name', e.target.value)}
+                    onChange={(e) => updateParameter(param.id, 'name', e.target.value)}
                   />
                   <select
                     style={styles.parameterSelect}
                     value={param.dataType}
-                    onChange={(e) => updateParameter(index, 'dataType', e.target.value as PortDataType)}
+                    onChange={(e) => updateParameter(param.id, 'dataType', e.target.value as PortDataType)}
                   >
                     {dataTypeOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>
@@ -263,7 +265,7 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
                   </select>
                   <button
                     style={styles.parameterButton}
-                    onClick={() => removeParameter(index, 'input')}
+                    onClick={() => removeParameter(param.id)}
                   >
                     🗑️
                   </button>
@@ -281,18 +283,18 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>📤 Выходные параметры</h3>
             <div style={styles.parametersContainer}>
-              {outputs.map((param: any, index: number) => (
+              {outputs.map((param) => (
                 <div key={param.id} style={styles.parameterRow}>
                   <input
                     style={styles.parameterInput}
                     placeholder="Имя параметра"
                     value={param.name}
-                    onChange={(e) => updateParameter(index, 'name', e.target.value)}
+                    onChange={(e) => updateParameter(param.id, 'name', e.target.value)}
                   />
                   <select
                     style={styles.parameterSelect}
                     value={param.dataType}
-                    onChange={(e) => updateParameter(index, 'dataType', e.target.value as PortDataType)}
+                    onChange={(e) => updateParameter(param.id, 'dataType', e.target.value as PortDataType)}
                   >
                     {dataTypeOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>
@@ -302,7 +304,7 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
                   </select>
                   <button
                     style={styles.parameterButton}
-                    onClick={() => removeParameter(index, 'output')}
+                    onClick={() => removeParameter(param.id)}
                   >
                     🗑️
                   </button>
@@ -326,8 +328,8 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
   // ${func.name}
   return result;
 }`}
-              value={dialogState.body}
-              onChange={(e) => handleInputChange('body', e.target.value)}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
               spellCheck={false}
             />
             <div style={{ color: '#6c7086', fontSize: '12px', marginTop: '8px' }}>

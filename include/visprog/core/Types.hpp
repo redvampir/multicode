@@ -77,6 +77,8 @@ namespace NodeTypes {
 // Core Flow
 inline constexpr NodeType Start{.name = "core.flow.start", .label = "Start"};
 inline constexpr NodeType End{.name = "core.flow.end", .label = "End"};
+inline constexpr NodeType Branch{.name = "core.flow.branch", .label = "Branch"};
+inline constexpr NodeType Sequence{.name = "core.flow.sequence", .label = "Sequence"};
 
 // I/O (New node for our prototype)
 inline constexpr NodeType PrintString{.name = "core.io.print_string", .label = "Print String"};
@@ -290,12 +292,14 @@ struct hash<visprog::core::PortId> {
     }
 };
 
+
 template <>
 struct hash<visprog::core::ConnectionId> {
     auto operator()(const visprog::core::ConnectionId& id) const noexcept -> size_t {
         return hash<uint64_t>{}(id.value);
     }
 };
+
 
 template <>
 struct hash<visprog::core::GraphId> {

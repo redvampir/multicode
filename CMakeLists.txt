@@ -144,6 +144,7 @@ if(Catch2_FOUND)
         tests/core/test_port.cpp
         # tests/core/test_graph.cpp  # Temporarily disabled - needs NodeType API update
         tests/core/test_graph_serializer.cpp
+        tests/core/test_flow_control_nodes.cpp
     )
     
     target_link_libraries(multicode_tests

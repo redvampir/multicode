@@ -36,6 +36,15 @@ void NodeFactory::configure_ports(Node& node) {
         node.add_input_port(DataType::StringView, "value", generate_port_id());
         // Set a default value for the string to be printed
         node.set_property("value", std::string("Hello, World!"));
+    } else if (type.name == NodeTypes::Branch.name) {
+        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_input_port(DataType::Bool, "condition", generate_port_id());
+        node.add_output_port(DataType::Execution, "true_exec", generate_port_id());
+        node.add_output_port(DataType::Execution, "false_exec", generate_port_id());
+    } else if (type.name == NodeTypes::Sequence.name) {
+        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_output_port(DataType::Execution, "Then 0", generate_port_id());
+        node.add_output_port(DataType::Execution, "Then 1", generate_port_id());
     }
     // Here we will add more `else if` statements for other core nodes.
     // In the future, this will be replaced by a system that reads .nodedef.json

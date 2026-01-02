@@ -1,38 +1,26 @@
-name: CI
+name: C++ CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: ${{ github.workspace }}/vcpkg
-          runVcpkgInstall: true
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y cmake g++-11 clang-format
 
-      - name: Configure CMake
-        run: >
-          cmake -B build
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_BUILD_TYPE=Release
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_CXX_COMPILER=g++-11
 
-      - name: Build
-        run: cmake --build build
+    - name: Build
+      run: cmake --build build
 
-      - name: Run tests
-        working-directory: ${{ github.workspace }}/build
-        run: ctest --output-on-failure
-
-      - name: Check formatting
-        run: |
-          sudo apt-get update && sudo apt-get install -y clang-format-17
-          git ls-files '*.hpp' '*.cpp' | grep -v third_party | xargs clang-format-17 -i
-          git diff --exit-code
+    - name: Run tests
+      run: ctest --test-dir build

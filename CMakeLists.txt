@@ -107,7 +107,8 @@ add_library(multicode_core STATIC
     src/core/Graph.cpp
     src/core/GraphSerializer.cpp
 
-    # TODO: Add more sources as needed
+    # Generators
+    src/generators/CppCodeGenerator.cpp
 )
 
 target_include_directories(multicode_core
@@ -142,9 +143,9 @@ if(Catch2_FOUND)
         tests/test_main.cpp
         tests/core/test_node.cpp
         tests/core/test_port.cpp
-        # tests/core/test_graph.cpp  # Temporarily disabled - needs NodeType API update
         tests/core/test_graph_serializer.cpp
         tests/core/test_flow_control_nodes.cpp
+        tests/generators/test_cpp_code_generator.cpp
     )
     
     target_link_libraries(multicode_tests
@@ -167,9 +168,6 @@ if(Catch2_FOUND)
         target_link_options(multicode_tests PRIVATE --coverage)
     endif()
     
-    # Debug executable for testing (temporarily disabled - needs NodeType API update)
-    # add_executable(debug_test tests/debug_test.cpp)
-    # target_link_libraries(debug_test PRIVATE multicode_core)
 endif()
 
 # ============================================================================

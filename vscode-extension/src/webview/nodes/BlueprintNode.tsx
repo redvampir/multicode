@@ -12,6 +12,7 @@ import {
   BlueprintNodeType as NodeTypeEnum
 } from '../../shared/blueprintTypes';
 import { PORT_TYPE_COLORS } from '../../shared/portTypes';
+import { getIconForCategory } from '../../shared/iconMap';
 
 /** CSS стили для узла (inline для webview совместимости) */
 const styles = {
@@ -195,6 +196,7 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   const displayLabel = node.customLabel ?? defaultLabel;
   
   const headerColor = definition?.headerColor ?? '#6c7086';
+  const iconSrc = getIconForCategory(definition?.category ?? 'other');
   
   const inputPorts = splitPorts(node.inputs);
   const outputPorts = splitPorts(node.outputs);
@@ -312,20 +314,25 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
             }}
           />
         ) : (
-          <span 
-            style={{ 
-              flex: 1, 
-              textAlign: 'center',
-              cursor: 'text',
-              userSelect: 'none',
-            }}
-            title={displayLanguage === 'ru' 
-              ? 'Двойной клик для редактирования' 
-              : 'Double-click to edit'
-            }
-          >
-            {displayLabel}
-          </span>
+          <>
+            {iconSrc && (
+              <img src={iconSrc} alt="icon" style={{ width: 18, height: 18, marginRight: 8 }} />
+            )}
+            <span 
+              style={{ 
+                flex: 1, 
+                textAlign: 'center',
+                cursor: 'text',
+                userSelect: 'none',
+              }}
+              title={displayLanguage === 'ru' 
+                ? 'Двойной клик для редактирования' 
+                : 'Double-click to edit'
+              }
+            >
+              {displayLabel}
+            </span>
+          </>
         )}
         
         {/* Exec Output */}

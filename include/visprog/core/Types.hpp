@@ -1,4 +1,4 @@
-// Copyright (c) 2025 МультиКод Team. MIT License.
+й// Copyright (c) 2025 МультиКод Team. MIT License.
 
 #pragma once
 
@@ -285,6 +285,7 @@ struct hash<visprog::core::NodeId> {
     }
 };
 
+
 template <>
 struct hash<visprog::core::PortId> {
     auto operator()(const visprog::core::PortId& id) const noexcept -> size_t {
@@ -307,6 +308,7 @@ struct hash<visprog::core::GraphId> {
         return hash<uint64_t>{}(id.value);
     }
 };
+
 
 template <>
 struct hash<visprog::core::NodeType> {

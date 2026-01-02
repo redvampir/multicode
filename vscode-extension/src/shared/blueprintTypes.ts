@@ -191,6 +191,8 @@ export interface NodeTypeDefinition {
   label: string;
   labelRu: string;
   category: 'flow' | 'function' | 'variable' | 'math' | 'comparison' | 'logic' | 'io' | 'other';
+  /** Ключ иконки или путь (например: 'loop' или 'vscode-extension/media/icons/loop.svg') */
+  icon?: string;
   description?: string;
   descriptionRu?: string;
   /** Шаблон входных портов */
@@ -282,6 +284,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Start',
     label: 'Event Begin Play',
     labelRu: 'Начало',
+    icon: 'control',
     category: 'flow',
     description: 'Entry point of the graph',
     descriptionRu: 'Точка входа в граф',
@@ -295,6 +298,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'End',
     label: 'Return',
     labelRu: 'Конец',
+    icon: 'control',
     category: 'flow',
     headerColor: '#E53935',
     inputs: [
@@ -306,6 +310,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Branch',
     label: 'Branch',
     labelRu: 'Ветвление',
+    icon: 'control',
     category: 'flow',
     description: 'If/Else conditional',
     descriptionRu: 'Условный переход',
@@ -323,6 +328,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'ForLoop',
     label: 'For Loop',
     labelRu: 'Цикл For',
+    icon: 'loop',
     category: 'flow',
     headerColor: '#7C4DFF',
     inputs: [
@@ -340,6 +346,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'WhileLoop',
     label: 'While Loop',
     labelRu: 'Цикл While',
+    icon: 'loop',
     category: 'flow',
     headerColor: '#7C4DFF',
     inputs: [
@@ -355,6 +362,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Sequence',
     label: 'Sequence',
     labelRu: 'Последовательность',
+    icon: 'control',
     category: 'flow',
     headerColor: '#7C4DFF',
     dynamicPorts: true,
@@ -370,6 +378,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Parallel',
     label: 'Parallel',
     labelRu: 'Параллельно',
+    icon: 'control',
     category: 'flow',
     description: 'Execute multiple branches in parallel (threads)',
     descriptionRu: 'Выполнить несколько веток параллельно (многопоток)',
@@ -388,6 +397,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Gate',
     label: 'Gate',
     labelRu: 'Шлюз',
+    icon: 'control',
     category: 'flow',
     description: 'Controllable gate - can be opened/closed to control flow',
     descriptionRu: 'Управляемый шлюз - можно открыть/закрыть для контроля потока',
@@ -666,6 +676,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Variable',
     label: 'Variable',
     labelRu: 'Переменная',
+    icon: 'variable',
     category: 'variable',
     headerColor: '#4CAF50',
     inputs: [],
@@ -677,6 +688,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'GetVariable',
     label: 'Get',
     labelRu: 'Получить',
+    icon: 'variable',
     category: 'variable',
     headerColor: '#4CAF50',
     inputs: [],
@@ -688,6 +700,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'SetVariable',
     label: 'Set',
     labelRu: 'Установить',
+    icon: 'variable',
     category: 'variable',
     headerColor: '#4CAF50',
     inputs: [
@@ -705,6 +718,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Add',
     label: 'Add',
     labelRu: 'Сложение',
+    icon: 'math',
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
@@ -719,6 +733,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Subtract',
     label: 'Subtract',
     labelRu: 'Вычитание',
+    icon: 'math',
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
@@ -733,6 +748,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Multiply',
     label: 'Multiply',
     labelRu: 'Умножение',
+    icon: 'math',
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
@@ -747,6 +763,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Divide',
     label: 'Divide',
     labelRu: 'Деление',
+    icon: 'math',
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
@@ -777,6 +794,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Equal',
     label: '==',
     labelRu: 'Равно',
+    icon: 'comparison',
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
@@ -791,6 +809,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'NotEqual',
     label: '!=',
     labelRu: 'Не равно',
+    icon: 'comparison',
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
@@ -863,6 +882,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'And',
     label: 'AND',
     labelRu: 'И',
+    icon: 'logic',
     category: 'logic',
     headerColor: '#E53935',
     inputs: [
@@ -877,6 +897,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Or',
     label: 'OR',
     labelRu: 'ИЛИ',
+    icon: 'logic',
     category: 'logic',
     headerColor: '#E53935',
     inputs: [
@@ -891,6 +912,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Not',
     label: 'NOT',
     labelRu: 'НЕ',
+    icon: 'logic',
     category: 'logic',
     headerColor: '#E53935',
     inputs: [
@@ -906,6 +928,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Print',
     label: 'Print String',
     labelRu: 'Вывод строки',
+    icon: 'io',
     category: 'io',
     headerColor: '#00BCD4',
     inputs: [
@@ -920,6 +943,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Input',
     label: 'Read Input',
     labelRu: 'Ввод',
+    icon: 'io',
     category: 'io',
     headerColor: '#00BCD4',
     inputs: [
@@ -937,6 +961,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Comment',
     label: 'Comment',
     labelRu: 'Комментарий',
+    icon: 'other',
     category: 'other',
     headerColor: '#455A64',
     inputs: [],
@@ -946,6 +971,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Reroute',
     label: 'Reroute',
     labelRu: 'Перенаправление',
+    icon: 'other',
     category: 'other',
     headerColor: '#9E9E9E',
     inputs: [
@@ -961,6 +987,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     type: 'Custom',
     label: 'Custom Node',
     labelRu: 'Пользовательский',
+    icon: 'other',
     category: 'other',
     headerColor: '#9C27B0',
     dynamicPorts: true,

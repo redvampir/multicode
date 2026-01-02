@@ -1,4 +1,4 @@
-й// Copyright (c) 2025 МультиКод Team. MIT License.
+// Copyright (c) 2025 МультиКод Team. MIT License.
 
 #pragma once
 

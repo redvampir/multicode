@@ -13,8 +13,7 @@ namespace visprog::generators {
  */
 class CppCodeGenerator : public core::ICodeGenerator {
 public:
-    [[nodiscard]] auto generate(const core::Graph& graph)
-        -> core::Result<std::string> override;
+    [[nodiscard]] auto generate(const core::Graph& graph) -> core::Result<std::string> override;
 };
 
 }  // namespace visprog::generators

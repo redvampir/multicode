@@ -33,9 +33,7 @@ void NodeFactory::configure_ports(Node& node) {
     } else if (type.name == NodeTypes::PrintString.name) {
         node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
         node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
-        node.add_input_port(DataType::String, "value", generate_port_id()); // Changed to String
-        // Set a default value for the string to be printed
-        node.set_property("value", std::string("Hello, World!"));
+        node.add_input_port(DataType::Any, "message", generate_port_id());
     } else if (type.name == NodeTypes::Branch.name) {
         node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
         node.add_input_port(DataType::Bool, "condition", generate_port_id());
@@ -45,6 +43,34 @@ void NodeFactory::configure_ports(Node& node) {
         node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
         node.add_output_port(DataType::Execution, "Then 0", generate_port_id());
         node.add_output_port(DataType::Execution, "Then 1", generate_port_id());
+    } else if (type.name == NodeTypes::ForLoop.name) {
+        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_input_port(DataType::Int32, "first_index", generate_port_id());
+        node.add_input_port(DataType::Int32, "last_index", generate_port_id());
+        node.add_output_port(DataType::Execution, "loop_body", generate_port_id());
+        node.add_output_port(DataType::Int32, "index", generate_port_id());
+        node.add_output_port(DataType::Execution, "completed", generate_port_id());
+    } else if (type.name == NodeTypes::StringLiteral.name) {
+        node.add_output_port(DataType::String, "output", generate_port_id());
+        node.set_property("value", std::string("default string"));
+    } else if (type.name == NodeTypes::BoolLiteral.name) {
+        node.add_output_port(DataType::Bool, "output", generate_port_id());
+        node.set_property("value", false);
+    } else if (type.name == NodeTypes::IntLiteral.name) {
+        node.add_output_port(DataType::Int32, "output", generate_port_id());
+        node.set_property("value", 0);
+    } else if (type.name == NodeTypes::Add.name) {
+        node.add_input_port(DataType::Int32, "a", generate_port_id());
+        node.add_input_port(DataType::Int32, "b", generate_port_id());
+        node.add_output_port(DataType::Int32, "result", generate_port_id());
+    } else if (type.name == NodeTypes::GetVariable.name) {
+        node.set_property("variable_name", std::string(""));
+        node.add_output_port(DataType::Any, "value", generate_port_id());
+    } else if (type.name == NodeTypes::SetVariable.name) {
+        node.set_property("variable_name", std::string(""));
+        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_input_port(DataType::Any, "value", generate_port_id());
+        node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
     }
 }
 

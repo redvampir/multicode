@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "visprog/core/NodeFactory.hpp"
+
 #include "visprog/core/Graph.hpp"
+#include "visprog/core/NodeFactory.hpp"
 
 using namespace visprog::core;
 

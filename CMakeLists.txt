@@ -26,6 +26,7 @@ if(MSVC)
         /WX         # Warnings as errors
         /permissive-  # Standards conformance
         /Zc:__cplusplus  # Enable __cplusplus macro
+        /utf-8      # Treat source files as UTF-8
     )
 else()
     add_compile_options(

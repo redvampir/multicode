@@ -69,6 +69,21 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   
   const functions = graphState.functions || [];
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
+  const [funcDialog, setFuncDialog] = useState<FunctionDialogState>({
+    isOpen: false,
+    mode: 'create',
+    name: '',
+    nameRu: '',
+    description: '',
+  });
+  const [paramDialog, setParamDialog] = useState<ParameterDialogState>({
+    isOpen: false,
+    functionId: '',
+    name: '',
+    nameRu: '',
+    dataType: 'int32',
+    direction: 'input',
+  });
   
   // === Обработчики для функций ===
   
@@ -343,6 +358,13 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                     {outputParams.length === 0 && (
                       <div className="no-params">{isRu ? 'Нет выходов' : 'No outputs'}</div>
                     )}
+                    </div>
+                  </div>
+                )}
+            </div>
+          );
+        })}
+
       </div>
       
       {/* Редактор функции */}

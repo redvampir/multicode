@@ -42,9 +42,22 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   const functions = useMemo(() => graphState.functions || [], [graphState.functions]);
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [funcDialog, setFuncDialog] = useState({ isOpen: false, mode: 'create' as 'create' | 'edit', name: '', nameRu: '' });
+  const [funcDialog, setFuncDialog] = useState({ 
+    isOpen: false, 
+    mode: 'create' as 'create' | 'edit', 
+    name: '', 
+    nameRu: '', 
+    description: '' 
+  });
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [paramDialog, setParamDialog] = useState({ isOpen: false, functionId: '', direction: 'input' as 'input' | 'output' });
+  const [paramDialog, setParamDialog] = useState({ 
+    isOpen: false, 
+    functionId: '', 
+    direction: 'input' as 'input' | 'output',
+    name: '',
+    nameRu: '',
+    dataType: 'int32' as const
+  });
   
   // === Обработчики для функций ===
   

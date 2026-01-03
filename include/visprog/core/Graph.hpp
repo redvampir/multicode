@@ -64,10 +64,8 @@ public:
     [[nodiscard]] auto node_count() const noexcept -> std::size_t;
 
     // ... (existing connection management)
-    [[nodiscard]] auto connect(NodeId from_node,
-                               PortId from_port,
-                               NodeId to_node,
-                               PortId to_port) -> Result<ConnectionId>;
+    [[nodiscard]] auto connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
+        -> Result<ConnectionId>;
     auto disconnect(ConnectionId id) -> Result<void>;
     [[nodiscard]] auto get_connection(ConnectionId id) const -> const Connection*;
     [[nodiscard]] auto get_connections() const noexcept -> std::span<const Connection>;

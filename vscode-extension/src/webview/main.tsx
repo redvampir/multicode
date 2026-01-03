@@ -37,6 +37,7 @@ import {
   type TranslationDirection,
   type WebviewToExtensionMessage
 } from '../shared/messages';
+import HelpPanel from './HelpPanel';
 
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape';
@@ -154,7 +155,8 @@ const Toolbar: React.FC<{
   showCodePreview: boolean;
   onShowCodePreviewChange: (show: boolean) => void;
   onShowHotkeys: () => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange, onShowHotkeys }) => {
+  onShowHelp: () => void;
+}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange, onShowHotkeys, onShowHelp }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
@@ -240,6 +242,9 @@ const Toolbar: React.FC<{
         
         {/* Группа: Помощь */}
         <div className="toolbar-group">
+          <button onClick={onShowHelp} title={locale === 'ru' ? 'Справка (?)' : 'Help (?)'}>
+            ❓
+          </button>
           <button onClick={onShowHotkeys} title={locale === 'ru' ? 'Горячие клавиши (H)' : 'Hotkeys (H)'}>
             ⌨️
           </button>
@@ -687,6 +692,9 @@ const App: React.FC = () => {
   // Hotkeys panel state
   const [showHotkeys, setShowHotkeys] = useState(false);
   
+  // Help panel state
+  const [showHelp, setShowHelp] = useState(false);
+  
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
     migrateToBlueprintFormat(graph)
@@ -736,15 +744,16 @@ const App: React.FC = () => {
         e.preventDefault();
         setShowHotkeys(prev => !prev);
       }
-      // Escape для закрытия
-      if (e.key === 'Escape' && showHotkeys) {
-        setShowHotkeys(false);
+      // Escape для закрытия панелей
+      if (e.key === 'Escape') {
+        if (showHotkeys) setShowHotkeys(false);
+        if (showHelp) setShowHelp(false);
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showHotkeys]);
+  }, [showHotkeys, showHelp]);
 
   // Синхронизация blueprintGraph при изменении graph
   useEffect(() => {
@@ -976,6 +985,7 @@ const App: React.FC = () => {
         showCodePreview={showCodePreview}
         onShowCodePreviewChange={setShowCodePreview}
         onShowHotkeys={() => setShowHotkeys(true)}
+        onShowHelp={() => setShowHelp(true)}
       />
       
       {/* Панель горячих клавиш */}
@@ -984,6 +994,14 @@ const App: React.FC = () => {
         onClose={() => setShowHotkeys(false)}
         locale={locale}
       />
+      
+      {/* Панель справки */}
+      {showHelp && (
+        <HelpPanel
+          locale={locale}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
       
       <div className="workspace">
         <div className="canvas-wrapper">

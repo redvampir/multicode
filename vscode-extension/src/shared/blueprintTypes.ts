@@ -1024,7 +1024,8 @@ export function createNode(
   
   return {
     id: nodeId,
-    label: def.label,
+    // ❌ НЕ устанавливаем label здесь — BlueprintNode сам выберет label/labelRu по displayLanguage
+    label: '', // Пустая строка → BlueprintNode использует локализацию из NODE_TYPE_DEFINITIONS
     type,
     position,
     inputs: def.inputs.map((p, i) => ({

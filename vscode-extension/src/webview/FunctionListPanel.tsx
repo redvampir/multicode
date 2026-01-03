@@ -12,13 +12,7 @@ import type {
   BlueprintFunction, 
   BlueprintGraphState,
 } from '../shared/blueprintTypes';
-import type { PortDataType } from '../shared/portTypes';
-import { 
-  createUserFunction, 
-  addFunctionInputParameter,
-  addFunctionOutputParameter,
-  removeFunctionParameter 
-} from '../shared/blueprintTypes';
+import { removeFunctionParameter } from '../shared/blueprintTypes';
 import { FunctionEditor } from './FunctionEditor';
 
 interface FunctionListPanelProps {
@@ -32,28 +26,6 @@ interface FunctionListPanelProps {
   activeFunctionId: string | null;
   /** Язык отображения */
   displayLanguage: 'ru' | 'en';
-  /** Колбэк при сохранении функции */
-  onSaveFunction?: (func: BlueprintFunction) => void;
-}
-
-/** Диалог создания/редактирования функции */
-interface FunctionDialogState {
-  isOpen: boolean;
-  mode: 'create' | 'edit';
-  functionId?: string;
-  name: string;
-  nameRu: string;
-  description: string;
-}
-
-/** Диалог добавления параметра */
-interface ParameterDialogState {
-  isOpen: boolean;
-  functionId: string;
-  name: string;
-  nameRu: string;
-  dataType: PortDataType;
-  direction: 'input' | 'output';
 }
 
 export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
@@ -62,28 +34,17 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   onSelectFunction,
   activeFunctionId,
   displayLanguage,
-  onSaveFunction,
 }) => {
   const isRu = displayLanguage === 'ru';
   const [editingFunction, setEditingFunction] = useState<BlueprintFunction | null>(null);
   
-  const functions = graphState.functions || [];
+  // Обернём functions в useMemo для оптимизации
+  const functions = useMemo(() => graphState.functions || [], [graphState.functions]);
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
-  const [funcDialog, setFuncDialog] = useState<FunctionDialogState>({
-    isOpen: false,
-    mode: 'create',
-    name: '',
-    nameRu: '',
-    description: '',
-  });
-  const [paramDialog, setParamDialog] = useState<ParameterDialogState>({
-    isOpen: false,
-    functionId: '',
-    name: '',
-    nameRu: '',
-    dataType: 'int32',
-    direction: 'input',
-  });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [funcDialog, setFuncDialog] = useState({ isOpen: false, mode: 'create' as 'create' | 'edit', name: '', nameRu: '' });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [paramDialog, setParamDialog] = useState({ isOpen: false, functionId: '', direction: 'input' as 'input' | 'output' });
   
   // === Обработчики для функций ===
   
@@ -101,39 +62,6 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
     // Open the visual FunctionEditor for this function
     setEditingFunction(func);
   }, []);
-  
-  const handleSaveFunction = useCallback(() => {
-    // Keep existing dialog-based create/edit behavior
-    if (!funcDialog.name.trim()) {
-      return; // Валидация: имя обязательно
-    }
-    
-    if (funcDialog.mode === 'create') {
-      const newFunc = createUserFunction(
-        funcDialog.name.trim(),
-        funcDialog.nameRu.trim() || funcDialog.name.trim(),
-        funcDialog.description.trim() || undefined
-      );
-      onFunctionsChange([...functions, newFunc]);
-    } else if (funcDialog.functionId) {
-      // Редактирование существующей (dialog)
-      const updatedFunctions = functions.map(f => {
-        if (f.id === funcDialog.functionId) {
-          return {
-            ...f,
-            name: funcDialog.name.trim(),
-            nameRu: funcDialog.nameRu.trim() || funcDialog.name.trim(),
-            description: funcDialog.description.trim() || undefined,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return f;
-      });
-      onFunctionsChange(updatedFunctions);
-    }
-    
-    setFuncDialog(prev => ({ ...prev, isOpen: false }));
-  }, [funcDialog, functions, onFunctionsChange]);
 
   // Handler invoked by visual FunctionEditor when user saves changes
   const handleEditorSave = useCallback((updatedFunc: BlueprintFunction) => {
@@ -164,35 +92,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
     });
   }, []);
   
-  const handleSaveParameter = useCallback(() => {
-    if (!paramDialog.name.trim()) return;
-    
-    const func = functions.find(f => f.id === paramDialog.functionId);
-    if (!func) return;
-    
-    let updatedFunc: BlueprintFunction;
-    if (paramDialog.direction === 'input') {
-      updatedFunc = addFunctionInputParameter(
-        func,
-        paramDialog.name.trim(),
-        paramDialog.nameRu.trim() || paramDialog.name.trim(),
-        paramDialog.dataType
-      );
-    } else {
-      updatedFunc = addFunctionOutputParameter(
-        func,
-        paramDialog.name.trim(),
-        paramDialog.nameRu.trim() || paramDialog.name.trim(),
-        paramDialog.dataType
-      );
-    }
-    
-    const updatedFunctions = functions.map(f => 
-      f.id === paramDialog.functionId ? updatedFunc : f
-    );
-    onFunctionsChange(updatedFunctions);
-    setParamDialog(prev => ({ ...prev, isOpen: false }));
-  }, [paramDialog, functions, onFunctionsChange]);
+  // handleSaveParameter removed - parameter management moved to FunctionEditor
   
   const handleDeleteParameter = useCallback((funcId: string, paramId: string) => {
     const func = functions.find(f => f.id === funcId);
@@ -218,16 +118,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   }, []);
   
   // === Рендер ===
-  
-  const dataTypeOptions: { value: PortDataType; label: string; labelRu: string }[] = [
-    { value: 'int32', label: 'Integer', labelRu: 'Целое число' },
-    { value: 'float', label: 'Float', labelRu: 'Дробное число' },
-    { value: 'bool', label: 'Boolean', labelRu: 'Логическое' },
-    { value: 'string', label: 'String', labelRu: 'Строка' },
-    { value: 'vector', label: 'Vector', labelRu: 'Вектор' },
-    { value: 'object', label: 'Object', labelRu: 'Объект' },
-    { value: 'any', label: 'Any', labelRu: 'Любой' },
-  ];
+  // dataTypeOptions removed - not used in component
   
   return (
     <div className="function-list-panel">

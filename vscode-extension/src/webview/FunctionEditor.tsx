@@ -28,7 +28,8 @@ interface FunctionDialogState {
 // Стили (inline для избежания конфликтов)
 // ============================================
 
-const styles: any = {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const styles: Record<string, any> = {
   overlay: 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(17, 17, 27, 0.9); display: flex; align-items: center; justify-content: center; z-index: 10000; backdrop-filter: blur(4px);',
   dialog: 'background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); max-width: 800px; width: 90%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;',
   header: 'display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #313244; background: linear-gradient(135deg, #1e1e2e, #181825);',
@@ -82,6 +83,12 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
   const [parameters, setParameters] = useState<FunctionParameter[]>(() => (
     func.parameters ? func.parameters.map(p => ({ ...p })) : []
   ));
+  
+  // Локальное тело функции (исходник) хранится в properties FunctionEntry node
+  const [body, setBody] = useState<string>(() => {
+    const entry = func.graph.nodes.find(n => n.type === 'FunctionEntry');
+    return (entry && entry.properties && (entry.properties as Record<string, unknown>).body as string) || '';
+  });
 
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
 
@@ -165,7 +172,7 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
     } catch (error) {
       console.error('Error saving function:', error);
     }
-  }, [func, dialogState, parameters, onSave]);
+  }, [func, dialogState, parameters, body, onSave]);
 
   const handleDelete = useCallback(() => {
     if (window.confirm('Вы действительно хотите удалить эту функцию?')) {
@@ -185,13 +192,7 @@ export const FunctionEditor: React.FC<FunctionEditorProps> = ({
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown, handleSave]);
-
-  // Локальное тело функции (исходник) хранится в properties FunctionEntry node
-  const [body, setBody] = useState<string>(() => {
-    const entry = func.graph.nodes.find(n => n.type === 'FunctionEntry');
-    return (entry && entry.properties && (entry.properties as any).body) || '';
-  });
+  }, [handleKeyDown]);
 
   // Параметры для рендера
   const inputs = parameters.filter(p => p.direction === 'input');

@@ -55,6 +55,7 @@ public:
     ~Graph() = default;
 
     // ... (existing node management)
+    [[nodiscard]] auto add_node(NodeType type, std::string name) -> NodeId;
     [[nodiscard]] auto add_node(std::unique_ptr<Node> node) -> NodeId;
     auto remove_node(NodeId id) -> Result<void>;
     [[nodiscard]] auto get_node(NodeId id) const -> const Node*;
@@ -69,6 +70,8 @@ public:
     auto disconnect(ConnectionId id) -> Result<void>;
     [[nodiscard]] auto get_connection(ConnectionId id) const -> const Connection*;
     [[nodiscard]] auto get_connections() const noexcept -> std::span<const Connection>;
+    [[nodiscard]] auto get_connections_from(NodeId node) const -> std::vector<ConnectionId>;
+    [[nodiscard]] auto get_connections_to(NodeId node) const -> std::vector<ConnectionId>;
     [[nodiscard]] auto has_connection(ConnectionId id) const noexcept -> bool;
     [[nodiscard]] auto connection_count() const noexcept -> std::size_t;
 
@@ -114,6 +117,10 @@ private:
     // Helper methods for node/connection management
     [[nodiscard]] auto generate_connection_id() -> ConnectionId;
     auto remove_node_connections(NodeId node) -> void;
+    [[nodiscard]] auto validate_node_exists(NodeId id) const -> Result<void>;
+    [[nodiscard]] auto validate_connection(NodeId from_node, PortId from_port,
+                                           NodeId to_node, PortId to_port) const
+        -> Result<void>;
 };
 
 }  // namespace visprog::core

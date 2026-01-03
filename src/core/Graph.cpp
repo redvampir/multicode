@@ -52,7 +52,7 @@ auto Graph::get_variables() const noexcept -> std::span<const Variable> {
 }
 
 // ... (rest of Graph implementation)
-auto Graph::Graph(std::string name)
+Graph::Graph(std::string name)
     : id_{GraphId{1}},
       name_(std::move(name)),
       nodes_(),
@@ -161,10 +161,14 @@ auto Graph::get_nodes() const noexcept -> std::span<const std::unique_ptr<Node>>
     return nodes_;
 }
 
+auto Graph::node_count() const noexcept -> std::size_t {
+    return nodes_.size();
+}
+
 auto Graph::has_node(NodeId id) const noexcept -> bool {
     return node_lookup_.contains(id);
 }
-auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port) ->
+auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
     -> Result<ConnectionId> {
     // Validate connection
     if (auto result = validate_connection(from_node, from_port, to_node, to_port); !result) {
@@ -284,9 +288,42 @@ auto Graph::empty() const noexcept -> bool {
     return nodes_.empty();
 }
 
+auto Graph::validate_node_exists(NodeId id) const -> Result<void> {
+    if (!has_node(id)) {
+        return Result<void>(Error{"Node does not exist", 404});
+    }
+    return Result<void>();
+}
+
+auto Graph::validate_connection(NodeId from_node, PortId from_port, NodeId to_node,
+                                PortId to_port) const -> Result<void> {
+    // Validate nodes exist
+    if (auto result = validate_node_exists(from_node); !result) {
+        return result;
+    }
+    if (auto result = validate_node_exists(to_node); !result) {
+        return result;
+    }
+
+    // Validate ports exist
+    const auto* from_node_ptr = get_node(from_node);
+    const auto* to_node_ptr = get_node(to_node);
+
+    if (!from_node_ptr->find_port(from_port)) {
+        return Result<void>(Error{"Source port does not exist", 404});
+    }
+    if (!to_node_ptr->find_port(to_port)) {
+        return Result<void>(Error{"Target port does not exist", 404});
+    }
+
+    return Result<void>();
+}
+
 auto Graph::generate_connection_id() -> ConnectionId {
     return ConnectionId{next_connection_id_.value++};
 }
-auto Graph::remove_node_connections(NodeId node) -> void {}
+auto Graph::remove_node_connections(NodeId /*node*/) -> void {
+    // TODO: Implement node connection removal
+}
 
 }  // namespace visprog::core

@@ -295,7 +295,9 @@ auto Graph::validate_node_exists(NodeId id) const -> Result<void> {
     return Result<void>();
 }
 
-auto Graph::validate_connection(NodeId from_node, PortId from_port, NodeId to_node,
+auto Graph::validate_connection(NodeId from_node,
+                                PortId from_port,
+                                NodeId to_node,
                                 PortId to_port) const -> Result<void> {
     // Validate nodes exist
     if (auto result = validate_node_exists(from_node); !result) {

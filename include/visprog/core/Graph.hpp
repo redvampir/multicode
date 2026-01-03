@@ -118,9 +118,10 @@ private:
     [[nodiscard]] auto generate_connection_id() -> ConnectionId;
     auto remove_node_connections(NodeId node) -> void;
     [[nodiscard]] auto validate_node_exists(NodeId id) const -> Result<void>;
-    [[nodiscard]] auto validate_connection(NodeId from_node, PortId from_port,
-                                           NodeId to_node, PortId to_port) const
-        -> Result<void>;
+    [[nodiscard]] auto validate_connection(NodeId from_node,
+                                           PortId from_port,
+                                           NodeId to_node,
+                                           PortId to_port) const -> Result<void>;
 };
 
 }  // namespace visprog::core

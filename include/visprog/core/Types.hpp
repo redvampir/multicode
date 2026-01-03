@@ -23,7 +23,9 @@ struct NodeId {
     std::uint64_t value{0};
 
     [[nodiscard]] auto operator<=>(const NodeId&) const noexcept = default;
-    [[nodiscard]] explicit operator bool() const noexcept { return value != 0; }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return value != 0;
+    }
 };
 
 /// @brief Strongly-typed Port identifier
@@ -31,7 +33,9 @@ struct PortId {
     std::uint64_t value{0};
 
     [[nodiscard]] auto operator<=>(const PortId&) const noexcept = default;
-    [[nodiscard]] explicit operator bool() const noexcept { return value != 0; }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return value != 0;
+    }
 };
 
 /// @brief Strongly-typed Connection identifier
@@ -39,7 +43,9 @@ struct ConnectionId {
     std::uint64_t value{0};
 
     [[nodiscard]] auto operator<=>(const ConnectionId&) const noexcept = default;
-    [[nodiscard]] explicit operator bool() const noexcept { return value != 0; }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return value != 0;
+    }
 };
 
 /// @brief Strongly-typed Graph identifier
@@ -47,7 +53,9 @@ struct GraphId {
     std::uint64_t value{0};
 
     [[nodiscard]] auto operator<=>(const GraphId&) const noexcept = default;
-    [[nodiscard]] explicit operator bool() const noexcept { return value != 0; }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return value != 0;
+    }
 };
 
 // ============================================================================
@@ -74,20 +82,15 @@ inline constexpr NodeType Sequence{.name = "core.flow.sequence", .label = "Seque
 inline constexpr NodeType ForLoop{.name = "core.flow.for_loop", .label = "For Loop"};
 
 // I/O
-inline constexpr NodeType PrintString{
-    .name = "core.io.print_string", .label = "Print String"};
+inline constexpr NodeType PrintString{.name = "core.io.print_string", .label = "Print String"};
 
 // Literals
-inline constexpr NodeType StringLiteral{
-    .name = "core.literal.string", .label = "String Literal"};
-inline constexpr NodeType BoolLiteral{
-    .name = "core.literal.bool", .label = "Bool Literal"};
-inline constexpr NodeType IntLiteral{
-    .name = "core.literal.int", .label = "Int Literal"};
+inline constexpr NodeType StringLiteral{.name = "core.literal.string", .label = "String Literal"};
+inline constexpr NodeType BoolLiteral{.name = "core.literal.bool", .label = "Bool Literal"};
+inline constexpr NodeType IntLiteral{.name = "core.literal.int", .label = "Int Literal"};
 
 // Math
-inline constexpr NodeType Add{
-    .name = "core.math.add", .label = "Add"};
+inline constexpr NodeType Add{.name = "core.math.add", .label = "Add"};
 
 // Variables
 inline constexpr NodeType GetVariable{.name = "core.variable.get", .label = "Get Variable"};
@@ -170,7 +173,9 @@ struct Error {
     std::string message;
     int code{0};
 
-    [[nodiscard]] auto what() const noexcept -> std::string_view { return message; }
+    [[nodiscard]] auto what() const noexcept -> std::string_view {
+        return message;
+    }
 };
 
 /// @brief Result type for operations that can fail
@@ -183,8 +188,7 @@ public:
         : data_(std::move(value)) {}
 
     /// @brief Error constructor
-    explicit Result(Error error) noexcept(
-        std::is_nothrow_move_constructible_v<Error>)
+    explicit Result(Error error) noexcept(std::is_nothrow_move_constructible_v<Error>)
         : data_(std::move(error)) {}
 
     // Movable only
@@ -228,11 +232,12 @@ public:
         return std::get<Error>(data_);
     }
 
-    [[nodiscard]] explicit operator bool() const noexcept { return has_value(); }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return has_value();
+    }
 
     [[nodiscard]] auto value_or(T default_value) && -> T {
-        return has_value() ? std::move(std::get<T>(data_))
-                           : std::move(default_value);
+        return has_value() ? std::move(std::get<T>(data_)) : std::move(default_value);
     }
 
 private:
@@ -244,13 +249,20 @@ template <>
 class [[nodiscard]] Result<void> {
 public:
     Result() noexcept : has_value_(true) {}
-    explicit Result(Error error) noexcept
-        : error_(std::move(error)), has_value_(false) {}
+    explicit Result(Error error) noexcept : error_(std::move(error)), has_value_(false) {}
 
-    [[nodiscard]] auto has_value() const noexcept -> bool { return has_value_; }
-    [[nodiscard]] auto has_error() const noexcept -> bool { return !has_value_; }
-    [[nodiscard]] auto error() const& -> const Error& { return error_; }
-    [[nodiscard]] explicit operator bool() const noexcept { return has_value_; }
+    [[nodiscard]] auto has_value() const noexcept -> bool {
+        return has_value_;
+    }
+    [[nodiscard]] auto has_error() const noexcept -> bool {
+        return !has_value_;
+    }
+    [[nodiscard]] auto error() const& -> const Error& {
+        return error_;
+    }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return has_value_;
+    }
 
 private:
     Error error_{};
@@ -285,14 +297,12 @@ struct hash<visprog::core::NodeId> {
     }
 };
 
-
 template <>
 struct hash<visprog::core::PortId> {
     auto operator()(const visprog::core::PortId& id) const noexcept -> size_t {
         return hash<uint64_t>{}(id.value);
     }
 };
-
 
 template <>
 struct hash<visprog::core::ConnectionId> {
@@ -301,14 +311,12 @@ struct hash<visprog::core::ConnectionId> {
     }
 };
 
-
 template <>
 struct hash<visprog::core::GraphId> {
     auto operator()(const visprog::core::GraphId& id) const noexcept -> size_t {
         return hash<uint64_t>{}(id.value);
     }
 };
-
 
 template <>
 struct hash<visprog::core::NodeType> {

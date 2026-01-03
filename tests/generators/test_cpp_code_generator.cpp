@@ -1,13 +1,12 @@
 // Copyright (c) 2025 МультиКод Team. MIT License.
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <string>
 
 #include "visprog/core/Graph.hpp"
 #include "visprog/core/NodeFactory.hpp"
 #include "visprog/generators/CppCodeGenerator.hpp"
-
-#include <string>
-#include <algorithm>
 
 using namespace visprog::core;
 using namespace visprog::generators;
@@ -39,7 +38,8 @@ TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     graph.connect(sequence_id, "Then 0", print1_id, "in_exec");
     graph.connect(sequence_id, "Then 1", print2_id, "in_exec");
     graph.connect(print1_id, "out_exec", end_id, "end");
-    graph.connect(print2_id, "out_exec", end_id, "end"); // An input port can have multiple connections
+    graph.connect(
+        print2_id, "out_exec", end_id, "end");  // An input port can have multiple connections
 
     // Data flow
     graph.connect(literal1_id, "output", print1_id, "message");
@@ -118,7 +118,8 @@ TEST_CASE("CppCodeGenerator: Variables with For Loop", "[generators]") {
 
     CHECK(code.find("intcounter;") != std::string::npos);
     CHECK(code.find("for(inti_" + std::to_string(for_loop_id.value)) != std::string::npos);
-    CHECK(code.find("counter=(counter+var_" + std::to_string(literal_one_id.value) + ");") != std::string::npos);
+    CHECK(code.find("counter=(counter+var_" + std::to_string(literal_one_id.value) + ");") !=
+          std::string::npos);
     CHECK(code.find("std::cout<<counter<<std::endl;") != std::string::npos);
 }
 
@@ -141,9 +142,11 @@ TEST_CASE("CppCodeGenerator: Data Flow with StringLiteral", "[generators]") {
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
     const auto code = result.value();
-    
-    const std::string expected_decl = "const std::string var_" + std::to_string(literal_id.value) + "=\"Data flow works!\";";
-    const std::string expected_usage = "std::cout<<var_" + std::to_string(literal_id.value) + "<<std::endl;";
+
+    const std::string expected_decl =
+        "const std::string var_" + std::to_string(literal_id.value) + "=\"Data flow works!\";";
+    const std::string expected_usage =
+        "std::cout<<var_" + std::to_string(literal_id.value) + "<<std::endl;";
 
     CHECK(remove_whitespace(code).find(remove_whitespace(expected_decl)) != std::string::npos);
     CHECK(remove_whitespace(code).find(remove_whitespace(expected_usage)) != std::string::npos);
@@ -187,7 +190,7 @@ TEST_CASE("CppCodeGenerator: Data-Driven Branching Logic", "[generators]") {
     const std::string expected_bool_decl = "constbool" + bool_var + "=true;";
     const std::string expected_if = "if(" + bool_var + ")";
     const std::string expected_true_print = "std::cout<<" + true_str_var + "<<std::endl;";
-    
+
     CHECK(remove_whitespace(code).find(expected_bool_decl) != std::string::npos);
     CHECK(remove_whitespace(code).find(expected_if) != std::string::npos);
     CHECK(remove_whitespace(code).find(expected_true_print) != std::string::npos);
@@ -268,9 +271,11 @@ TEST_CASE("CppCodeGenerator: For Loop", "[generators]") {
     std::string first_idx_var = "var_" + std::to_string(first_idx_id.value);
     std::string last_idx_var = "var_" + std::to_string(last_idx_id.value);
 
-    const std::string expected_for = "for(int" + loop_var + "=" + first_idx_var + ";" + loop_var + "<" + last_idx_var + ";++" + loop_var + "){";
+    const std::string expected_for = "for(int" + loop_var + "=" + first_idx_var + ";" + loop_var +
+                                     "<" + last_idx_var + ";++" + loop_var + "){";
     const std::string expected_loop_print = "std::cout<<" + loop_var + "<<std::endl;";
-    const std::string expected_completed_print = "std::cout<<var_" + std::to_string(print_completed_id.value) + "<<std::endl;";
+    const std::string expected_completed_print =
+        "std::cout<<var_" + std::to_string(print_completed_id.value) + "<<std::endl;";
 
     CHECK(remove_whitespace(code).find(expected_for) != std::string::npos);
     CHECK(remove_whitespace(code).find(expected_loop_print) != std::string::npos);

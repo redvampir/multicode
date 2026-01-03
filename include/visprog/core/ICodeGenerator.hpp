@@ -2,10 +2,10 @@
 
 #pragma once
 
+#include <string>
+
 #include "visprog/core/Graph.hpp"
 #include "visprog/core/Types.hpp"
-
-#include <string>
 
 namespace visprog::core {
 

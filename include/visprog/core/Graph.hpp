@@ -22,7 +22,6 @@ struct Variable {
     DataType type{DataType::Unknown};
 };
 
-
 /// @brief Validation result with detailed error information
 struct ValidationResult {
     bool is_valid{true};
@@ -65,7 +64,8 @@ public:
     [[nodiscard]] auto node_count() const noexcept -> std::size_t;
 
     // ... (existing connection management)
-    [[nodiscard]] auto connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port) -> Result<ConnectionId>;
+    [[nodiscard]] auto connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
+        -> Result<ConnectionId>;
     auto disconnect(ConnectionId id) -> Result<void>;
     [[nodiscard]] auto get_connection(ConnectionId id) const -> const Connection*;
     [[nodiscard]] auto get_connections() const noexcept -> std::span<const Connection>;
@@ -114,6 +114,6 @@ private:
     // Helper methods for node/connection management
     [[nodiscard]] auto generate_connection_id() -> ConnectionId;
     auto remove_node_connections(NodeId node) -> void;
-}; 
+};
 
 }  // namespace visprog::core

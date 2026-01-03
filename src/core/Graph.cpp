@@ -25,9 +25,8 @@ auto Graph::add_variable(std::string name, DataType type) -> Result<void> {
         return Result<void>(Error{.message = "Variable name cannot be empty."});
     }
 
-    auto it = std::ranges::find_if(variables_, [&name](const auto& var) {
-        return var.name == name;
-    });
+    auto it =
+        std::ranges::find_if(variables_, [&name](const auto& var) { return var.name == name; });
 
     if (it != variables_.end()) {
         return Result<void>(Error{.message = format("Variable '", name, "' already exists.")});
@@ -38,14 +37,13 @@ auto Graph::add_variable(std::string name, DataType type) -> Result<void> {
 }
 
 auto Graph::get_variable(std::string_view name) const -> const Variable* {
-    auto it = std::ranges::find_if(variables_, [name](const auto& var) {
-        return var.name == name;
-    });
+    auto it =
+        std::ranges::find_if(variables_, [name](const auto& var) { return var.name == name; });
 
     if (it != variables_.end()) {
         return &(*it);
     }
-    
+
     return nullptr;
 }
 
@@ -262,17 +260,29 @@ auto Graph::get_connections_to(NodeId node) const -> std::vector<ConnectionId> {
 auto Graph::has_connection(ConnectionId id) const noexcept -> bool {
     return connection_lookup_.contains(id);
 }
-auto Graph::validate() const -> ValidationResult { return ValidationResult{}; }
+auto Graph::validate() const -> ValidationResult {
+    return ValidationResult{};
+}
 
-auto Graph::get_id() const noexcept -> GraphId { return id_;}
+auto Graph::get_id() const noexcept -> GraphId {
+    return id_;
+}
 
-void Graph::set_name(std::string name) { name_ = std::move(name); }
+void Graph::set_name(std::string name) {
+    name_ = std::move(name);
+}
 
-auto Graph::get_name() const noexcept -> std::string_view { return name_; }
+auto Graph::get_name() const noexcept -> std::string_view {
+    return name_;
+}
 
-auto Graph::clear() -> void { next_connection_id_ = ConnectionId{1};}
+auto Graph::clear() -> void {
+    next_connection_id_ = ConnectionId{1};
+}
 
-auto Graph::empty() const noexcept -> bool {return nodes_.empty();}
+auto Graph::empty() const noexcept -> bool {
+    return nodes_.empty();
+}
 
 auto Graph::generate_connection_id() -> ConnectionId {
     return ConnectionId{next_connection_id_.value++};

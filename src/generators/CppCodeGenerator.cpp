@@ -2,7 +2,7 @@
 
 #include "visprog/generators/CppCodeGenerator.hpp"
 
-#include <algorithm> // For std::sort
+#include <algorithm>  // For std::sort
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -51,10 +51,14 @@ const core::Port* get_connected_port(const core::Graph& graph, const core::Port&
 
 std::string to_cpp_type(core::DataType type) {
     switch (type) {
-        case core::DataType::Int32: return "int";
-        case core::DataType::String: return "std::string";
-        case core::DataType::Bool: return "bool";
-        default: return "auto";
+        case core::DataType::Int32:
+            return "int";
+        case core::DataType::String:
+            return "std::string";
+        case core::DataType::Bool:
+            return "bool";
+        default:
+            return "auto";
     }
 }
 
@@ -74,8 +78,7 @@ public:
         // 2. Find start node and begin execution flow generation
         const auto* start_node = find_start_node();
         if (!start_node) {
-            return core::Result<std::string>{
-                core::Error{"Graph must have a Start node."}};
+            return core::Result<std::string>{core::Error{"Graph must have a Start node."}};
         }
 
         auto start_exec_ports = start_node->get_exec_output_ports();
@@ -120,34 +123,37 @@ private:
             generate_exec_flow(get_next_exec_node(*current_node), indent);
         } else if (type.name == core::NodeTypes::Sequence.name) {
             auto exec_ports = current_node->get_exec_output_ports();
-            
+
             // Sort ports to ensure deterministic order ("Then 0", "Then 1", ...)
-            std::sort(exec_ports.begin(), exec_ports.end(), [](const core::Port* a, const core::Port* b) {
-                return a->get_name() < b->get_name();
-            });
+            std::sort(
+                exec_ports.begin(), exec_ports.end(), [](const core::Port* a, const core::Port* b) {
+                    return a->get_name() < b->get_name();
+                });
 
             for (const auto* port : exec_ports) {
-                 generate_exec_flow(get_connected_node(graph_, *port), indent);
+                generate_exec_flow(get_connected_node(graph_, *port), indent);
             }
         } else if (type.name == core::NodeTypes::Branch.name) {
             const auto* cond_port = current_node->find_port("condition");
             std::string condition_expr = cond_port ? generate_data_expression(*cond_port) : "false";
 
             main_body_ << indentation << "if (" << condition_expr << ") {\n";
-            generate_exec_flow(
-                get_connected_node(graph_, *current_node->find_port("true_exec")), indent + 1);
+            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("true_exec")),
+                               indent + 1);
             main_body_ << indentation << "} else {\n";
-            generate_exec_flow(
-                get_connected_node(graph_, *current_node->find_port("false_exec")), indent + 1);
+            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("false_exec")),
+                               indent + 1);
             main_body_ << indentation << "}\n";
         } else if (type.name == core::NodeTypes::ForLoop.name) {
             const auto* first_idx_port = current_node->find_port("first_index");
             const auto* last_idx_port = current_node->find_port("last_index");
             const auto* index_out_port = current_node->find_port("index");
 
-            std::string first_idx_expr = first_idx_port ? generate_data_expression(*first_idx_port) : "0";
-            std::string last_idx_expr = last_idx_port ? generate_data_expression(*last_idx_port) : "10";
-            
+            std::string first_idx_expr =
+                first_idx_port ? generate_data_expression(*first_idx_port) : "0";
+            std::string last_idx_expr =
+                last_idx_port ? generate_data_expression(*last_idx_port) : "10";
+
             std::string loop_var = "i_" + std::to_string(current_node->get_id().value);
 
             if (index_out_port) {
@@ -156,12 +162,14 @@ private:
 
             main_body_ << indentation << "for (int " << loop_var << " = " << first_idx_expr << "; "
                        << loop_var << " < " << last_idx_expr << "; ++" << loop_var << ") {\n";
-            
-            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("loop_body")), indent + 1);
-            
+
+            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("loop_body")),
+                               indent + 1);
+
             main_body_ << indentation << "}\n";
 
-            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("completed")), indent);
+            generate_exec_flow(get_connected_node(graph_, *current_node->find_port("completed")),
+                               indent);
         } else {
             generate_exec_flow(get_next_exec_node(*current_node), indent);
         }
@@ -193,7 +201,8 @@ private:
         std::string expression;
 
         if (type.name == core::NodeTypes::GetVariable.name) {
-            expression = source_node->get_property<std::string>("variable_name").value_or("/* unknown_var */");
+            expression = source_node->get_property<std::string>("variable_name")
+                             .value_or("/* unknown_var */");
         } else if (type.name == core::NodeTypes::StringLiteral.name) {
             auto value = source_node->get_property<std::string>("value").value_or("");
             std::string var_name = "var_" + std::to_string(source_node->get_id().value);
@@ -202,7 +211,8 @@ private:
         } else if (type.name == core::NodeTypes::BoolLiteral.name) {
             auto value = source_node->get_property<bool>("value").value_or(false);
             std::string var_name = "var_" + std::to_string(source_node->get_id().value);
-            preamble_ << "    const bool " << var_name << " = " << (value ? "true" : "false") << ";\n";
+            preamble_ << "    const bool " << var_name << " = " << (value ? "true" : "false")
+                      << ";\n";
             expression = var_name;
         } else if (type.name == core::NodeTypes::IntLiteral.name) {
             auto value = source_node->get_property<int>("value").value_or(0);
@@ -220,8 +230,8 @@ private:
                 expression = get_default_value(core::DataType::Int32);
             }
         } else if (source_port->get_owner_node_id() == graph_.find_start_node()->get_id()) {
-             // This case handles data ports on the Start node, if any in the future.
-             expression = get_default_value(source_port->get_data_type());
+            // This case handles data ports on the Start node, if any in the future.
+            expression = get_default_value(source_port->get_data_type());
         } else {
             // Default case for any other data node
             expression = get_default_value(input_port.get_data_type());
@@ -243,10 +253,14 @@ private:
     }
 
     std::string get_default_value(core::DataType type) const {
-        if (type == core::DataType::String) return "std::string(\"\")";
-        if (type == core::DataType::Bool) return "false";
-        if (type == core::DataType::Int32) return "0";
-        if (type == core::DataType::Any) return "\"(unconnected)\"";
+        if (type == core::DataType::String)
+            return "std::string(\"\")";
+        if (type == core::DataType::Bool)
+            return "false";
+        if (type == core::DataType::Int32)
+            return "0";
+        if (type == core::DataType::Any)
+            return "\"(unconnected)\"";
         return "/* unknown type */";
     }
 

@@ -1,4 +1,4 @@
-name: VS Code Extension CI
+﻿name: VS Code Extension CI
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -59,7 +59,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -90,7 +90,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Setup Node.js
       uses: actions/setup-node@v4

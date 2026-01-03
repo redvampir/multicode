@@ -1,4 +1,4 @@
-name: C++ Build and Test
+﻿name: C++ Build and Test
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Setup MSVC
       uses: microsoft/setup-msbuild@v2
@@ -28,7 +28,7 @@ jobs:
       
     - name: Configure CMake
       run: |
-        # Принудительная установка UTF-8 для предотвращения проблем с кириллицей
+        # РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅР°СЏ СѓСЃС‚Р°РЅРѕРІРєР° UTF-8 РґР»СЏ РїСЂРµРґРѕС‚РІСЂР°С‰РµРЅРёСЏ РїСЂРѕР±Р»РµРј СЃ РєРёСЂРёР»Р»РёС†РµР№
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $env:PYTHONUTF8 = "1"
         
@@ -57,7 +57,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Install dependencies
       run: |
@@ -97,7 +97,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Install build tools
       run: |
@@ -130,7 +130,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5.0.0
+      uses: actions/checkout@v4
       
     - name: Install dependencies
       run: |

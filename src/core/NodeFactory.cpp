@@ -33,7 +33,8 @@ void NodeFactory::configure_ports(Node& node) {
     } else if (type.name == NodeTypes::PrintString.name) {
         node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
         node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
-        node.add_input_port(DataType::Any, "message", generate_port_id());
+        node.add_input_port(DataType::StringView, "value", generate_port_id());
+        node.set_property("value", std::string("Hello, World!"));
     } else if (type.name == NodeTypes::Branch.name) {
         node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
         node.add_input_port(DataType::Bool, "condition", generate_port_id());

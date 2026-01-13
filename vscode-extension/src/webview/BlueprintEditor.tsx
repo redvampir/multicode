@@ -1208,7 +1208,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
           {activeFunctionId && (
             <button
               className="graph-tab active"
-              onClick={() => {}}
+              // Активная вкладка не реагирует на клик (стандартное UI поведение)
+              // Для переключения используй FunctionListPanel или вкладку EventGraph
             >
               <span className="graph-tab-icon">ƒ</span>
               {currentGraphTitle}

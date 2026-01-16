@@ -56,7 +56,9 @@ import type { BlueprintFunction } from '../shared/blueprintTypes';
 function blueprintToFlowNodes(
   nodes: BlueprintNodeType[] | undefined | null, 
   displayLanguage: 'ru' | 'en',
-  onLabelChange?: (nodeId: string, newLabel: string) => void
+  onLabelChange?: (nodeId: string, newLabel: string) => void,
+  onPropertyChange?: (nodeId: string, property: string, value: unknown) => void,
+  availableVariables?: Array<{ id: string; name: string; nameRu: string; dataType: string }>
 ): BlueprintFlowNode[] {
   if (!nodes || !Array.isArray(nodes)) {
     console.warn('[BlueprintEditor] nodes is not an array:', nodes);
@@ -69,7 +71,13 @@ function blueprintToFlowNodes(
       id: node.id ?? `node-${Math.random().toString(36).slice(2)}`,
       type: 'blueprint' as const,
       position: node.position ?? { x: 0, y: 0 },
-      data: { node, displayLanguage, onLabelChange },
+      data: { 
+        node, 
+        displayLanguage, 
+        onLabelChange,
+        onPropertyChange,
+        availableVariables
+      },
       selected: false,
     }));
 }
@@ -483,7 +491,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   } | null>(null);
   
   // ============================================
-  // Inline Label Editing
+  // Inline Label Editing & Property Changes
   // ============================================
   
   const handleLabelChange = useCallback((nodeId: string, newLabel: string) => {
@@ -502,13 +510,51 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     }));
   }, [setNodes]);
   
-  // Inject onLabelChange into node data (needed because callback defined after state init)
+  // Обработчик изменения свойств узла (например, выбор переменной из dropdown)
+  const handlePropertyChange = useCallback((nodeId: string, property: string, value: unknown) => {
+    setNodes(nds => nds.map(n => {
+      if (n.id !== nodeId) return n;
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          node: {
+            ...n.data.node,
+            properties: {
+              ...n.data.node.properties,
+              [property]: value,
+            },
+          },
+        },
+      };
+    }));
+  }, [setNodes]);
+  
+  // Мемоизация списка доступных переменных
+  const availableVariables = useMemo(() => {
+    if (!graph.variables || !Array.isArray(graph.variables)) {
+      return [];
+    }
+    return graph.variables.map(v => ({
+      id: v.id ?? '',
+      name: v.name ?? '',
+      nameRu: v.nameRu ?? v.name ?? '',
+      dataType: v.dataType ?? 'int',
+    }));
+  }, [graph.variables]);
+  
+  // Inject callbacks into node data (needed because callbacks defined after state init)
   useEffect(() => {
     setNodes(nds => nds.map(n => ({
       ...n,
-      data: { ...n.data, onLabelChange: handleLabelChange },
+      data: { 
+        ...n.data, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
     })));
-  }, [handleLabelChange, setNodes]);
+  }, [handleLabelChange, handlePropertyChange, availableVariables, setNodes]);
   
   // ============================================
   // Undo/Redo система
@@ -883,7 +929,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       id: newNode.id,
       type: 'blueprint',
       position: newNode.position,
-      data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
+      data: { 
+        node: newNode, 
+        displayLanguage, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
     };
     
     setNodes(nds => {
@@ -892,7 +944,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       setTimeout(() => notifyGraphChange(newNodes, edges), 0);
       return newNodes;
     });
-  }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
+  }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
   
   // Add node from palette click
   const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
@@ -901,14 +953,20 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       id: newNode.id,
       type: 'blueprint',
       position: newNode.position,
-      data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
+      data: { 
+        node: newNode, 
+        displayLanguage, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
     };
     setNodes(nds => {
       const newNodes = [...nds, flowNode];
       setTimeout(() => notifyGraphChange(newNodes, edges), 0);
       return newNodes;
     });
-  }, [displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
+  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
   
   // Add CallUserFunction node from palette
   const handleAddCallFunction = useCallback((functionId: string, position: XYPosition) => {
@@ -922,14 +980,20 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       id: newNode.id,
       type: 'blueprint',
       position: newNode.position,
-      data: { node: newNode, displayLanguage, onLabelChange: handleLabelChange },
+      data: { 
+        node: newNode, 
+        displayLanguage, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
     };
     setNodes(nds => {
       const newNodes = [...nds, flowNode];
       setTimeout(() => notifyGraphChange(newNodes, edges), 0);
       return newNodes;
     });
-  }, [graph.functions, displayLanguage, setNodes, handleLabelChange, edges, notifyGraphChange]);
+  }, [graph.functions, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
   
   // Delete selected nodes
   const handleDeleteSelected = useCallback(() => {

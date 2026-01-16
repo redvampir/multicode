@@ -9,7 +9,8 @@ import {
   BlueprintNode as BlueprintNodeType, 
   NodePort,
   NODE_TYPE_DEFINITIONS,
-  BlueprintNodeType as NodeTypeEnum
+  BlueprintNodeType as NodeTypeEnum,
+  VARIABLE_TYPE_COLORS
 } from '../../shared/blueprintTypes';
 import { PORT_TYPE_COLORS } from '../../shared/portTypes';
 import { getIconForCategory } from '../../shared/iconMap';
@@ -42,39 +43,43 @@ const styles = {
   content: {
     padding: '4px 0',
   } as React.CSSProperties,
+  // 🎨 НАСТРОЙКА: Контейнер строки с портом
   portRow: {
     display: 'flex',
     alignItems: 'center',
-    padding: '4px 12px',
+    padding: '6px 12px',        // 🎨 НАСТРОЙКА: Вертикальные/горизонтальные отступы вокруг порта
     position: 'relative',
-    minHeight: 24,
+    minHeight: 48,               // 🎨 НАСТРОЙКА: Минимальная высота строки (расстояние между портами)
   } as React.CSSProperties,
+  // 🎨 НАСТРОЙКА: Стиль текста названия порта
   portLabel: {
-    color: '#a6adc8',
-    fontSize: 11,
+    color: '#a6adc8',            // 🎨 НАСТРОЙКА: Цвет текста названия порта
+    fontSize: 11,                 // 🎨 НАСТРОЙКА: Размер шрифта названия порта
     flex: 1,
   } as React.CSSProperties,
   portLabelLeft: {
     textAlign: 'left',
-    marginLeft: 12,
+    marginLeft: 12,              // 🎨 НАСТРОЙКА: Расстояние от порта до текста (входные порты)
   } as React.CSSProperties,
   portLabelRight: {
     textAlign: 'right',
-    marginRight: 12,
+    marginRight: 12,             // 🎨 НАСТРОЙКА: Расстояние от порта до текста (выходные порты)
   } as React.CSSProperties,
+  // 🎨 НАСТРОЙКА: Стиль EXEC портов (ромбики для потока выполнения)
   execHandle: {
-    width: 12,
-    height: 12,
+    width: 12,                   // 🎨 НАСТРОЙКА: Ширина exec порта (ромбика)
+    height: 12,                  // 🎨 НАСТРОЙКА: Высота exec порта (ромбика)
     background: '#e0e0e0',
-    border: '2px solid #666666',
-    borderRadius: 2,
-    transform: 'rotate(45deg)',
+    border: '2px solid #666666', // 🎨 НАСТРОЙКА: Толщина рамки exec порта
+    borderRadius: 2,             // 🎨 НАСТРОЙКА: Скругление углов exec порта
+    transform: 'rotate(45deg)',  // Поворот на 45° для создания ромба (не трогать)
   } as React.CSSProperties,
+  // 🎨 НАСТРОЙКА: Стиль DATA портов (кружки для данных)
   dataHandle: {
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
-    border: '2px solid',
+    width: 10,                   // 🎨 НАСТРОЙКА: Ширина data порта (кружка)
+    height: 10,                  // 🎨 НАСТРОЙКА: Высота data порта (кружка)
+    borderRadius: '50%',         // 🎨 НАСТРОЙКА: Форма порта ('50%' = круг, '0' = квадрат, '4px' = скруглённый)
+    border: '2px solid',         // 🎨 НАСТРОЙКА: Толщина рамки data порта
   } as React.CSSProperties,
   inputSection: {
     borderTop: '1px solid #313244',
@@ -90,6 +95,7 @@ const PortHandle: React.FC<{
   isInput: boolean;
 }> = memo(({ port, isInput }) => {
   const isExec = port.dataType === 'execution';
+  const isPointer = port.dataType === 'pointer'; // 🔗 Проверяем, является ли порт указателем
   const color = PORT_TYPE_COLORS[port.dataType];
   
   const handleStyle: React.CSSProperties = isExec
@@ -102,6 +108,8 @@ const PortHandle: React.FC<{
         ...styles.dataHandle,
         background: port.connected ? color.main : 'transparent',
         borderColor: color.main,
+        // 🔗 Пунктирная рамка для указателей
+        ...(isPointer ? { borderStyle: 'dashed', borderWidth: 2 } : {}),
       };
 
   return (
@@ -112,6 +120,7 @@ const PortHandle: React.FC<{
         id={port.id}
         style={{
           ...handleStyle,
+          // 🎨 НАСТРОЙКА: Позиция порта относительно края узла (отрицательное = торчит наружу)
           [isInput ? 'left' : 'right']: -6,
           top: '50%',
           transform: isExec ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
@@ -126,7 +135,14 @@ const PortHandle: React.FC<{
             color: color.main,
           }}
         >
+          {/* 🔗 Иконка указателя */}
+          {isPointer && isInput && (
+            <span style={{ marginRight: 4, fontWeight: 700 }}>→</span>
+          )}
           {port.name}
+          {isPointer && !isInput && (
+            <span style={{ marginLeft: 4, fontWeight: 700 }}>→</span>
+          )}
         </span>
       )}
     </div>
@@ -156,6 +172,8 @@ export interface BlueprintNodeData extends Record<string, unknown> {
   node: BlueprintNodeType;
   displayLanguage: 'ru' | 'en';
   onLabelChange?: (nodeId: string, newLabel: string) => void;
+  onPropertyChange?: (nodeId: string, property: string, value: unknown) => void;
+  availableVariables?: Array<{ id: string; name: string; nameRu: string; dataType: string }>; // Для селектора указателей
 }
 
 /** Тип узла для React Flow */
@@ -180,13 +198,26 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   data, 
   selected,
 }) => {
-  const { node, displayLanguage, onLabelChange } = data;
+  const { node, displayLanguage, onLabelChange, onPropertyChange } = data;
   const definition = NODE_TYPE_DEFINITIONS[node.type as NodeTypeEnum];
   
   // Inline editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Определяем, является ли узел SetVariable или GetVariable
+  const isVariableNode = node.type === 'SetVariable' || node.type === 'GetVariable';
+  const isSetVariable = node.type === 'SetVariable';
+  const variableDataType = node.properties?.dataType as string | undefined;
+  
+  // Определяем тип переменной для выбора редактора
+  const isNumericType = ['int32', 'int64', 'float', 'double'].includes(variableDataType ?? '');
+  const isFloatType = ['float', 'double'].includes(variableDataType ?? '');
+  
+  // Проверяем, подключён ли входной порт данных (value-in)
+  const valueInputPort = node.inputs.find(p => p.id === 'value-in');
+  const isValueInputConnected = valueInputPort?.connected ?? false;
   
   const defaultLabel = displayLanguage === 'ru' 
     ? (definition?.labelRu ?? node.label)
@@ -195,7 +226,11 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   // Use custom label if set, otherwise use default
   const displayLabel = node.customLabel ?? defaultLabel;
   
-  const headerColor = definition?.headerColor ?? '#6c7086';
+  // 🎨 Динамический цвет шапки: для переменных используем цвет типа данных
+  const headerColor = isVariableNode && variableDataType
+    ? VARIABLE_TYPE_COLORS[variableDataType as keyof typeof VARIABLE_TYPE_COLORS] ?? definition?.headerColor ?? '#6c7086'
+    : definition?.headerColor ?? '#6c7086';
+    
   const iconSrc = getIconForCategory(definition?.category ?? 'other');
   
   const inputPorts = splitPorts(node.inputs);
@@ -373,6 +408,295 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
               isInput={false}
             />
           ))}
+        </div>
+      )}
+      
+      {/* debug UI removed */}
+      
+      {/* Редактор значения для SetVariable (показываем только если порт value-in не подключён) */}
+      {isSetVariable && variableDataType === 'bool' && !isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11 }}>
+            {displayLanguage === 'ru' ? 'По умолч.:' : 'Default:'}
+          </span>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 8,
+            cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={Boolean(node.properties?.inputValue)}
+              onChange={(e) => {
+                if (onPropertyChange) {
+                  onPropertyChange(node.id, 'inputValue', e.target.checked);
+                }
+              }}
+              style={{ 
+                width: 16, 
+                height: 16,
+                cursor: 'pointer',
+                accentColor: '#a6e3a1',
+              }}
+            />
+            <span style={{ 
+              color: node.properties?.inputValue ? '#a6e3a1' : '#f38ba8',
+              fontWeight: 500,
+              fontSize: 12,
+            }}>
+              {node.properties?.inputValue 
+                ? (displayLanguage === 'ru' ? 'Истина' : 'True')
+                : (displayLanguage === 'ru' ? 'Ложь' : 'False')
+              }
+            </span>
+          </label>
+        </div>
+      )}
+      
+      {/* Индикатор подключённого значения для bool */}
+      {isSetVariable && variableDataType === 'bool' && isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
+            {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
+        </div>
+      )}
+      
+      {/* Редактор значения для числовых типов (int32, int64, float, double) */}
+      {isSetVariable && isNumericType && !isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {displayLanguage === 'ru' ? 'По умолч.:' : 'Default:'}
+          </span>
+          <input
+            type="number"
+            value={typeof node.properties?.inputValue === 'number' ? node.properties.inputValue : 0}
+            step={isFloatType ? 0.1 : 1}
+            onChange={(e) => {
+              if (onPropertyChange) {
+                const value = isFloatType ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+                onPropertyChange(node.id, 'inputValue', isNaN(value) ? 0 : value);
+              }
+            }}
+            style={{ 
+              flex: 1,
+              minWidth: 60,
+              maxWidth: 100,
+              padding: '4px 8px',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid #45475a',
+              borderRadius: 4,
+              color: '#cdd6f4',
+              fontSize: 12,
+              textAlign: 'right',
+            }}
+          />
+        </div>
+      )}
+      
+      {/* Индикатор подключённого значения для числовых типов */}
+      {isSetVariable && isNumericType && isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
+            {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
+        </div>
+      )}
+      
+      {/* Редактор значения для строкового типа */}
+      {isSetVariable && variableDataType === 'string' && !isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {displayLanguage === 'ru' ? 'По умолч.:' : 'Default:'}
+          </span>
+          <input
+            type="text"
+            value={typeof node.properties?.inputValue === 'string' ? node.properties.inputValue : ''}
+            placeholder={displayLanguage === 'ru' ? 'Текст...' : 'Text...'}
+            onChange={(e) => {
+              if (onPropertyChange) {
+                onPropertyChange(node.id, 'inputValue', e.target.value);
+              }
+            }}
+            style={{ 
+              flex: 1,
+              minWidth: 80,
+              maxWidth: 150,
+              padding: '4px 8px',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid #45475a',
+              borderRadius: 4,
+              color: '#cdd6f4',
+              fontSize: 12,
+            }}
+          />
+        </div>
+      )}
+      
+      {/* Индикатор подключённого значения для строкового типа */}
+      {isSetVariable && variableDataType === 'string' && isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
+            {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
+        </div>
+      )}
+      
+      {/* Редактор для pointer/class - выбор из списка переменных */}
+      {isSetVariable && (variableDataType === 'pointer' || variableDataType === 'class') && !isValueInputConnected && (
+        <div style={{ padding: '8px 12px', borderTop: '1px solid #313244' }}>
+          <span style={{ color: '#a6adc8', fontSize: 11, marginBottom: 4, display: 'block' }}>
+            {displayLanguage === 'ru' ? 'Привязка к:' : 'Bind to:'}
+          </span>
+          <select
+            value={typeof node.properties?.inputValue === 'string' ? node.properties.inputValue : ''}
+            onChange={(e) => {
+              if (onPropertyChange) {
+                onPropertyChange(node.id, 'inputValue', e.target.value);
+              }
+            }}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid #45475a',
+              borderRadius: 4,
+              color: '#cdd6f4',
+              fontSize: 11,
+            }}
+          >
+            <option value="">{displayLanguage === 'ru' ? '— Не выбрано —' : '— None —'}</option>
+            {data.availableVariables?.map(v => (
+              <option key={v.id} value={v.id}>
+                {displayLanguage === 'ru' ? v.nameRu : v.name} ({v.dataType})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      
+      {/* Индикатор подключённого значения для pointer/class */}
+      {isSetVariable && (variableDataType === 'pointer' || variableDataType === 'class') && isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
+            {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
+        </div>
+      )}
+      
+      {/* Редактор значения для вектора (X, Y, Z) */}
+      {isSetVariable && variableDataType === 'vector' && !isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11, marginBottom: 4 }}>
+            {displayLanguage === 'ru' ? 'По умолч.:' : 'Default:'}
+          </span>
+          {['X', 'Y', 'Z'].map((axis, idx) => {
+            // Значение вектора всегда массив [X, Y, Z]
+            const vectorValue = Array.isArray(node.properties?.inputValue) 
+              ? node.properties.inputValue 
+              : [0, 0, 0];
+            
+            return (
+              <div key={axis} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#ffc107', fontSize: 11, fontWeight: 600, minWidth: 16 }}>
+                  {axis}:
+                </span>
+                <input
+                  type="number"
+                  value={vectorValue[idx] ?? 0}
+                  step={0.1}
+                  onChange={(e) => {
+                    if (onPropertyChange) {
+                      const newVector = [...vectorValue];
+                      newVector[idx] = parseFloat(e.target.value) || 0;
+                      onPropertyChange(node.id, 'inputValue', newVector);
+                    }
+                  }}
+                  style={{ 
+                    flex: 1,
+                    padding: '3px 6px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid #45475a',
+                    borderRadius: 3,
+                    color: '#cdd6f4',
+                    fontSize: 11,
+                    textAlign: 'right',
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
+      {/* Индикатор подключённого значения для вектора */}
+      {isSetVariable && variableDataType === 'vector' && isValueInputConnected && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
+            {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
         </div>
       )}
       

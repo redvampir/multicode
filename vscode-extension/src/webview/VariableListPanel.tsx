@@ -7,7 +7,7 @@
  * - Drag & Drop для создания GetVariable/SetVariable узлов
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { logger, LOG_CATEGORIES } from "../shared/debugLogger";
 import type {
   BlueprintVariable,
@@ -74,6 +74,23 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<
     Set<VariableCategory>
   >(new Set(["default", "input", "output", "local"]));
+
+  // Миграция: добавляем цвета для переменных без color (старые данные)
+  useEffect(() => {
+    const needsMigration = variables.some(v => !v.color);
+    if (needsMigration) {
+      const migratedVariables = variables.map(v => {
+        if (!v.color) {
+          return {
+            ...v,
+            color: VARIABLE_TYPE_COLORS[v.dataType],
+          };
+        }
+        return v;
+      });
+      onVariablesChange(migratedVariables);
+    }
+  }, [variables, onVariablesChange]);
 
   // === Обработчики диалога ===
   const handleOpenCreate = useCallback(() => {

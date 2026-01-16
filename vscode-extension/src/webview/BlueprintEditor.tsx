@@ -31,6 +31,7 @@ import {
   BlueprintGraphState, 
   BlueprintNode as BlueprintNodeType,
   BlueprintEdge,
+  BlueprintVariable,
   createNode,
   createCallUserFunctionNode,
   BlueprintNodeType as NodeType,
@@ -47,6 +48,7 @@ import {
   createNodeMenuItems,
 } from './ContextMenu';
 import { FunctionListPanel } from './FunctionListPanel';
+import { VariableListPanel } from './VariableListPanel';
 import type { BlueprintFunction } from '../shared/blueprintTypes';
 
 // ============================================
@@ -484,6 +486,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [codePreviewVisible, setCodePreviewVisible] = useState(false);
   const [packageManagerVisible, setPackageManagerVisible] = useState(false);
   const [functionPanelVisible, setFunctionPanelVisible] = useState(true); // Панель функций видна по умолчанию
+  const [variablePanelVisible, setVariablePanelVisible] = useState(true); // Панель переменных видна по умолчанию
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     position: ContextMenuPosition;
@@ -995,6 +998,67 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
   }, [graph.functions, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
   
+  // Create GetVariable node from VariableListPanel
+  const handleCreateGetVariable = useCallback((variable: BlueprintVariable) => {
+    const position: XYPosition = { x: 100, y: 100 }; // Default position
+    const newNode = createNode('GetVariable', position);
+    newNode.properties = { variableId: variable.id };
+    
+    const flowNode: BlueprintFlowNode = {
+      id: newNode.id,
+      type: 'blueprint',
+      position: newNode.position,
+      data: { 
+        node: newNode, 
+        displayLanguage, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
+    };
+    setNodes(nds => {
+      const newNodes = [...nds, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      return newNodes;
+    });
+  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  
+  // Create SetVariable node from VariableListPanel
+  const handleCreateSetVariable = useCallback((variable: BlueprintVariable) => {
+    const position: XYPosition = { x: 100, y: 200 }; // Default position
+    const newNode = createNode('SetVariable', position);
+    newNode.properties = { variableId: variable.id };
+    
+    const flowNode: BlueprintFlowNode = {
+      id: newNode.id,
+      type: 'blueprint',
+      position: newNode.position,
+      data: { 
+        node: newNode, 
+        displayLanguage, 
+        onLabelChange: handleLabelChange,
+        onPropertyChange: handlePropertyChange,
+        availableVariables,
+      },
+    };
+    setNodes(nds => {
+      const newNodes = [...nds, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      return newNodes;
+    });
+  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  
+  // Handle variables change from VariableListPanel
+  const handleVariablesChange = useCallback((variables: BlueprintVariable[]) => {
+    const updatedGraph: BlueprintGraphState = {
+      ...graph,
+      variables,
+      updatedAt: new Date().toISOString(),
+      dirty: true,
+    };
+    onGraphChange(updatedGraph);
+  }, [graph, onGraphChange]);
+  
   // Delete selected nodes
   const handleDeleteSelected = useCallback(() => {
     const selectedNodeIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
@@ -1259,6 +1323,17 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         />
       )}
       
+      {/* Панель переменных справа */}
+      {variablePanelVisible && (
+        <VariableListPanel
+          graphState={graph}
+          onVariablesChange={handleVariablesChange}
+          onCreateGetVariable={handleCreateGetVariable}
+          onCreateSetVariable={handleCreateSetVariable}
+          displayLanguage={displayLanguage}
+        />
+      )}
+      
       <div style={editorStyles.graphContainer}>
         {/* Табы: показывать текущий граф */}
         <div className="graph-tabs">
@@ -1361,6 +1436,15 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               >
                 <span>ƒ</span>
                 <span>{t.functions}</span>
+              </button>
+              
+              {/* Переменные */}
+              <button
+                onClick={() => setVariablePanelVisible(v => !v)}
+                className={`panel-btn ${variablePanelVisible ? 'active-green' : ''}`}
+              >
+                <span>📊</span>
+                <span>{displayLanguage === 'ru' ? 'Переменные' : 'Variables'}</span>
               </button>
               
               {/* Разделитель */}

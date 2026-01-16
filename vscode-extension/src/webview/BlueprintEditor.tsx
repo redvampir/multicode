@@ -922,31 +922,67 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     
-    const type = e.dataTransfer.getData('application/reactflow') as NodeType;
-    if (!type) return;
-    
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const newNode = createNode(type, position);
     
-    const flowNode: BlueprintFlowNode = {
-      id: newNode.id,
-      type: 'blueprint',
-      position: newNode.position,
-      data: { 
-        node: newNode, 
-        displayLanguage, 
-        onLabelChange: handleLabelChange,
-        onPropertyChange: handlePropertyChange,
-        availableVariables,
-      },
-    };
+    // Проверяем, что дропнули - узел из палитры или переменную
+    const nodeType = e.dataTransfer.getData('application/reactflow') as NodeType;
+    const variableData = e.dataTransfer.getData('application/variable');
     
-    setNodes(nds => {
-      const newNodes = [...nds, flowNode];
-      // Notify parent about change (defer to avoid setState during render)
-      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
-      return newNodes;
-    });
+    if (variableData) {
+      // Drag & Drop переменной из VariableListPanel
+      try {
+        const { variable, nodeType: varNodeType } = JSON.parse(variableData);
+        const type = varNodeType === 'get' ? 'GetVariable' : 'SetVariable';
+        const newNode = createNode(type, position);
+        newNode.properties = { variableId: variable.id };
+        
+        const flowNode: BlueprintFlowNode = {
+          id: newNode.id,
+          type: 'blueprint',
+          position: newNode.position,
+          data: { 
+            node: newNode, 
+            displayLanguage, 
+            onLabelChange: handleLabelChange,
+            onPropertyChange: handlePropertyChange,
+            availableVariables,
+          },
+        };
+        
+        setNodes(nds => {
+          const newNodes = [...nds, flowNode];
+          setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+          return newNodes;
+        });
+      } catch (err) {
+        console.error('[BlueprintEditor] Failed to parse variable data:', err);
+      }
+      return;
+    }
+    
+    if (nodeType) {
+      // Drag & Drop узла из палитры
+      const newNode = createNode(nodeType, position);
+      
+      const flowNode: BlueprintFlowNode = {
+        id: newNode.id,
+        type: 'blueprint',
+        position: newNode.position,
+        data: { 
+          node: newNode, 
+          displayLanguage, 
+          onLabelChange: handleLabelChange,
+          onPropertyChange: handlePropertyChange,
+          availableVariables,
+        },
+      };
+      
+      setNodes(nds => {
+        const newNodes = [...nds, flowNode];
+        setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+        return newNodes;
+      });
+    }
   }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
   
   // Add node from palette click

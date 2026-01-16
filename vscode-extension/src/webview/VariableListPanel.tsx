@@ -129,6 +129,7 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
           description: variable.description,
           isArray: variable.isArray,
           isPrivate: variable.isPrivate,
+          color: VARIABLE_TYPE_COLORS[variable.dataType as PortDataType],
         },
       );
       logger.action(

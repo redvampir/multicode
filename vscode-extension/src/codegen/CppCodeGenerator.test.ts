@@ -6,6 +6,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { CppCodeGenerator } from './CppCodeGenerator';
+import type { INodeGenerator } from './generators';
+import { CodeGenErrorCode } from './types';
 import { 
   BlueprintGraphState, 
   BlueprintNode, 
@@ -737,6 +739,57 @@ describe('CppCodeGenerator', () => {
       }));
       expect(result.code).not.toContain('TODO');
     });
+
+    it('should deduplicate repeated errors with stable order', () => {
+      const localGenerator = new CppCodeGenerator();
+      const duplicateErrorGenerator: INodeGenerator = {
+        nodeTypes: ['Custom' as BlueprintNodeType],
+        generate: (node, _context, helpers) => {
+          helpers.addError(
+            node.id,
+            CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+            'Дублируемая ошибка',
+            'Duplicated error'
+          );
+          // Имитируем вложенный проход: та же ошибка добавляется повторно.
+          helpers.addError(
+            node.id,
+            CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+            'Дублируемая ошибка',
+            'Duplicated error'
+          );
+
+          return { lines: [], followExecutionFlow: true };
+        },
+      };
+      localGenerator.registerGenerator(duplicateErrorGenerator);
+
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const customNode = createNode('Custom' as BlueprintNodeType, { x: 200, y: 0 }, 'custom-1');
+
+      const graph = createTestGraph(
+        [startNode, customNode],
+        [createEdge('start', 'start-exec-out', 'custom-1', 'custom-1-exec-in')]
+      );
+
+      const firstPass = localGenerator.generate(graph);
+      const secondPass = localGenerator.generate(graph);
+
+      expect(firstPass.success).toBe(false);
+      expect(secondPass.success).toBe(false);
+
+      expect(firstPass.errors).toEqual([
+        {
+          nodeId: 'custom-1',
+          code: CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+          message: 'Дублируемая ошибка',
+          messageEn: 'Duplicated error',
+        },
+      ]);
+
+      expect(secondPass.errors).toEqual(firstPass.errors);
+    });
+
 
     it('не должен генерировать TODO для поддержанных узлов', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');

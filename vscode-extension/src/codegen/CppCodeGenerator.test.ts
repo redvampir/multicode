@@ -1335,7 +1335,7 @@ describe('CppCodeGenerator', () => {
         category: 'flow',
         inputs: [
           { id: 'exec-in', name: 'In', dataType: 'execution' },
-          { id: 'ms', name: 'Milliseconds', dataType: 'number' },
+          { id: 'ms', name: 'Milliseconds', dataType: 'float' },
         ],
         outputs: [
           { id: 'exec-out', name: 'Out', dataType: 'execution' },
@@ -1435,6 +1435,15 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
       expect(result.code).toContain('#include <fstream>');
       expect(result.code).toContain('#include <filesystem>');
+
+      const fstreamOccurrences = (result.code.match(/#include <fstream>/g) ?? []).length;
+      expect(fstreamOccurrences).toBe(1);
+
+      const includeLines = result.code
+        .split('\n')
+        .filter((line) => line.startsWith('#include '));
+      const sortedIncludeLines = [...includeLines].sort();
+      expect(includeLines).toEqual(sortedIncludeLines);
     });
   });
   

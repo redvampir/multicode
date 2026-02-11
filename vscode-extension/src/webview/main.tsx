@@ -696,6 +696,8 @@ const App: React.FC = () => {
   
   // Help panel state
   const [showHelp, setShowHelp] = useState(false);
+  // Версия snapshot package registry для реактивного предпросмотра кода
+  const [registryVersion, setRegistryVersion] = useState(0);
   
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
@@ -756,6 +758,17 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showHotkeys, showHelp]);
+
+
+  useEffect(() => {
+    const unsubscribe = globalRegistry.subscribe((event) => {
+      if (event.type === 'nodes-changed') {
+        setRegistryVersion((prev) => prev + 1);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Синхронизация blueprintGraph при изменении graph
   useEffect(() => {
@@ -948,7 +961,11 @@ const App: React.FC = () => {
   };
 
 
-  const packageNodeTypesForPreview = Array.from(globalRegistry.getAllNodeDefinitions().keys()) as BlueprintNodeType[];
+  const package_registry_snapshot_for_preview = useMemo(() => ({
+    getNodeDefinition: (type: string) => globalRegistry.getNodeDefinition(type),
+    packageNodeTypes: Array.from(globalRegistry.getAllNodeDefinitions().keys()) as BlueprintNodeType[],
+    registryVersion,
+  }), [registryVersion]);
 
   // Render the appropriate editor based on mode
   const renderEditor = () => {
@@ -1021,8 +1038,7 @@ const App: React.FC = () => {
               <EnhancedCodePreviewPanel
                 graph={blueprintGraph}
                 locale={locale}
-                getNodeDefinition={(type) => globalRegistry.getNodeDefinition(type)}
-                packageNodeTypes={packageNodeTypesForPreview}
+                packageRegistrySnapshot={package_registry_snapshot_for_preview}
                 onGenerateComplete={(result) => {
                   pushToast('success', result.success 
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')

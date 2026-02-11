@@ -38,6 +38,9 @@ export interface UsePackageRegistryResult {
   
   /** Список загруженных пакетов */
   packages: { name: string; version: string; displayName: string; nodeCount: number }[];
+
+  /** Версия реестра (инкремент при изменениях) */
+  registryVersion: number;
   
   /** Получить определение узла по типу */
   getNode: (type: string) => NodeTypeDefinition | undefined;
@@ -215,6 +218,7 @@ export function usePackageRegistry(): UsePackageRegistryResult {
     categories,
     nodesByCategory,
     packages,
+    registryVersion: version,
     getNode,
     loadPackage,
     unloadPackage,

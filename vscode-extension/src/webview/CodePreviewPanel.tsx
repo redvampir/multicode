@@ -10,15 +10,17 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import type { BlueprintNodeType } from '../shared/blueprintTypes';
+import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
 import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
 import { getLanguageSupportInfo } from '../codegen/languageSupport';
 import { isLanguageSupported } from '../codegen/languageSupport';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
 import { getTranslation } from '../shared/translations';
-import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
-import type { NodeDefinitionGetter } from '../codegen/generators/template';
+import {
+  resolveCodePreviewGenerator,
+  type PackageRegistrySnapshot,
+} from './codePreviewGenerator';
 
 // ============================================
 // Стили
@@ -281,8 +283,7 @@ export interface CodePreviewPanelProps {
   onClose: () => void;
   highlightedNodeId?: string | null;
   onLineHover?: (nodeId: string | null) => void;
-  getNodeDefinition?: NodeDefinitionGetter;
-  packageNodeTypes?: BlueprintNodeType[];
+  packageRegistrySnapshot?: Partial<PackageRegistrySnapshot>;
 }
 
 export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
@@ -292,27 +293,37 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   onClose,
   highlightedNodeId,
   onLineHover,
-  getNodeDefinition,
-  packageNodeTypes,
+  packageRegistrySnapshot,
 }) => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [hoveredLineNodeId, setHoveredLineNodeId] = useState<string | null>(null);
   
   // Генерируем код
+  const previewWarnings = useMemo(() => {
+    const fallbackWithoutRegistry = !packageRegistrySnapshot
+      || !Array.isArray(packageRegistrySnapshot.packageNodeTypes)
+      || packageRegistrySnapshot.packageNodeTypes.length === 0;
+
+    if (!fallbackWithoutRegistry) {
+      return [] as string[];
+    }
+
+    const hasUnknownNodes = graph.nodes.some((node) => !(node.type in NODE_TYPE_DEFINITIONS));
+    if (!hasUnknownNodes) {
+      return [] as string[];
+    }
+
+    return [getTranslation(displayLanguage, 'codegen.registryUnavailable')];
+  }, [displayLanguage, graph.nodes, packageRegistrySnapshot]);
+
   const result: CodeGenerationResult = useMemo(() => {
     try {
-      if (!isLanguageSupported(graph.language)) {
-        throw new UnsupportedLanguageError(graph.language);
+      const { generator, diagnostics } = resolveCodePreviewGenerator(graph.language, packageRegistrySnapshot);
+      if (diagnostics.fallbackReason) {
+        console.debug('[CodePreviewPanel] fallback generator selected', diagnostics);
+      } else {
+        console.debug('[CodePreviewPanel] package-aware generator selected', diagnostics);
       }
-
-      const hasPackageRegistry =
-        typeof getNodeDefinition === 'function' &&
-        Array.isArray(packageNodeTypes) &&
-        packageNodeTypes.length > 0;
-
-      const generator = hasPackageRegistry
-        ? CppCodeGenerator.withPackages(getNodeDefinition, packageNodeTypes)
-        : new CppCodeGenerator();
 
       return generator.generate(graph, {
         includeHeaders: true,
@@ -349,7 +360,7 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
         stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
       } as CodeGenerationResult;
     }
-  }, [graph, displayLanguage, getNodeDefinition, packageNodeTypes]);
+  }, [graph, packageRegistrySnapshot, displayLanguage]);
   
   // Разбиваем код на строки
   const lines = useMemo(() => result.code.split('\n'), [result.code]);
@@ -490,10 +501,10 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
       </div>
       
       {/* Предупреждения */}
-      {result.warnings.length > 0 && (
+      {(result.warnings.length > 0 || previewWarnings.length > 0) && (
         <div style={styles.warningContainer}>
           <strong>{t.warnings}:</strong>{' '}
-          {result.warnings.map(w => w.message).join('; ')}
+          {[...result.warnings.map(w => w.message), ...previewWarnings].join('; ')}
         </div>
       )}
       

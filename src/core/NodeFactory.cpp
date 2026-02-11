@@ -94,4 +94,9 @@ void NodeFactory::synchronize_id_counters(NodeId max_node_id, PortId max_port_id
     sync_atomic(next_port_id_, max_port_id.value + 1);
 }
 
+void NodeFactory::force_id_counters(NodeId next_node_id, PortId next_port_id) {
+    next_node_id_.store(next_node_id.value, std::memory_order_relaxed);
+    next_port_id_.store(next_port_id.value, std::memory_order_relaxed);
+}
+
 }  // namespace visprog::core

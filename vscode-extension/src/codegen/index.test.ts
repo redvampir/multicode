@@ -27,6 +27,7 @@ describe('codegen/index', () => {
     it('должен экспортировать CodeGenErrorCode enum', () => {
       expect(CodeGenErrorCode).toBeDefined();
       expect(CodeGenErrorCode.UNKNOWN_NODE_TYPE).toBe('UNKNOWN_NODE_TYPE');
+      expect(CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE).toBe('UNIMPLEMENTED_NODE_TYPE');
       expect(CodeGenErrorCode.NO_START_NODE).toBe('NO_START_NODE');
       expect(CodeGenErrorCode.CYCLE_DETECTED).toBe('CYCLE_DETECTED');
     });
@@ -216,6 +217,7 @@ describe('codegen/index', () => {
       expect(CodeGenErrorCode.CYCLE_DETECTED).toBeDefined();
       expect(CodeGenErrorCode.UNCONNECTED_REQUIRED_PORT).toBeDefined();
       expect(CodeGenErrorCode.UNKNOWN_NODE_TYPE).toBeDefined();
+      expect(CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE).toBeDefined();
       expect(CodeGenErrorCode.TYPE_MISMATCH).toBeDefined();
       expect(CodeGenErrorCode.UNREACHABLE_NODE).toBeDefined();
     });

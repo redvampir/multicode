@@ -77,7 +77,7 @@ export class FallbackNodeGenerator extends BaseNodeGenerator {
     const message = `Неподдерживаемый узел для C++ генератора: id=${node.id}, type=${node.type}, label="${nodeLabel}". Поддерживаемые типы: ${supportedTypes}. Подсказка: проверьте поддерживаемые типы узлов.`;
     const messageEn = `Unsupported node for C++ generator: id=${node.id}, type=${node.type}, label="${nodeLabel}". Supported types: ${supportedTypes}. Hint: check supported node types.`;
 
-    helpers.addError(node.id, CodeGenErrorCode.UNKNOWN_NODE_TYPE, message, messageEn);
+    helpers.addError(node.id, CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE, message, messageEn);
 
     return this.code([], true);
   }

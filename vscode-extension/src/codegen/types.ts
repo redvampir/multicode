@@ -42,6 +42,8 @@ export enum CodeGenErrorCode {
   UNCONNECTED_REQUIRED_PORT = 'UNCONNECTED_REQUIRED_PORT',
   /** Неизвестный тип узла */
   UNKNOWN_NODE_TYPE = 'UNKNOWN_NODE_TYPE',
+  /** Тип узла известен, но генерация для него ещё не реализована */
+  UNIMPLEMENTED_NODE_TYPE = 'UNIMPLEMENTED_NODE_TYPE',
   /** Несовместимые типы данных */
   TYPE_MISMATCH = 'TYPE_MISMATCH',
   /** Недостижимый узел */

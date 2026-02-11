@@ -209,7 +209,7 @@ describe('FallbackNodeGenerator', () => {
     expect(result.followExecutionFlow).toBe(true);
     expect(helpers.addError).toHaveBeenCalledWith(
       'custom-1',
-      'UNKNOWN_NODE_TYPE',
+      'UNIMPLEMENTED_NODE_TYPE',
       'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="MyCustomNode". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
       'Unsupported node for C++ generator: id=custom-1, type=Custom, label="MyCustomNode". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
@@ -225,7 +225,7 @@ describe('FallbackNodeGenerator', () => {
     expect(result.lines).toHaveLength(0);
     expect(helpers.addError).toHaveBeenCalledWith(
       'function-1',
-      'UNKNOWN_NODE_TYPE',
+      'UNIMPLEMENTED_NODE_TYPE',
       'Неподдерживаемый узел для C++ генератора: id=function-1, type=Function, label="CalculateSum". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
       'Unsupported node for C++ generator: id=function-1, type=Function, label="CalculateSum". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
@@ -241,7 +241,7 @@ describe('FallbackNodeGenerator', () => {
     expect(result.lines).toHaveLength(0);
     expect(helpers.addError).toHaveBeenCalledWith(
       'event-1',
-      'UNKNOWN_NODE_TYPE',
+      'UNIMPLEMENTED_NODE_TYPE',
       'Неподдерживаемый узел для C++ генератора: id=event-1, type=Event, label="OnClick". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
       'Unsupported node for C++ generator: id=event-1, type=Event, label="OnClick". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
@@ -256,7 +256,7 @@ describe('FallbackNodeGenerator', () => {
 
     expect(helpers.addError).toHaveBeenCalledWith(
       'functioncall-1',
-      'UNKNOWN_NODE_TYPE',
+      'UNIMPLEMENTED_NODE_TYPE',
       'Неподдерживаемый узел для C++ генератора: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
       'Unsupported node for C++ generator: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
@@ -271,7 +271,7 @@ describe('FallbackNodeGenerator', () => {
 
     expect(helpers.addError).toHaveBeenCalledWith(
       'custom-1',
-      'UNKNOWN_NODE_TYPE',
+      'UNIMPLEMENTED_NODE_TYPE',
       'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="NoRegistryNode". Поддерживаемые типы: см. Документы/Архитектура/VisualEditor.md. Подсказка: проверьте поддерживаемые типы узлов.',
       'Unsupported node for C++ generator: id=custom-1, type=Custom, label="NoRegistryNode". Supported types: см. Документы/Архитектура/VisualEditor.md. Hint: check supported node types.'
     );

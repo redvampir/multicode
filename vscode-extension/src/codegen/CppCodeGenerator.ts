@@ -49,6 +49,7 @@ import {
   FunctionEntryNodeGenerator,
   generateFunctionResultTypeDeclaration,
   getFunctionResultTypeName,
+  buildTupleExpression,
 } from './generators';
 
 export class CppCodeGenerator implements ICodeGenerator {
@@ -426,7 +427,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       } else {
         const defaults = outputParams.map(p => this.getDefaultValueForType(p.dataType));
         const resultTypeName = getFunctionResultTypeName(func);
-        lines.push(`${ind}return ${resultTypeName}{${defaults.join(', ')}};`);
+        lines.push(`${ind}return ${resultTypeName}${buildTupleExpression(defaults)};`);
       }
     }
     

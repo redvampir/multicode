@@ -24,6 +24,7 @@ export {
   FunctionAwareContext,
   getFunctionResultTypeName,
   generateFunctionResultTypeDeclaration,
+  buildTupleExpression,
 } from './functions';
 
 // Генератор на основе шаблонов из пакетов

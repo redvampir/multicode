@@ -198,6 +198,7 @@ export const VARIABLE_TYPE_COLORS: Record<PortDataType, string> = {
   double: '#689F38',     // 🎨 Зелёный — дробное 64-бит
   string: '#E91E63',     // 🎨 Розовый/Пурпурный — строка
   vector: '#FFC107',     // 🎨 Жёлтый — вектор (X, Y, Z)
+  object: '#1976D2',     // 🎨 Синий — legacy объект
   pointer: '#2196F3',    // 🎨 Синий — умный указатель (std::shared_ptr)
   class: '#3F51B5',      // 🎨 Индиго — класс/экземпляр по значению
   array: '#FF9800',      // 🎨 Оранжевый — массив
@@ -214,6 +215,7 @@ export const VARIABLE_TYPE_LABELS: Record<PortDataType, { ru: string; en: string
   double: { ru: 'Дробное (64)', en: 'Double' },
   string: { ru: 'Строка', en: 'String' },
   vector: { ru: 'Вектор', en: 'Vector' },
+  object: { ru: 'Объект', en: 'Object' },
   pointer: { ru: 'Указатель', en: 'Pointer' },
   class: { ru: 'Класс', en: 'Class' },
   array: { ru: 'Массив', en: 'Array' },

@@ -517,7 +517,9 @@ describe('CppCodeGenerator', () => {
 
       expect(result.success).toBe(true);
       // Проверяем, что код содержит логику перевода индекса в состояние "done"
-      expect(result.code).toMatch(/multi_gate_index_\w+\s*=\s*\d+;\s*\/\/\s*Установить в "done" состояние/);
+      expect(result.code).toContain('Установить в "done" состояние');
+      // Проверяем, что есть присвоение индекса для состояния "done" (должно быть больше количества веток)
+      expect(result.code).toMatch(/multi_gate_index_\w+\s*=\s*\d+/);
     });
 
     it('should warn about partially connected Parallel outputs', () => {

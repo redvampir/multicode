@@ -54,6 +54,8 @@ import {
 
 export class CppCodeGenerator implements ICodeGenerator {
   private registry: NodeGeneratorRegistry;
+
+  private static readonly TUPLE_EXPRESSION_PATTERN = /(std::tuple\s*<|std::make_tuple\s*\(|std::tie\s*\(|\b\w+Result\s*\{)/;
   
   constructor(registry?: NodeGeneratorRegistry) {
     this.registry = registry ?? createDefaultRegistry();
@@ -214,7 +216,13 @@ export class CppCodeGenerator implements ICodeGenerator {
       lines.push('');
       
       // Стандартные includes
-      const standardIncludes = new Set(['<exception>', '<iostream>', '<random>', '<string>', '<thread>', '<tuple>', '<vector>']);
+      const standardIncludes = new Set(['<exception>', '<iostream>', '<random>', '<string>', '<thread>', '<vector>']);
+
+      const requiresTupleInclude = this.hasFunctionWithMultipleOutputs(graph.functions ?? [])
+        || this.hasGeneratedTupleExpression(bodyLines);
+      if (requiresTupleInclude) {
+        standardIncludes.add('<tuple>');
+      }
       
       // Добавляем includes из шаблонных генераторов
       const templateIncludes = TemplateNodeGenerator.getCollectedIncludes();
@@ -262,6 +270,14 @@ export class CppCodeGenerator implements ICodeGenerator {
         generationTimeMs: performance.now() - startTime,
       },
     };
+  }
+
+  private hasFunctionWithMultipleOutputs(functions: BlueprintFunction[]): boolean {
+    return functions.some(func => func.parameters.filter(param => param.direction === 'output').length > 1);
+  }
+
+  private hasGeneratedTupleExpression(bodyLines: string[]): boolean {
+    return bodyLines.some(line => CppCodeGenerator.TUPLE_EXPRESSION_PATTERN.test(line));
   }
   
   /**

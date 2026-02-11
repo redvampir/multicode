@@ -6,16 +6,11 @@
 #include <nlohmann/json.hpp>
 #include <random>
 
+#include "visprog/core/ErrorCodes.hpp"
 #include "visprog/core/GraphSerializer.hpp"
 #include "visprog/core/NodeFactory.hpp"
 
 using namespace visprog::core;
-
-// Error codes matching those in GraphSerializer.cpp
-constexpr int kTestErrorInvalidDocument = 600;
-constexpr int kTestErrorMissingField = 601;
-constexpr int kTestErrorInvalidEnum = 602;
-constexpr int kTestErrorConnection = 605;
 
 TEST_CASE("GraphSerializer: Round-trip with New Property System", "[graph][serialization]") {
     // 1. Create a graph and add a node with a modified property
@@ -76,7 +71,7 @@ TEST_CASE("GraphSerializer: Invalid or Unknown Node Type", "[graph][serializatio
 
     auto result = GraphSerializer::from_json(invalid_json);
     REQUIRE(!result.has_value());
-    REQUIRE(result.error().code == kTestErrorInvalidEnum);
+    REQUIRE(result.error().code == error_codes::serializer::InvalidEnum);
 }
 
 TEST_CASE("GraphSerializer: Round-trip с несколькими связями", "[graph][serialization]") {
@@ -175,7 +170,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection с битым nodeI
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Ошибка если connection с отсутствующим портом",
@@ -203,7 +198,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection с отсутств
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Ошибка если connection без id", "[graph][serialization][negative]") {
@@ -230,7 +225,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection без id", "[graph
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Ошибка если connection с дублирующимся id",
@@ -271,7 +266,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection с дублирую
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Ошибка если connection Output->Output",
@@ -304,7 +299,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection Output->Output",
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Ошибка если connection Execution->StringView",
@@ -337,7 +332,7 @@ TEST_CASE("GraphSerializer: Ошибка если connection Execution->StringVi
 
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
 }
 
 TEST_CASE("GraphSerializer: Агрегирует ошибки нескольких битых connections",
@@ -375,7 +370,7 @@ TEST_CASE("GraphSerializer: Агрегирует ошибки нескольки
 
     const auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
-    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().code == error_codes::serializer::InvalidConnection);
     REQUIRE(restored_result.error().message.find("connections[0]") != std::string::npos);
     REQUIRE(restored_result.error().message.find("connections[1]") != std::string::npos);
 }
@@ -452,9 +447,9 @@ TEST_CASE("GraphSerializer: Fuzz-десериализация connections не �
 
         REQUIRE(!threw_exception);
         if (res.has_error()) {
-            REQUIRE((res.error().code == kTestErrorConnection ||
-                     res.error().code == kTestErrorMissingField ||
-                     res.error().code == kTestErrorInvalidDocument));
+            REQUIRE((res.error().code == error_codes::serializer::InvalidConnection ||
+                     res.error().code == error_codes::serializer::MissingField ||
+                     res.error().code == error_codes::serializer::InvalidDocument));
         }
     }
 }

@@ -6,15 +6,15 @@
 #include <queue>
 #include <ranges>
 #include <stack>
+#include <unordered_set>
 
+#include "visprog/core/ErrorCodes.hpp"
 #include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
 
 namespace visprog::core {
 
 using compat::format;
-
-// ... (existing Graph implementation)
 
 // ============================================================================
 // Variable Management
@@ -51,7 +51,6 @@ auto Graph::get_variables() const noexcept -> std::span<const Variable> {
     return variables_;
 }
 
-// ... (rest of Graph implementation)
 Graph::Graph(std::string name)
     : id_{GraphId{1}},
       name_(std::move(name)),
@@ -94,23 +93,18 @@ auto Graph::add_node(NodeType type, std::string name) -> NodeId {
 
 auto Graph::add_node(std::unique_ptr<Node> node) -> NodeId {
     if (!node) {
-        return NodeId{0};  // Invalid
+        return NodeId{0};
     }
 
     const auto node_id = node->get_id();
 
-    // Check for duplicate ID
     if (node_lookup_.contains(node_id)) {
-        return NodeId{0};  // Already exists
+        return NodeId{0};
     }
 
-    // Add to lookup first (pointer will remain valid)
     node_lookup_[node_id] = node.get();
-
-    // Add to storage
     nodes_.push_back(std::move(node));
 
-    // Initialize adjacency lists
     adjacency_out_[node_id] = {};
     adjacency_in_[node_id] = {};
 
@@ -118,24 +112,16 @@ auto Graph::add_node(std::unique_ptr<Node> node) -> NodeId {
 }
 
 auto Graph::remove_node(NodeId id) -> Result<void> {
-    // Validate node exists
     if (auto result = validate_node_exists(id); !result) {
         return result;
     }
 
-    // Remove all connections involving this node
     remove_node_connections(id);
-
-    // Remove from lookup
     node_lookup_.erase(id);
-
-    // Remove from adjacency lists
     adjacency_out_.erase(id);
     adjacency_in_.erase(id);
 
-    // Remove from storage (expensive, but maintains order)
     auto it = std::ranges::find_if(nodes_, [id](const auto& node) { return node->get_id() == id; });
-
     if (it != nodes_.end()) {
         nodes_.erase(it);
     }
@@ -168,24 +154,19 @@ auto Graph::node_count() const noexcept -> std::size_t {
 auto Graph::has_node(NodeId id) const noexcept -> bool {
     return node_lookup_.contains(id);
 }
+
 auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
     -> Result<ConnectionId> {
-    // Validate connection
     if (auto result = validate_connection(from_node, from_port, to_node, to_port); !result) {
         return Result<ConnectionId>(result.error());
     }
 
-    // Get ports to determine connection type
     const auto* from_node_ptr = get_node(from_node);
-    const auto* to_node_ptr = get_node(to_node);
-
     const auto* from_port_ptr = from_node_ptr->find_port(from_port);
-    [[maybe_unused]] const auto* to_port_ptr = to_node_ptr->find_port(to_port);
 
     const auto conn_type =
         from_port_ptr->is_execution() ? ConnectionType::Execution : ConnectionType::Data;
 
-    // Create connection
     const auto conn_id = generate_connection_id();
 
     Connection conn{.id = conn_id,
@@ -195,38 +176,34 @@ auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId t
                     .to_port = to_port,
                     .type = conn_type};
 
-    // Add to storage
     const auto index = connections_.size();
     connections_.push_back(conn);
     connection_lookup_[conn_id] = index;
 
-    // Update adjacency lists
     adjacency_out_[from_node].push_back(conn_id);
     adjacency_in_[to_node].push_back(conn_id);
 
     return Result<ConnectionId>(conn_id);
 }
+
 auto Graph::disconnect(ConnectionId id) -> Result<void> {
-    // Find connection
     auto it = connection_lookup_.find(id);
     if (it == connection_lookup_.end()) {
-        return Result<void>(Error{.message = "Connection not found", .code = 200});
+        return Result<void>(Error{.message = "Connection not found",
+                                  .code = error_codes::graph_connection::NotFound});
     }
 
     const auto index = it->second;
-    const auto& conn = connections_[index];
+    const auto conn = connections_[index];
 
-    // Remove from adjacency lists
     auto& out_list = adjacency_out_[conn.from_node];
     std::erase(out_list, id);
 
     auto& in_list = adjacency_in_[conn.to_node];
     std::erase(in_list, id);
 
-    // Remove from lookup
     connection_lookup_.erase(it);
 
-    // Remove from storage (swap with last and pop)
     if (index < connections_.size() - 1) {
         connections_[index] = std::move(connections_.back());
         connection_lookup_[connections_[index].id] = index;
@@ -269,8 +246,129 @@ auto Graph::connection_count() const noexcept -> std::size_t {
     return connections_.size();
 }
 
+// Вход/выход: проверяет структурную целостность графа и возвращает набор ошибок.
+// Edge cases: битые node/port-ссылки, рассинхрон lookup/adjacency, дубли id, конфликт типов.
+// Почему так: ранняя диагностика защищает topo/serializer от неконсистентных данных.
 auto Graph::validate() const -> ValidationResult {
-    return ValidationResult{};
+    ValidationResult result{};
+
+    const auto add_error = [&result](std::string message, int code) {
+        result.is_valid = false;
+        result.errors.push_back(Error{.message = std::move(message), .code = code});
+    };
+
+    std::unordered_set<ConnectionId> seen_connection_ids;
+    for (std::size_t index = 0; index < connections_.size(); ++index) {
+        const auto& conn = connections_[index];
+
+        if (!seen_connection_ids.insert(conn.id).second) {
+            add_error(format("Duplicate connection id in storage: ", conn.id.value),
+                      error_codes::graph_validation::LookupMismatch);
+        }
+
+        if (auto lookup_it = connection_lookup_.find(conn.id);
+            lookup_it == connection_lookup_.end()) {
+            add_error(format("Missing lookup entry for connection ", conn.id.value),
+                      error_codes::graph_validation::LookupMismatch);
+        } else if (lookup_it->second != index) {
+            add_error(format("Lookup index mismatch for connection ", conn.id.value),
+                      error_codes::graph_validation::LookupMismatch);
+        }
+
+        const auto* from_node = get_node(conn.from_node);
+        const auto* to_node = get_node(conn.to_node);
+
+        if (from_node == nullptr || to_node == nullptr) {
+            add_error(format("Connection ", conn.id.value, " references missing node"),
+                      error_codes::graph_validation::BrokenNodeReference);
+            continue;
+        }
+
+        const auto* from_port = from_node->find_port(conn.from_port);
+        const auto* to_port = to_node->find_port(conn.to_port);
+
+        if (from_port == nullptr || to_port == nullptr) {
+            add_error(format("Connection ", conn.id.value, " references missing port"),
+                      error_codes::graph_validation::BrokenPortReference);
+            continue;
+        }
+
+        const bool connection_type_matches =
+            (conn.type == ConnectionType::Execution && from_port->is_execution() &&
+             to_port->is_execution()) ||
+            (conn.type == ConnectionType::Data && !from_port->is_execution() &&
+             !to_port->is_execution());
+
+        if (!connection_type_matches || !from_port->can_connect_to(*to_port)) {
+            add_error(format("Connection ", conn.id.value, " has incompatible port types"),
+                      error_codes::graph_validation::TypeMismatch);
+        }
+
+        const auto out_it = adjacency_out_.find(conn.from_node);
+        if (out_it == adjacency_out_.end() ||
+            std::count(out_it->second.begin(), out_it->second.end(), conn.id) != 1) {
+            add_error(format("Outgoing adjacency mismatch for connection ", conn.id.value),
+                      error_codes::graph_validation::AdjacencyMismatch);
+        }
+
+        const auto in_it = adjacency_in_.find(conn.to_node);
+        if (in_it == adjacency_in_.end() ||
+            std::count(in_it->second.begin(), in_it->second.end(), conn.id) != 1) {
+            add_error(format("Incoming adjacency mismatch for connection ", conn.id.value),
+                      error_codes::graph_validation::AdjacencyMismatch);
+        }
+    }
+
+    for (const auto& [conn_id, index] : connection_lookup_) {
+        if (index >= connections_.size()) {
+            add_error(format("Lookup points outside connection storage for id ", conn_id.value),
+                      error_codes::graph_validation::LookupMismatch);
+            continue;
+        }
+
+        if (connections_[index].id != conn_id) {
+            add_error(format("Lookup points to wrong connection id for ", conn_id.value),
+                      error_codes::graph_validation::LookupMismatch);
+        }
+    }
+
+    const auto validate_adjacency =
+        [&](const auto& adjacency, bool outgoing, const char* direction) {
+            for (const auto& [node_id, connection_ids] : adjacency) {
+                if (!has_node(node_id)) {
+                    add_error(
+                        format("Adjacency ", direction, " references missing node ", node_id.value),
+                        error_codes::graph_validation::BrokenNodeReference);
+                }
+
+                for (const auto conn_id : connection_ids) {
+                    const auto lookup_it = connection_lookup_.find(conn_id);
+                    if (lookup_it == connection_lookup_.end()) {
+                        add_error(format("Adjacency ",
+                                         direction,
+                                         " references missing connection ",
+                                         conn_id.value),
+                                  error_codes::graph_validation::AdjacencyMismatch);
+                        continue;
+                    }
+
+                    const auto& conn = connections_[lookup_it->second];
+                    const auto expected_node = outgoing ? conn.from_node : conn.to_node;
+                    if (expected_node != node_id) {
+                        add_error(format("Adjacency ",
+                                         direction,
+                                         " references connection with wrong endpoint ",
+                                         conn_id.value),
+                                  error_codes::graph_validation::AdjacencyMismatch);
+                    }
+                }
+            }
+        };
+
+    validate_adjacency(adjacency_out_, true, "out");
+    validate_adjacency(adjacency_in_, false, "in");
+
+    return result;
 }
 
 auto Graph::get_id() const noexcept -> GraphId {
@@ -295,7 +393,8 @@ auto Graph::empty() const noexcept -> bool {
 
 auto Graph::validate_node_exists(NodeId id) const -> Result<void> {
     if (!has_node(id)) {
-        return Result<void>(Error{"Node does not exist", 404});
+        return Result<void>(
+            Error{"Node does not exist", error_codes::graph_connection::NodeNotFound});
     }
     return Result<void>();
 }
@@ -304,23 +403,45 @@ auto Graph::validate_connection(NodeId from_node,
                                 PortId from_port,
                                 NodeId to_node,
                                 PortId to_port) const -> Result<void> {
-    // Validate nodes exist
-    if (auto result = validate_node_exists(from_node); !result) {
-        return result;
-    }
-    if (auto result = validate_node_exists(to_node); !result) {
-        return result;
+    if (!has_node(from_node) || !has_node(to_node)) {
+        return Result<void>(
+            Error{"Node does not exist", error_codes::graph_connection::NodeNotFound});
     }
 
-    // Validate ports exist
+    if (from_node == to_node) {
+        return Result<void>(
+            Error{"Self-connection is not allowed", error_codes::graph_connection::SelfReference});
+    }
+
     const auto* from_node_ptr = get_node(from_node);
     const auto* to_node_ptr = get_node(to_node);
 
-    if (!from_node_ptr->find_port(from_port)) {
-        return Result<void>(Error{"Source port does not exist", 404});
+    const auto* source_port = from_node_ptr->find_port(from_port);
+    if (source_port == nullptr) {
+        return Result<void>(
+            Error{"Source port does not exist", error_codes::graph_connection::SourcePortNotFound});
     }
-    if (!to_node_ptr->find_port(to_port)) {
-        return Result<void>(Error{"Target port does not exist", 404});
+
+    const auto* target_port = to_node_ptr->find_port(to_port);
+    if (target_port == nullptr) {
+        return Result<void>(
+            Error{"Target port does not exist", error_codes::graph_connection::TargetPortNotFound});
+    }
+
+    if (!source_port->can_connect_to(*target_port)) {
+        return Result<void>(
+            Error{"Incompatible port types", error_codes::graph_connection::TypeMismatch});
+    }
+
+    const bool duplicate_connection =
+        std::ranges::any_of(connections_, [=](const Connection& conn) {
+            return conn.from_node == from_node && conn.from_port == from_port &&
+                   conn.to_node == to_node && conn.to_port == to_port;
+        });
+
+    if (duplicate_connection) {
+        return Result<void>(
+            Error{"Duplicate connection", error_codes::graph_connection::DuplicateConnection});
     }
 
     return Result<void>();
@@ -329,8 +450,24 @@ auto Graph::validate_connection(NodeId from_node,
 auto Graph::generate_connection_id() -> ConnectionId {
     return ConnectionId{next_connection_id_.value++};
 }
-auto Graph::remove_node_connections(NodeId /*node*/) -> void {
-    // TODO: Implement node connection removal
+
+// Вход/выход: удаляет все входящие/исходящие связи для узла из всех внутренних индексов.
+// Edge cases: дубли ConnectionId в in/out списках удаляются один раз через set.
+// Почему так: централизованное удаление через disconnect сохраняет инварианты lookup/adjacency.
+auto Graph::remove_node_connections(NodeId node) -> void {
+    std::unordered_set<ConnectionId> to_remove;
+
+    if (const auto out_it = adjacency_out_.find(node); out_it != adjacency_out_.end()) {
+        to_remove.insert(out_it->second.begin(), out_it->second.end());
+    }
+
+    if (const auto in_it = adjacency_in_.find(node); in_it != adjacency_in_.end()) {
+        to_remove.insert(in_it->second.begin(), in_it->second.end());
+    }
+
+    for (const auto connection_id : to_remove) {
+        [[maybe_unused]] auto result = disconnect(connection_id);
+    }
 }
 
 }  // namespace visprog::core

@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <cctype>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "visprog/core/Graph.hpp"
 #include "visprog/core/NodeFactory.hpp"
@@ -11,11 +14,44 @@
 using namespace visprog::core;
 using namespace visprog::generators;
 
+namespace {
+
 // Helper to remove all whitespace for robust comparison
 std::string remove_whitespace(std::string str) {
     str.erase(std::remove_if(str.begin(), str.end(), ::isspace), str.end());
     return str;
 }
+
+auto find_port_id(const Node& node, std::string_view port_name) -> std::optional<PortId> {
+    for (const auto& port : node.get_ports()) {
+        if (port.get_name() == port_name) {
+            return port.get_id();
+        }
+    }
+    return std::nullopt;
+}
+
+auto require_connect(Graph& graph,
+                     NodeId from_node,
+                     std::string_view from_port_name,
+                     NodeId to_node,
+                     std::string_view to_port_name) -> void {
+    const auto* from = graph.get_node(from_node);
+    const auto* to = graph.get_node(to_node);
+    REQUIRE(from != nullptr);
+    REQUIRE(to != nullptr);
+
+    const auto from_port = find_port_id(*from, from_port_name);
+    const auto to_port = find_port_id(*to, to_port_name);
+    REQUIRE(from_port.has_value());
+    REQUIRE(to_port.has_value());
+
+    const auto result = graph.connect(from_node, *from_port, to_node, *to_port);
+    REQUIRE(result.has_value());
+}
+
+}  // namespace
+
 
 TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     Graph graph;
@@ -34,16 +70,16 @@ TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     graph.get_node_mut(literal2_id)->set_property("value", std::string("Second"));
 
     // Execution flow
-    graph.connect(start_id, "start", sequence_id, "in_exec");
-    graph.connect(sequence_id, "Then 0", print1_id, "in_exec");
-    graph.connect(sequence_id, "Then 1", print2_id, "in_exec");
-    graph.connect(print1_id, "out_exec", end_id, "end");
-    graph.connect(
+    require_connect(graph, start_id, "start", sequence_id, "in_exec");
+    require_connect(graph, sequence_id, "Then 0", print1_id, "in_exec");
+    require_connect(graph, sequence_id, "Then 1", print2_id, "in_exec");
+    require_connect(graph, print1_id, "out_exec", end_id, "end");
+    require_connect(graph, 
         print2_id, "out_exec", end_id, "end");  // An input port can have multiple connections
 
     // Data flow
-    graph.connect(literal1_id, "output", print1_id, "message");
-    graph.connect(literal2_id, "output", print2_id, "message");
+    require_connect(graph, literal1_id, "output", print1_id, "message");
+    require_connect(graph, literal2_id, "output", print2_id, "message");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -94,22 +130,22 @@ TEST_CASE("CppCodeGenerator: Variables with For Loop", "[generators]") {
 
     // 4. Connect nodes
     // Execution flow
-    graph.connect(start_id, "start", for_loop_id, "in_exec");
-    graph.connect(for_loop_id, "loop_body", set_var_id, "in_exec");
-    graph.connect(for_loop_id, "completed", print_result_id, "in_exec");
-    graph.connect(print_result_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "start", for_loop_id, "in_exec");
+    require_connect(graph, for_loop_id, "loop_body", set_var_id, "in_exec");
+    require_connect(graph, for_loop_id, "completed", print_result_id, "in_exec");
+    require_connect(graph, print_result_id, "out_exec", end_id, "end");
 
     // Data flow for loop limits
-    graph.connect(loop_start_id, "output", for_loop_id, "first_index");
-    graph.connect(loop_end_id, "output", for_loop_id, "last_index");
+    require_connect(graph, loop_start_id, "output", for_loop_id, "first_index");
+    require_connect(graph, loop_end_id, "output", for_loop_id, "last_index");
 
     // Data flow for counter increment
-    graph.connect(get_var_id, "value", add_id, "a");
-    graph.connect(literal_one_id, "output", add_id, "b");
-    graph.connect(add_id, "result", set_var_id, "value");
+    require_connect(graph, get_var_id, "value", add_id, "a");
+    require_connect(graph, literal_one_id, "output", add_id, "b");
+    require_connect(graph, add_id, "result", set_var_id, "value");
 
     // Data flow for final print
-    graph.connect(get_final_var_id, "value", print_result_id, "message");
+    require_connect(graph, get_final_var_id, "value", print_result_id, "message");
 
     // 5. Generate and verify code
     auto result = generator.generate(graph);
@@ -135,9 +171,9 @@ TEST_CASE("CppCodeGenerator: Data Flow with StringLiteral", "[generators]") {
 
     graph.get_node_mut(literal_id)->set_property("value", std::string("Data flow works!"));
 
-    graph.connect(start_id, "start", print_id, "in_exec");
-    graph.connect(print_id, "out_exec", end_id, "end");
-    graph.connect(literal_id, "output", print_id, "message");
+    require_connect(graph, start_id, "start", print_id, "in_exec");
+    require_connect(graph, print_id, "out_exec", end_id, "end");
+    require_connect(graph, literal_id, "output", print_id, "message");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -170,15 +206,15 @@ TEST_CASE("CppCodeGenerator: Data-Driven Branching Logic", "[generators]") {
     graph.get_node_mut(true_str_id)->set_property("value", std::string("True branch"));
     graph.get_node_mut(false_str_id)->set_property("value", std::string("False branch"));
 
-    graph.connect(start_id, "start", branch_id, "in_exec");
-    graph.connect(branch_id, "true_exec", true_print_id, "in_exec");
-    graph.connect(branch_id, "false_exec", false_print_id, "in_exec");
-    graph.connect(true_print_id, "out_exec", end_id, "end");
-    graph.connect(false_print_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "start", branch_id, "in_exec");
+    require_connect(graph, branch_id, "true_exec", true_print_id, "in_exec");
+    require_connect(graph, branch_id, "false_exec", false_print_id, "in_exec");
+    require_connect(graph, true_print_id, "out_exec", end_id, "end");
+    require_connect(graph, false_print_id, "out_exec", end_id, "end");
 
-    graph.connect(bool_literal_id, "output", branch_id, "condition");
-    graph.connect(true_str_id, "output", true_print_id, "message");
-    graph.connect(false_str_id, "output", false_print_id, "message");
+    require_connect(graph, bool_literal_id, "output", branch_id, "condition");
+    require_connect(graph, true_str_id, "output", true_print_id, "message");
+    require_connect(graph, false_str_id, "output", false_print_id, "message");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -211,12 +247,12 @@ TEST_CASE("CppCodeGenerator: Arithmetic with Add Node", "[generators]") {
     graph.get_node_mut(literal_a_id)->set_property("value", 40);
     graph.get_node_mut(literal_b_id)->set_property("value", 2);
 
-    graph.connect(start_id, "start", print_id, "in_exec");
-    graph.connect(print_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "start", print_id, "in_exec");
+    require_connect(graph, print_id, "out_exec", end_id, "end");
 
-    graph.connect(literal_a_id, "output", add_id, "a");
-    graph.connect(literal_b_id, "output", add_id, "b");
-    graph.connect(add_id, "result", print_id, "message");
+    require_connect(graph, literal_a_id, "output", add_id, "a");
+    require_connect(graph, literal_b_id, "output", add_id, "b");
+    require_connect(graph, add_id, "result", print_id, "message");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -252,16 +288,16 @@ TEST_CASE("CppCodeGenerator: For Loop", "[generators]") {
     graph.get_node_mut(print_completed_id)->set_property("value", std::string("Completed"));
 
     // Execution Flow
-    graph.connect(start_id, "start", for_loop_id, "in_exec");
-    graph.connect(for_loop_id, "loop_body", print_index_id, "in_exec");
-    graph.connect(for_loop_id, "completed", print_completed_node_id, "in_exec");
-    graph.connect(print_completed_node_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "start", for_loop_id, "in_exec");
+    require_connect(graph, for_loop_id, "loop_body", print_index_id, "in_exec");
+    require_connect(graph, for_loop_id, "completed", print_completed_node_id, "in_exec");
+    require_connect(graph, print_completed_node_id, "out_exec", end_id, "end");
 
     // Data Flow
-    graph.connect(first_idx_id, "output", for_loop_id, "first_index");
-    graph.connect(last_idx_id, "output", for_loop_id, "last_index");
-    graph.connect(for_loop_id, "index", print_index_id, "message");
-    graph.connect(print_completed_id, "output", print_completed_node_id, "message");
+    require_connect(graph, first_idx_id, "output", for_loop_id, "first_index");
+    require_connect(graph, last_idx_id, "output", for_loop_id, "last_index");
+    require_connect(graph, for_loop_id, "index", print_index_id, "message");
+    require_connect(graph, print_completed_id, "output", print_completed_node_id, "message");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -287,7 +323,8 @@ TEST_CASE("CppCodeGenerator: No Start Node", "[generators]") {
     NodeFactory factory;
     CppCodeGenerator generator;
 
-    graph.add_node(factory.create(NodeTypes::PrintString));
+    const auto print_id = graph.add_node(factory.create(NodeTypes::PrintString));
+    (void)print_id;
 
     auto result = generator.generate(graph);
 

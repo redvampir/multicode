@@ -1375,6 +1375,219 @@ describe('CppCodeGenerator', () => {
     function port(id: string, name: string, dataType: PortDataType, direction: 'input' | 'output', index: number, value?: number) {
       return { id, name, dataType, direction, index, ...(value !== undefined && { value }) };
     }
+
+    it('should generate function body from graph.functions with FunctionEntry and FunctionReturn without TODO markers', () => {
+      const func = createTestFunction({
+        id: 'func-format-message',
+        name: 'formatMessage',
+        nameRu: 'Форматировать сообщение',
+        parameters: [
+          { id: 'text', name: 'text', nameRu: 'текст', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-format',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-format-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-format-text', 'text', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-format-message' },
+            },
+            {
+              id: 'return-format',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 220, y: 0 },
+              inputs: [
+                port('return-format-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-format-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-format-message' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-format', 'entry-format-exec-out', 'return-format', 'return-format-exec-in'),
+          ],
+        },
+      });
+
+      const callNode: BlueprintNode = {
+        id: 'call-format',
+        type: 'CallUserFunction',
+        label: 'Вызов: formatMessage',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-format-exec-in', 'exec', 'execution', 'input', 0),
+          { ...port('call-format-text', 'text', 'string', 'input', 1), value: 'Привет, MultiCode!' },
+        ],
+        outputs: [
+          port('call-format-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-format-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-format-message', functionName: 'formatMessage' },
+      };
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start'), callNode],
+        [createEdge('start', 'start-exec-out', 'call-format', 'call-format-exec-in')]
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::string formatMessage(std::string text)');
+      expect(result.code).toContain('auto result_');
+      expect(result.code).toContain('formatMessage("Привет, MultiCode!")');
+      expect(result.code).not.toContain('TODO');
+    });
+
+    it('should generate full path for multiple custom functions without TODO markers', () => {
+      const normalizeFunction = createTestFunction({
+        id: 'func-normalize',
+        name: 'normalizeName',
+        nameRu: 'Нормализовать имя',
+        parameters: [
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-normalize',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-normalize-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-normalize-name', 'name', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-normalize' },
+            },
+            {
+              id: 'return-normalize',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-normalize-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-normalize-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-normalize' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-normalize', 'entry-normalize-exec-out', 'return-normalize', 'return-normalize-exec-in'),
+          ],
+        },
+      });
+
+      const buildGreetingFunction = createTestFunction({
+        id: 'func-build-greeting',
+        name: 'buildGreeting',
+        nameRu: 'Собрать приветствие',
+        parameters: [
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-greeting',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-greeting-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-greeting-name', 'name', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-build-greeting' },
+            },
+            {
+              id: 'return-greeting',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-greeting-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-greeting-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-build-greeting' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-greeting', 'entry-greeting-exec-out', 'return-greeting', 'return-greeting-exec-in'),
+          ],
+        },
+      });
+
+      const callNormalize: BlueprintNode = {
+        id: 'call-normalize',
+        type: 'CallUserFunction',
+        label: 'Вызов: normalizeName',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-normalize-exec-in', 'exec', 'execution', 'input', 0),
+          { ...port('call-normalize-name', 'name', 'string', 'input', 1), value: 'София' },
+        ],
+        outputs: [
+          port('call-normalize-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-normalize-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-normalize', functionName: 'normalizeName' },
+      };
+
+      const callGreeting: BlueprintNode = {
+        id: 'call-greeting',
+        type: 'CallUserFunction',
+        label: 'Вызов: buildGreeting',
+        position: { x: 400, y: 0 },
+        inputs: [
+          port('call-greeting-exec-in', 'exec', 'execution', 'input', 0),
+          port('call-greeting-name', 'name', 'string', 'input', 1),
+        ],
+        outputs: [
+          port('call-greeting-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-greeting-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-build-greeting', functionName: 'buildGreeting' },
+      };
+
+      const printNode = createNode('Print', { x: 620, y: 0 }, 'print-greeting');
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start'), callNormalize, callGreeting, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'call-normalize', 'call-normalize-exec-in'),
+          createEdge('call-normalize', 'call-normalize-exec-out', 'call-greeting', 'call-greeting-exec-in'),
+          createEdge('call-normalize', 'call-normalize-result', 'call-greeting', 'call-greeting-name', 'string'),
+          createEdge('call-greeting', 'call-greeting-exec-out', 'print-greeting', 'print-greeting-exec-in'),
+          createEdge('call-greeting', 'call-greeting-result', 'print-greeting', 'print-greeting-string', 'string'),
+        ]
+      );
+      graph.functions = [normalizeFunction, buildGreetingFunction];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::string normalizeName(std::string name)');
+      expect(result.code).toContain('std::string buildGreeting(std::string name)');
+      expect(result.code).toContain('normalizeName("София")');
+      expect(result.code).toContain('buildGreeting(result_');
+      expect(result.code).toContain('std::cout << result_');
+      expect(result.code).not.toContain('TODO');
+    });
     
     it('should generate void function without parameters', () => {
       const func = createTestFunction({

@@ -47,6 +47,8 @@ import {
   TemplateNodeGenerator,
   NodeDefinitionGetter,
   FunctionEntryNodeGenerator,
+  generateFunctionResultTypeDeclaration,
+  getFunctionResultTypeName,
 } from './generators';
 
 export class CppCodeGenerator implements ICodeGenerator {
@@ -355,6 +357,12 @@ export class CppCodeGenerator implements ICodeGenerator {
       }
     }
     
+    // Объявление именованного типа результата для множественного output
+    const resultTypeDeclaration = generateFunctionResultTypeDeclaration(func);
+    if (resultTypeDeclaration) {
+      lines.push(resultTypeDeclaration);
+    }
+
     // Сигнатура функции
     const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
     lines.push(`${signature} {`);
@@ -417,7 +425,8 @@ export class CppCodeGenerator implements ICodeGenerator {
         lines.push(`${ind}return ${defaultVal};`);
       } else {
         const defaults = outputParams.map(p => this.getDefaultValueForType(p.dataType));
-        lines.push(`${ind}return std::tuple{${defaults.join(', ')}};`);
+        const resultTypeName = getFunctionResultTypeName(func);
+        lines.push(`${ind}return ${resultTypeName}{${defaults.join(', ')}};`);
       }
     }
     

@@ -18,7 +18,13 @@ export { createMathLogicGenerators } from './mathLogic';
 export { createVariableGenerators } from './variables';
 export { createIOGenerators } from './io';
 export { createOtherGenerators } from './other';
-export { createFunctionGenerators, FunctionEntryNodeGenerator, FunctionAwareContext } from './functions';
+export {
+  createFunctionGenerators,
+  FunctionEntryNodeGenerator,
+  FunctionAwareContext,
+  getFunctionResultTypeName,
+  generateFunctionResultTypeDeclaration,
+} from './functions';
 
 // Генератор на основе шаблонов из пакетов
 export { 

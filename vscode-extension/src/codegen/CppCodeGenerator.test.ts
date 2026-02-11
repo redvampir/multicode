@@ -60,6 +60,22 @@ describe('CppCodeGenerator', () => {
       expect(result.errors[0].code).toBe('MULTIPLE_START_NODES');
     });
     
+    it('should support extended control flow nodes in canGenerate', () => {
+      const graph = createTestGraph([
+        createNode('Start', { x: 0, y: 0 }, 'start-1'),
+        createNode('Parallel', { x: 100, y: 0 }, 'parallel-1'),
+        createNode('Gate', { x: 200, y: 0 }, 'gate-1'),
+        createNode('DoN', { x: 300, y: 0 }, 'don-1'),
+        createNode('DoOnce', { x: 400, y: 0 }, 'doonce-1'),
+        createNode('FlipFlop', { x: 500, y: 0 }, 'flipflop-1'),
+        createNode('MultiGate', { x: 600, y: 0 }, 'multigate-1'),
+      ]);
+
+      const result = generator.canGenerate(graph);
+
+      expect(result.errors.filter(error => error.code === 'UNKNOWN_NODE_TYPE')).toHaveLength(0);
+    });
+
     it('should accept valid graph with Start node', () => {
       const graph = createTestGraph([
         createNode('Start', { x: 0, y: 0 }, 'start-1'),
@@ -297,6 +313,112 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('continue;');
     });
     
+    it('should generate Parallel with fallback when thread outputs are not connected', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel');
+
+      const graph = createTestGraph(
+        [startNode, parallelNode],
+        [createEdge('start', 'start-exec-out', 'parallel', 'parallel-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('Parallel: нет подключённых Thread-веток'))).toBe(true);
+    });
+
+    it('should generate Gate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const gateNode = createNode('Gate', { x: 200, y: 0 }, 'gate');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, gateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'gate', 'gate-enter'),
+          createEdge('gate', 'gate-exit', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool gate_open_gate = false;');
+    });
+
+    it('should generate DoN and expose counter output', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doNNode = createNode('DoN', { x: 200, y: 0 }, 'don');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, doNNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'don', 'don-exec-in'),
+          createEdge('don', 'don-exit', 'print', 'print-exec-in'),
+          createEdge('don', 'don-counter', 'print', 'print-string', 'int32'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static int do_n_counter_don = 0;');
+      expect(result.code).toContain('std::cout << do_n_counter_don');
+    });
+
+    it('should generate DoOnce', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doOnceNode = createNode('DoOnce', { x: 200, y: 0 }, 'doonce');
+
+      const graph = createTestGraph(
+        [startNode, doOnceNode],
+        [createEdge('start', 'start-exec-out', 'doonce', 'doonce-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool do_once_done_doonce = false;');
+    });
+
+    it('should generate FlipFlop', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const flipFlopNode = createNode('FlipFlop', { x: 200, y: 0 }, 'flipflop');
+
+      const graph = createTestGraph(
+        [startNode, flipFlopNode],
+        [createEdge('start', 'start-exec-out', 'flipflop', 'flipflop-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool flip_flop_is_a_flipflop = true;');
+      expect(result.code).toContain('flip_flop_is_a_flipflop = !flip_flop_is_a_flipflop;');
+    });
+
+    it('should generate MultiGate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate', 'multigate-exec-in'),
+          createEdge('multigate', 'multigate-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static int multi_gate_index_multigate = 0;');
+      expect(result.code).toContain('switch (multi_gate_index_multigate)');
+    });
+
     it('should generate ForEach', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const forEachNode = createNode('ForEach', { x: 200, y: 0 }, 'foreach');

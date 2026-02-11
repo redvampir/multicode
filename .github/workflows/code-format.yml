@@ -15,20 +15,29 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install clang-format 15
+    - name: Prepare clang-format
       run: |
+        set -euo pipefail
+        if command -v clang-format >/dev/null 2>&1; then
+          echo "clang-format already available"
+          clang-format --version
+          exit 0
+        fi
+
+        # Fallback для редких self-hosted runner без clang-format.
         sudo apt-get update
-        sudo apt-get install -y clang-format-15
+        sudo apt-get install -y --no-install-recommends clang-format
+        clang-format --version
 
     - name: Check formatting
       run: |
-        clang-format-15 --version
-        # Find all C++ source files
-        find src include tests -name '*.cpp' -o -name '*.hpp' | \
-          xargs clang-format-15 --dry-run --Werror
+        clang-format --version
+        # Проверяем только C++ файлы из дерева проекта.
+        find src include tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 | \
+          xargs -0 clang-format --dry-run --Werror
 
     - name: Suggest fixes (on failure)
       if: failure()
       run: |
         echo "::warning::Code formatting issues detected!"
-        echo "Run 'clang-format-15 -i \$(find src include tests -name '*.cpp' -o -name '*.hpp')' to fix"
+        echo "Run 'find src include tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format -i' to fix"

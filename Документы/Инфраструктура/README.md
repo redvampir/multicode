@@ -55,4 +55,5 @@
 - Список зависимостей проекта: [DEPENDENCIES.md](../DEPENDENCIES.md)
 - Архитектурные ограничения портов: [Архитектура/README.md](../Архитектура/README.md)
 - Главная оглавление документации: [Документация MultiCode](../README.md)
+- Статус отключённых/legacy тестов: [LEGACY_TESTS_STATUS.md](./LEGACY_TESTS_STATUS.md)
 - Официальная документация Renovate: <https://docs.renovatebot.com>

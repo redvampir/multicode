@@ -66,6 +66,16 @@ jobs:
         working-directory: build
         run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
 
+      - name: Test inventory (primary suite)
+        shell: pwsh
+        working-directory: build
+        run: |
+          ctest -N -C ${{ env.BUILD_TYPE }}
+          $raw = ctest -N -C ${{ env.BUILD_TYPE }}
+          $testCount = ($raw | Select-String '^Total Tests: ' | ForEach-Object { $_.ToString().Split(':')[1].Trim() })
+          Write-Host "Primary CTest total: $testCount"
+          Write-Host "::notice title=Primary test count::$testCount"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.3.3
         with:
@@ -107,6 +117,14 @@ jobs:
         working-directory: build
         run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
 
+      - name: Test inventory (primary suite)
+        working-directory: build
+        run: |
+          ctest -N -C ${{ env.BUILD_TYPE }}
+          TEST_COUNT=$(ctest -N -C ${{ env.BUILD_TYPE }} | sed -n 's/^Total Tests: //p')
+          echo "Primary CTest total: ${TEST_COUNT}"
+          echo "::notice title=Primary test count::${TEST_COUNT}"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.3.3
         with:
@@ -114,6 +132,51 @@ jobs:
           path: |
             build/libmulticode_core.a
             build/multicode_tests
+
+
+  legacy-tests-linux:
+    name: Linux Legacy Tests (label: legacy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ${{ env.CXX_COMPILER }}
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Configure CMake (legacy tests ON)
+        run: |
+          cmake -B build -S . \
+            -G "${{ env.CMAKE_GENERATOR }}" \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_CXX_COMPILER=${{ env.CXX_COMPILER }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DMULTICODE_ENABLE_LEGACY_TESTS=ON
+
+      - name: Build legacy targets
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }} --target multicode_legacy_tests
+          cmake --build build --config ${{ env.BUILD_TYPE }} --target multicode_codegen_legacy_tests
+
+      - name: Run legacy tests
+        working-directory: build
+        run: ctest -C ${{ env.BUILD_TYPE }} -L legacy --output-on-failure --verbose
+
+      - name: Legacy test inventory (label: legacy)
+        working-directory: build
+        run: |
+          ctest -N -C ${{ env.BUILD_TYPE }} -L legacy
+          TEST_COUNT=$(ctest -N -C ${{ env.BUILD_TYPE }} -L legacy | sed -n 's/^Total Tests: //p')
+          echo "Legacy CTest total (label legacy): ${TEST_COUNT}"
+          echo "::notice title=Legacy test count (legacy)::${TEST_COUNT}"
 
   code-quality:
     name: Code Quality Checks

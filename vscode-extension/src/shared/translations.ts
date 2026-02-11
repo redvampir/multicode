@@ -20,6 +20,7 @@ export type TranslationKey =
   | 'toolbar.validateGraph'
   | 'toolbar.calculateLayout'
   | 'toolbar.generateGraph'
+  | 'toolbar.generateBinding'
   | 'overview.title'
   | 'overview.nodes'
   | 'overview.edges'
@@ -150,6 +151,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.validateGraph': 'Проверить',
     'toolbar.calculateLayout': 'Пересчитать',
     'toolbar.generateGraph': 'Генерировать код',
+    'toolbar.generateBinding': 'Вставить в файл',
     'overview.title': 'Сводка графа',
     'overview.nodes': 'Узлы',
     'overview.edges': 'Связи',
@@ -277,6 +279,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.validateGraph': 'Validate',
     'toolbar.calculateLayout': 'Recalculate',
     'toolbar.generateGraph': 'Generate code',
+    'toolbar.generateBinding': 'Insert into file',
     'overview.title': 'Graph overview',
     'overview.nodes': 'Nodes',
     'overview.edges': 'Edges',

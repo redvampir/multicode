@@ -44,6 +44,13 @@ export function activate(context: vscode.ExtensionContext): void {
     void panel.handleGenerateCode();
   });
 
+
+  console.log('[MultiCode] Registering command: multicode.generateCodeBinding');
+  const generateCodeBinding = vscode.commands.registerCommand('multicode.generateCodeBinding', () => {
+    const panel = ensurePanel();
+    void panel.handleGenerateCodeBinding();
+  });
+
   console.log('[MultiCode] Registering command: multicode.translateGraph');
   const translateGraph = vscode.commands.registerCommand('multicode.translateGraph', () => {
     const panel = ensurePanel();
@@ -56,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
     saveGraph,
     loadGraph,
     generateCode,
+    generateCodeBinding,
     translateGraph,
     outputChannel
   );
@@ -67,6 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
     'multicode.saveGraph',
     'multicode.loadGraph',
     'multicode.generateCode',
+    'multicode.generateCodeBinding',
     'multicode.translateGraph'
   ]);
   outputChannel.appendLine('[MultiCode] Extension activation complete!');

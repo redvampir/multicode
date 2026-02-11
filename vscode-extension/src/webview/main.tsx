@@ -162,7 +162,7 @@ const Toolbar: React.FC<{
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
 
-  const send = (type: 'requestNewGraph' | 'requestSave' | 'requestLoad' | 'requestGenerate' | 'requestValidate') => {
+  const send = (type: 'requestNewGraph' | 'requestSave' | 'requestLoad' | 'requestGenerate' | 'requestGenerateBinding' | 'requestValidate') => {
     setPending(true);
     sendToExtension({ type });
     setTimeout(() => setPending(false), 200);
@@ -239,6 +239,13 @@ const Toolbar: React.FC<{
           </button>
           <button onClick={() => send('requestGenerate')} disabled={pending} title={translate('toolbar.generate', 'Генерировать')}>
             ⚡ {translate('toolbar.generate', 'Генерировать')}
+          </button>
+          <button
+            onClick={() => send('requestGenerateBinding')}
+            disabled={pending}
+            title={translate('toolbar.generateBinding', 'Вставить в файл')}
+          >
+            🧩 {translate('toolbar.generateBinding', 'Вставить в файл')}
           </button>
         </div>
         

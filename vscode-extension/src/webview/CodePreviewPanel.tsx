@@ -13,7 +13,6 @@ import type { BlueprintGraphState } from '../shared/blueprintTypes';
 import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
 import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
 import { getLanguageSupportInfo } from '../codegen/languageSupport';
-import { isLanguageSupported } from '../codegen/languageSupport';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
 import { getTranslation } from '../shared/translations';

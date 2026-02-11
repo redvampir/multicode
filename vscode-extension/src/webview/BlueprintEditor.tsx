@@ -579,7 +579,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
 
-  const package_registry_snapshot = useMemo(() => ({
+  const packageRegistrySnapshot = useMemo(() => ({
     getNodeDefinition: getNode,
     packageNodeTypes: Array.from(registry.getAllNodeDefinitions().keys()) as NodeType[],
     registryVersion,
@@ -1804,7 +1804,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         onClose={() => setCodePreviewVisible(false)}
         highlightedNodeId={highlightedNodeId}
         onLineHover={handleCodeLineHover}
-        packageRegistrySnapshot={package_registry_snapshot}
+        packageRegistrySnapshot={packageRegistrySnapshot}
       />
       
       {/* Панель управления пакетами */}

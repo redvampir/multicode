@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -162,6 +163,38 @@ template <typename T>
     return Result<void>();
 }
 
+struct ParsedEndpoint {
+    NodeId node_id;
+    PortId port_id;
+};
+
+[[nodiscard]] auto parse_connection_endpoint(const nlohmann::json& conn_json,
+                                             std::string_view field_name,
+                                             std::string_view ctx) -> Result<ParsedEndpoint> {
+    const auto endpoint_it = conn_json.find(field_name);
+    if (endpoint_it == conn_json.end() || !endpoint_it->is_object()) {
+        return Result<ParsedEndpoint>(
+            Error{.message = format(ctx, ": missing or invalid object '", field_name, "'"),
+                  .code = kErrorConnection});
+    }
+
+    const auto endpoint_ctx = format(ctx, ".", field_name);
+    const auto node_id_res = require_uint64(*endpoint_it, "nodeId", endpoint_ctx);
+    if (!node_id_res) {
+        return Result<ParsedEndpoint>(
+            Error{.message = node_id_res.error().message, .code = kErrorConnection});
+    }
+
+    const auto port_id_res = require_uint64(*endpoint_it, "portId", endpoint_ctx);
+    if (!port_id_res) {
+        return Result<ParsedEndpoint>(
+            Error{.message = port_id_res.error().message, .code = kErrorConnection});
+    }
+
+    return Result<ParsedEndpoint>(ParsedEndpoint{.node_id = NodeId{node_id_res.value()},
+                                                 .port_id = PortId{port_id_res.value()}});
+}
+
 }  // namespace
 
 namespace visprog::core {
@@ -232,6 +265,44 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         return Result<Graph>(Error{.message = "Missing 'nodes' array", .code = kErrorMissingField});
     }
 
+    const auto connections_it = doc.find("connections");
+    uint64_t restored_port_counter = 1;
+    if (connections_it != doc.end()) {
+        if (!connections_it->is_array()) {
+            return Result<Graph>(
+                Error{.message = "'connections' must be an array", .code = kErrorConnection});
+        }
+
+        uint64_t min_port_id = std::numeric_limits<uint64_t>::max();
+        for (std::size_t i = 0; i < connections_it->size(); ++i) {
+            const auto& conn_json = connections_it->at(i);
+            const std::string ctx = format("connections[", i, "]");
+            if (!conn_json.is_object()) {
+                return Result<Graph>(
+                    Error{.message = format(ctx, " must be an object"), .code = kErrorConnection});
+            }
+
+            const auto from_res = parse_connection_endpoint(conn_json, "from", ctx);
+            if (!from_res) {
+                return Result<Graph>(from_res.error());
+            }
+
+            const auto to_res = parse_connection_endpoint(conn_json, "to", ctx);
+            if (!to_res) {
+                return Result<Graph>(to_res.error());
+            }
+
+            min_port_id = std::min(min_port_id, from_res.value().port_id.value);
+            min_port_id = std::min(min_port_id, to_res.value().port_id.value);
+        }
+
+        if (min_port_id != std::numeric_limits<uint64_t>::max()) {
+            restored_port_counter = min_port_id;
+        }
+    }
+
+    NodeFactory::force_id_counters(NodeId{1}, PortId{restored_port_counter});
+
     uint64_t max_node_id = 0;
     uint64_t max_port_id = 0;
 
@@ -287,7 +358,89 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 
     NodeFactory::synchronize_id_counters(NodeId{max_node_id}, PortId{max_port_id});
 
-    // ... (connection parsing would go here, it's omitted for brevity but is unchanged)
+    uint64_t max_connection_id = 0;
+    if (connections_it != doc.end()) {
+        for (std::size_t i = 0; i < connections_it->size(); ++i) {
+            const auto& conn_json = connections_it->at(i);
+            const std::string ctx = format("connections[", i, "]");
+            if (!conn_json.is_object()) {
+                return Result<Graph>(
+                    Error{.message = format(ctx, " must be an object"), .code = kErrorConnection});
+            }
+
+            if (const auto id_it = conn_json.find("id"); id_it != conn_json.end()) {
+                const auto conn_id_res = require_uint64(conn_json, "id", ctx);
+                if (!conn_id_res) {
+                    return Result<Graph>(
+                        Error{.message = conn_id_res.error().message, .code = kErrorConnection});
+                }
+                max_connection_id = std::max(max_connection_id, conn_id_res.value());
+            }
+
+            const auto from_res = parse_connection_endpoint(conn_json, "from", ctx);
+            if (!from_res) {
+                return Result<Graph>(from_res.error());
+            }
+            const auto to_res = parse_connection_endpoint(conn_json, "to", ctx);
+            if (!to_res) {
+                return Result<Graph>(to_res.error());
+            }
+
+            const auto from = from_res.value();
+            const auto to = to_res.value();
+
+            const auto* from_node = graph.get_node(from.node_id);
+            if (!from_node) {
+                return Result<Graph>(Error{
+                    .message =
+                        format(ctx, ": source nodeId ", from.node_id.value, " does not exist"),
+                    .code = kErrorConnection});
+            }
+            if (!from_node->find_port(from.port_id)) {
+                return Result<Graph>(Error{.message = format(ctx,
+                                                             ": source portId ",
+                                                             from.port_id.value,
+                                                             " does not exist on node ",
+                                                             from.node_id.value),
+                                           .code = kErrorConnection});
+            }
+
+            const auto* to_node = graph.get_node(to.node_id);
+            if (!to_node) {
+                return Result<Graph>(Error{
+                    .message = format(ctx, ": target nodeId ", to.node_id.value, " does not exist"),
+                    .code = kErrorConnection});
+            }
+            if (!to_node->find_port(to.port_id)) {
+                return Result<Graph>(Error{.message = format(ctx,
+                                                             ": target portId ",
+                                                             to.port_id.value,
+                                                             " does not exist on node ",
+                                                             to.node_id.value),
+                                           .code = kErrorConnection});
+            }
+
+            auto connect_result = graph.connect(from.node_id, from.port_id, to.node_id, to.port_id);
+            if (!connect_result) {
+                return Result<Graph>(Error{.message = format(ctx,
+                                                             ": failed to connect nodes ",
+                                                             from.node_id.value,
+                                                             ":",
+                                                             from.port_id.value,
+                                                             " -> ",
+                                                             to.node_id.value,
+                                                             ":",
+                                                             to.port_id.value,
+                                                             " (",
+                                                             connect_result.error().message,
+                                                             ")"),
+                                           .code = kErrorConnection});
+            }
+        }
+    }
+
+    graph.next_connection_id_.value =
+        std::max(graph.next_connection_id_.value, max_connection_id + 1);
 
     return Result<Graph>(std::move(graph));
 }

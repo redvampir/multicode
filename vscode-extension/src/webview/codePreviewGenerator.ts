@@ -23,7 +23,7 @@ export interface GeneratorDiagnostics {
   usedPackageRegistry: boolean;
   packageNodeTypeCount: number;
   registryVersion?: number;
-  fallbackReason?: 'registry-unavailable';
+  fallbackReason?: 'registry-unavailable' | 'registry-empty';
 }
 
 export interface GeneratorResolution {
@@ -44,11 +44,30 @@ export function isPackageRegistrySnapshotAvailable(
 }
 
 /**
+ * Проверяет, является ли snapshot валидным, но пустым (без узлов пакетов).
+ * Это отличается от полного отсутствия snapshot.
+ */
+function isPackageRegistrySnapshotEmpty(
+  snapshot?: Partial<PackageRegistrySnapshot>
+): boolean {
+  return Boolean(
+    snapshot
+      && typeof snapshot.getNodeDefinition === 'function'
+      && typeof snapshot.registryVersion === 'number'
+      && Array.isArray(snapshot.packageNodeTypes)
+      && snapshot.packageNodeTypes.length === 0
+  );
+}
+
+/**
  * Контракт:
  * - Вход: language + опциональный snapshot реестра пакетов.
  * - Выход: генератор + диагностическая мета-информация.
  * - Edge cases: неподдерживаемый язык выбрасывает UnsupportedLanguageError;
  *   неполный snapshot ведёт к безопасному fallback на базовый генератор.
+ * - Fallback reasons:
+ *   - 'registry-unavailable': snapshot отсутствует или неполный (нет getNodeDefinition/registryVersion)
+ *   - 'registry-empty': snapshot валиден, но не содержит узлов пакетов (packageNodeTypes.length === 0)
  * - Почему так: один резолвер исключает дубли и расхождение поведения панелей.
  */
 export function resolveCodePreviewGenerator(
@@ -70,6 +89,19 @@ export function resolveCodePreviewGenerator(
     };
   }
 
+  // Проверяем, является ли snapshot валидным но пустым
+  if (isPackageRegistrySnapshotEmpty(snapshot)) {
+    return {
+      generator: new CppCodeGenerator(),
+      diagnostics: {
+        usedPackageRegistry: false,
+        packageNodeTypeCount: 0,
+        fallbackReason: 'registry-empty',
+      },
+    };
+  }
+
+  // Snapshot отсутствует или неполный
   return {
     generator: new CppCodeGenerator(),
     diagnostics: {

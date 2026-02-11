@@ -961,7 +961,7 @@ const App: React.FC = () => {
   };
 
 
-  const package_registry_snapshot_for_preview = useMemo(() => ({
+  const packageRegistrySnapshotForPreview = useMemo(() => ({
     getNodeDefinition: (type: string) => globalRegistry.getNodeDefinition(type),
     packageNodeTypes: Array.from(globalRegistry.getAllNodeDefinitions().keys()) as BlueprintNodeType[],
     registryVersion,
@@ -1038,7 +1038,7 @@ const App: React.FC = () => {
               <EnhancedCodePreviewPanel
                 graph={blueprintGraph}
                 locale={locale}
-                packageRegistrySnapshot={package_registry_snapshot_for_preview}
+                packageRegistrySnapshot={packageRegistrySnapshotForPreview}
                 onGenerateComplete={(result) => {
                   pushToast('success', result.success 
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')

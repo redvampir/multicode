@@ -109,8 +109,7 @@ add_library(multicode_core STATIC
     src/core/GraphSerializer.cpp
 
     # Generators
-    # TODO: CppCodeGenerator требует рефакторинга - временно отключен
-    # src/generators/CppCodeGenerator.cpp
+    src/generators/CppCodeGenerator.cpp
 )
 
 target_include_directories(multicode_core
@@ -149,6 +148,7 @@ if(Catch2_FOUND)
         tests/core/test_port.cpp
         tests/core/test_graph.cpp
         tests/core/test_graph_serializer.cpp
+        tests/generators/test_cpp_code_generator.cpp
     )
     
     target_link_libraries(multicode_tests
@@ -177,34 +177,14 @@ if(Catch2_FOUND)
                 Catch2::Catch2WithMain
         )
 
-        # legacy codegen tests требуют отдельной линковки генератора и пока не участвуют в CI
-        add_executable(multicode_codegen_legacy_tests EXCLUDE_FROM_ALL
-            tests/test_main.cpp
-            tests/generators/test_cpp_code_generator.cpp
-            tests/legacy/CppCodeGenerator_legacy_stub.cpp
-        )
-
-        target_link_libraries(multicode_codegen_legacy_tests
-            PRIVATE
-                multicode_core
-                Catch2::Catch2WithMain
-        )
-
         if(MSVC)
             target_compile_options(multicode_legacy_tests PRIVATE /WX-)
-            target_compile_options(multicode_codegen_legacy_tests PRIVATE /WX-)
         endif()
 
         add_test(NAME multicode_legacy_tests COMMAND multicode_legacy_tests "[legacy]")
         set_tests_properties(multicode_legacy_tests PROPERTIES LABELS "legacy")
 
-        add_test(NAME multicode_codegen_legacy_tests COMMAND multicode_codegen_legacy_tests "[generators]")
-        set_tests_properties(multicode_codegen_legacy_tests PROPERTIES
-            LABELS "legacy;codegen_disabled"
-            WILL_FAIL TRUE
-        )
-
-        message(STATUS "Legacy tests: ON (multicode_legacy_tests, multicode_codegen_legacy_tests)")
+        message(STATUS "Legacy tests: ON (multicode_legacy_tests)")
     else()
         message(STATUS "Legacy tests: OFF")
     endif()

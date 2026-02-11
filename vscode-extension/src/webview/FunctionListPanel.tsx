@@ -26,6 +26,10 @@ interface FunctionListPanelProps {
   activeFunctionId: string | null;
   /** Язык отображения */
   displayLanguage: 'ru' | 'en';
+  /** Свернута ли секция */
+  collapsed?: boolean;
+  /** Переключить состояние сворачивания */
+  onToggleCollapsed?: () => void;
 }
 
 export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
@@ -34,6 +38,8 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   onSelectFunction,
   activeFunctionId,
   displayLanguage,
+  collapsed = false,
+  onToggleCollapsed,
 }) => {
   const isRu = displayLanguage === 'ru';
   const [editingFunction, setEditingFunction] = useState<BlueprintFunction | null>(null);
@@ -136,7 +142,21 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   return (
     <div className="function-list-panel">
       <div className="function-list-header">
-        <h3>{isRu ? 'Функции' : 'Functions'}</h3>
+        <div className="panel-header-title">
+          {onToggleCollapsed && (
+            <button
+              type="button"
+              className="panel-collapse-btn"
+              onClick={onToggleCollapsed}
+              title={collapsed
+                ? (isRu ? 'Развернуть секцию функций' : 'Expand functions section')
+                : (isRu ? 'Свернуть секцию функций' : 'Collapse functions section')}
+            >
+              {collapsed ? '▶' : '▼'}
+            </button>
+          )}
+          <h3>{isRu ? 'Функции' : 'Functions'}</h3>
+        </div>
         <button 
           className="btn-add-function" 
           onClick={handleCreateFunction}
@@ -146,6 +166,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
         </button>
       </div>
       
+      {!collapsed && (
       <div className="function-list">
         {/* EventGraph — всегда первый */}
         <div 
@@ -272,6 +293,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
         })}
 
       </div>
+      )}
       
       {/* Редактор функции */}
       {editingFunction && (

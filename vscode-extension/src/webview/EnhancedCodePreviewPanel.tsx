@@ -9,13 +9,18 @@
  * - Визуализация проблем и предупреждений
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
+import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
 import { getLanguageSupportInfo } from '../codegen/languageSupport';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
 import { getTranslation } from '../shared/translations';
+import {
+  resolveCodePreviewGenerator,
+  type PackageRegistrySnapshot,
+} from './codePreviewGenerator';
 
 // ============================================
 // Расширенные стили
@@ -55,6 +60,14 @@ const styles = {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+  } as React.CSSProperties,
+
+  warningBox: {
+    padding: '8px 12px',
+    backgroundColor: 'rgba(249, 226, 175, 0.1)',
+    borderTop: '1px solid #313244',
+    color: '#f9e2af',
+    fontSize: 11,
   } as React.CSSProperties,
   
   statsContainer: {
@@ -222,6 +235,7 @@ interface EnhancedCodePreviewProps {
   locale: 'ru' | 'en';
   onNodeSelect?: (nodeId: string) => void;
   onGenerateComplete?: (result: CodeGenerationResult) => void;
+  packageRegistrySnapshot?: Partial<PackageRegistrySnapshot>;
 }
 
 // ============================================
@@ -233,6 +247,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   locale,
   onNodeSelect,
   onGenerateComplete,
+  packageRegistrySnapshot,
 }) => {
   const [result, setResult] = useState<CodeGenerationResult | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -246,13 +261,35 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const codeRef = useRef<HTMLDivElement>(null);
   const supportInfo = getLanguageSupportInfo(graph.language);
 
+  const previewWarnings = useMemo(() => {
+    const fallbackWithoutRegistry = !packageRegistrySnapshot
+      || !Array.isArray(packageRegistrySnapshot.packageNodeTypes)
+      || packageRegistrySnapshot.packageNodeTypes.length === 0;
+
+    if (!fallbackWithoutRegistry) {
+      return [] as string[];
+    }
+
+    const hasUnknownNodes = graph.nodes.some((node) => !(node.type in NODE_TYPE_DEFINITIONS));
+    if (!hasUnknownNodes) {
+      return [] as string[];
+    }
+
+    return [getTranslation(locale, 'codegen.registryUnavailable')];
+  }, [graph.nodes, locale, packageRegistrySnapshot]);
+
   // Генерация кода
   useEffect(() => {
     const generateCode = () => {
       setIsLoading(true);
       
       try {
-        const generator = createGenerator(graph.language);
+        const { generator, diagnostics } = resolveCodePreviewGenerator(graph.language, packageRegistrySnapshot);
+        if (diagnostics.fallbackReason) {
+          console.debug('[EnhancedCodePreviewPanel] fallback generator selected', diagnostics);
+        } else {
+          console.debug('[EnhancedCodePreviewPanel] package-aware generator selected', diagnostics);
+        }
         const generationResult = generator.generate(graph);
         
         setResult(generationResult);
@@ -309,7 +346,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     };
     
     generateCode();
-  }, [graph, locale, onGenerateComplete]);
+  }, [graph, locale, onGenerateComplete, packageRegistrySnapshot]);
 
   // Клик на строку кода
   const handleLineClick = useCallback((lineInfo: CodeLineInfo) => {
@@ -571,6 +608,13 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
           </button>
         </div>
       </div>
+
+
+      {previewWarnings.length > 0 && (
+        <div style={styles.warningBox}>
+          {previewWarnings.join('; ')}
+        </div>
+      )}
 
       {/* Статистика */}
       {renderStats()}

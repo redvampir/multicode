@@ -30,6 +30,9 @@ public:
     /// @brief Ensures the next generated ID is greater than the given value.
     static auto synchronize_id_counters(NodeId max_node_id, PortId max_port_id) -> void;
 
+    /// @brief Принудительно выставляет счётчики ID (используется при десериализации snapshot).
+    static auto force_id_counters(NodeId next_node_id, PortId next_port_id) -> void;
+
 private:
     [[nodiscard]] static auto generate_node_id() -> NodeId;
     [[nodiscard]] static auto generate_port_id() -> PortId;

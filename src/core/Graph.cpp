@@ -264,6 +264,11 @@ auto Graph::get_connections_to(NodeId node) const -> std::vector<ConnectionId> {
 auto Graph::has_connection(ConnectionId id) const noexcept -> bool {
     return connection_lookup_.contains(id);
 }
+
+auto Graph::connection_count() const noexcept -> std::size_t {
+    return connections_.size();
+}
+
 auto Graph::validate() const -> ValidationResult {
     return ValidationResult{};
 }

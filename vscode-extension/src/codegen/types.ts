@@ -146,6 +146,8 @@ export interface CodeGenContext {
   currentFunction?: BlueprintFunction;
   /** Все функции графа */
   functions?: BlueprintFunction[];
+  /** Типы узлов, поддерживаемые активным реестром генераторов */
+  supportedNodeTypes?: BlueprintNodeType[];
 }
 
 /** Информация о переменной */

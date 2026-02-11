@@ -69,16 +69,30 @@ export class FallbackNodeGenerator extends BaseNodeGenerator {
   
   generate(
     node: BlueprintNode,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
-    const nodeLabel = node.label?.trim() ? ` "${node.label}"` : '';
-    const message = `Узел ${node.type}${nodeLabel} пока не поддерживается C++ генератором`;
-    const messageEn = `${node.type} node${nodeLabel} is not yet supported by C++ generator`;
+    const supportedTypes = this.getSupportedTypesText(context);
+    const nodeLabel = node.label?.trim() || '—';
+    const message = `Неподдерживаемый узел для C++ генератора: id=${node.id}, type=${node.type}, label="${nodeLabel}". Поддерживаемые типы: ${supportedTypes}. Подсказка: проверьте поддерживаемые типы узлов.`;
+    const messageEn = `Unsupported node for C++ generator: id=${node.id}, type=${node.type}, label="${nodeLabel}". Supported types: ${supportedTypes}. Hint: check supported node types.`;
 
     helpers.addError(node.id, CodeGenErrorCode.UNKNOWN_NODE_TYPE, message, messageEn);
 
     return this.code([], true);
+  }
+
+  private getSupportedTypesText(context: CodeGenContext): string {
+    const supportedTypes = context.supportedNodeTypes
+      ?.map(type => type.trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (!supportedTypes || supportedTypes.length === 0) {
+      return 'см. Документы/Архитектура/VisualEditor.md';
+    }
+
+    return supportedTypes.join(', ');
   }
 }
 

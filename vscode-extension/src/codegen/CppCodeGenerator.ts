@@ -157,6 +157,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       sourceMap: [],
       currentLine: 1,
       functions: graph.functions ?? [],
+      supportedNodeTypes: this.getSupportedNodeTypes(),
     };
     
     // Создать helpers для генераторов

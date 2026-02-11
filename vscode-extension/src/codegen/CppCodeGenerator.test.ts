@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { CppCodeGenerator } from './CppCodeGenerator';
 import type { INodeGenerator } from './generators';
+import { TemplateNodeGenerator } from './generators/template';
 import { CodeGenErrorCode } from './types';
 import { 
   BlueprintGraphState, 
@@ -1325,6 +1326,61 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('<logging.h>');
     });
     
+
+    it('should generate final code for package node with codegen.cpp.template and collect includes', () => {
+      const customNodeDef = {
+        type: 'Custom' as BlueprintNodeType,
+        label: 'Package Delay',
+        labelRu: 'Пакетная задержка',
+        category: 'flow',
+        inputs: [
+          { id: 'exec-in', name: 'In', dataType: 'execution' },
+          { id: 'ms', name: 'Milliseconds', dataType: 'number' },
+        ],
+        outputs: [
+          { id: 'exec-out', name: 'Out', dataType: 'execution' },
+        ],
+        _codegen: {
+          cpp: {
+            template: 'std::this_thread::sleep_for(std::chrono::milliseconds({{input.ms}}));',
+            includes: ['<chrono>'],
+          },
+        },
+      };
+
+      const packageGenerator = CppCodeGenerator.withPackages(
+        (type: string) => (type === 'Custom' ? customNodeDef : undefined),
+        ['Custom' as BlueprintNodeType]
+      );
+
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const delayNode: BlueprintNode = {
+        id: 'delay-1',
+        type: 'Custom' as BlueprintNodeType,
+        label: 'Package Delay',
+        position: { x: 200, y: 0 },
+        inputs: [
+          { id: 'delay-1-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+          { id: 'delay-1-ms', name: 'Milliseconds', dataType: 'float', direction: 'input', index: 1, value: 250 },
+        ],
+        outputs: [
+          { id: 'delay-1-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        ],
+      };
+
+      const graph = createTestGraph(
+        [startNode, delayNode],
+        [createEdge('start', 'start-exec-out', 'delay-1', 'delay-1-exec-in')]
+      );
+
+      const result = packageGenerator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::this_thread::sleep_for(std::chrono::milliseconds(250));');
+      expect(result.code).toContain('#include <chrono>');
+      expect(TemplateNodeGenerator.getCollectedIncludes()).toContain('<chrono>');
+    });
+
     it('should include custom headers from package templates', () => {
       const customNodeDef = {
         type: 'Custom' as BlueprintNodeType,

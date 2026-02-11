@@ -532,6 +532,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     packages,
     loadPackage,
     unloadPackage,
+    registry,
   } = usePackageRegistry();
   
   // ============================================
@@ -576,6 +577,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [variablePanelVisible, setVariablePanelVisible] = useState(true); // Панель переменных видна по умолчанию
   const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
+
+  const packageNodeTypes = Array.from(registry.getAllNodeDefinitions().keys()) as NodeType[];
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     position: ContextMenuPosition;
@@ -1796,6 +1799,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         onClose={() => setCodePreviewVisible(false)}
         highlightedNodeId={highlightedNodeId}
         onLineHover={handleCodeLineHover}
+        getNodeDefinition={getNode}
+        packageNodeTypes={packageNodeTypes}
       />
       
       {/* Панель управления пакетами */}

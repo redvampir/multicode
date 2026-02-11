@@ -31,10 +31,26 @@ jobs:
 
     - name: Check formatting
       run: |
+        set -euo pipefail
         clang-format --version
-        # Проверяем только C++ файлы из дерева проекта.
-        find src include tests \( -name '*.cpp' -o -name '*.hpp' \) -print0 | \
-          xargs -0 clang-format --dry-run --Werror
+
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          BASE_REF="origin/${{ github.base_ref }}"
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          RANGE="${BASE_REF}...HEAD"
+        else
+          RANGE="${{ github.event.before }}...${{ github.sha }}"
+        fi
+
+        mapfile -t CPP_FILES < <(git diff --name-only "${RANGE}" | \
+          rg '^(src|include|tests)/.*\.(cpp|hpp)$')
+
+        if [[ ${#CPP_FILES[@]} -eq 0 ]]; then
+          echo "Нет изменённых C++ файлов для формат-проверки."
+          exit 0
+        fi
+
+        printf '%s\n' "${CPP_FILES[@]}" | xargs clang-format --dry-run --Werror
 
     - name: Suggest fixes (on failure)
       if: failure()

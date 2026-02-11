@@ -6,6 +6,7 @@
 
 import type { BlueprintNode, BlueprintNodeType } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
+import { CodeGenErrorCode } from '../types';
 import {
   BaseNodeGenerator,
   GeneratorHelpers,
@@ -71,13 +72,13 @@ export class FallbackNodeGenerator extends BaseNodeGenerator {
     _context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
-    const ind = helpers.indent();
-    const lines: string[] = [];
-    
-    // Генерируем TODO комментарий
-    lines.push(`${ind}// TODO: ${node.type} - ${node.label}`);
-    
-    return this.code(lines);
+    const nodeLabel = node.label?.trim() ? ` "${node.label}"` : '';
+    const message = `Узел ${node.type}${nodeLabel} пока не поддерживается C++ генератором`;
+    const messageEn = `${node.type} node${nodeLabel} is not yet supported by C++ generator`;
+
+    helpers.addError(node.id, CodeGenErrorCode.UNKNOWN_NODE_TYPE, message, messageEn);
+
+    return this.code([], true);
   }
 }
 

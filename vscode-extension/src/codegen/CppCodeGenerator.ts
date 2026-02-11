@@ -210,7 +210,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       lines.push('');
       
       // Стандартные includes
-      const standardIncludes = new Set(['<exception>', '<iostream>', '<random>', '<string>', '<thread>', '<vector>']);
+      const standardIncludes = new Set(['<exception>', '<iostream>', '<random>', '<string>', '<thread>', '<tuple>', '<vector>']);
       
       // Добавляем includes из шаблонных генераторов
       const templateIncludes = TemplateNodeGenerator.getCollectedIncludes();
@@ -416,7 +416,7 @@ export class CppCodeGenerator implements ICodeGenerator {
         lines.push(`${ind}return ${defaultVal};`);
       } else {
         const defaults = outputParams.map(p => this.getDefaultValueForType(p.dataType));
-        lines.push(`${ind}return std::make_tuple(${defaults.join(', ')});`);
+        lines.push(`${ind}return std::tuple{${defaults.join(', ')}};`);
       }
     }
     

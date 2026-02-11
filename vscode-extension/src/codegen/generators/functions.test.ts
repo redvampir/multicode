@@ -581,6 +581,25 @@ describe('FunctionReturnNodeGenerator', () => {
       expect(result.lines[0]).toContain('testFunctionResult{1, 100}');
     });
 
+    it('формирует tuple из default values в порядке output-параметров без входных выражений', () => {
+      const func = createTestFunction({
+        name: 'orderedDefaults',
+        parameters: [
+          { id: 'out_flag', name: 'flag', nameRu: 'флаг', dataType: 'bool', direction: 'output' },
+          { id: 'out_ratio', name: 'ratio', nameRu: 'коэффициент', dataType: 'float', direction: 'output' },
+          { id: 'out_title', name: 'title', nameRu: 'заголовок', dataType: 'string', direction: 'output' },
+        ],
+      });
+      const node = createFunctionReturnNode(func.id);
+      const context = createMockContext({ currentFunction: func });
+      const helpers = createMockHelpers(context);
+
+      const result = generator.generate(node, context, helpers);
+
+      expect(result.lines).toContain('    return orderedDefaultsResult{false, 0.0f, ""};');
+      expect(result.followExecutionFlow).toBe(false);
+    });
+
     it.each(табличныеКейсыTupleReturn)(
       'корректно строит tuple-return и транслитерацию для кейса $имя',
       ({ functionName, outputs, expectedLine }: ТабличныйКейсTupleReturn) => {

@@ -8,30 +8,13 @@
 #include <stack>
 #include <unordered_set>
 
+#include "visprog/core/ErrorCodes.hpp"
 #include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
 
 namespace visprog::core {
 
 using compat::format;
-
-namespace {
-
-constexpr int kErrorConnectionNotFound = 200;
-constexpr int kErrorConnectionNodeNotFound = 301;
-constexpr int kErrorConnectionSourcePortNotFound = 302;
-constexpr int kErrorConnectionTargetPortNotFound = 303;
-constexpr int kErrorConnectionSelfReference = 304;
-constexpr int kErrorConnectionTypeMismatch = 305;
-constexpr int kErrorConnectionDuplicate = 306;
-
-constexpr int kErrorValidationBrokenNodeRef = 510;
-constexpr int kErrorValidationBrokenPortRef = 511;
-constexpr int kErrorValidationLookupMismatch = 512;
-constexpr int kErrorValidationTypeMismatch = 513;
-constexpr int kErrorValidationAdjacencyMismatch = 514;
-
-}  // namespace
 
 // ============================================================================
 // Variable Management
@@ -206,8 +189,8 @@ auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId t
 auto Graph::disconnect(ConnectionId id) -> Result<void> {
     auto it = connection_lookup_.find(id);
     if (it == connection_lookup_.end()) {
-        return Result<void>(
-            Error{.message = "Connection not found", .code = kErrorConnectionNotFound});
+        return Result<void>(Error{.message = "Connection not found",
+                                  .code = error_codes::graph_connection::NotFound});
     }
 
     const auto index = it->second;
@@ -263,6 +246,9 @@ auto Graph::connection_count() const noexcept -> std::size_t {
     return connections_.size();
 }
 
+// Вход/выход: проверяет структурную целостность графа и возвращает набор ошибок.
+// Edge cases: битые node/port-ссылки, рассинхрон lookup/adjacency, дубли id, конфликт типов.
+// Почему так: ранняя диагностика защищает topo/serializer от неконсистентных данных.
 auto Graph::validate() const -> ValidationResult {
     ValidationResult result{};
 
@@ -277,16 +263,16 @@ auto Graph::validate() const -> ValidationResult {
 
         if (!seen_connection_ids.insert(conn.id).second) {
             add_error(format("Duplicate connection id in storage: ", conn.id.value),
-                      kErrorValidationLookupMismatch);
+                      error_codes::graph_validation::LookupMismatch);
         }
 
         if (auto lookup_it = connection_lookup_.find(conn.id);
             lookup_it == connection_lookup_.end()) {
             add_error(format("Missing lookup entry for connection ", conn.id.value),
-                      kErrorValidationLookupMismatch);
+                      error_codes::graph_validation::LookupMismatch);
         } else if (lookup_it->second != index) {
             add_error(format("Lookup index mismatch for connection ", conn.id.value),
-                      kErrorValidationLookupMismatch);
+                      error_codes::graph_validation::LookupMismatch);
         }
 
         const auto* from_node = get_node(conn.from_node);
@@ -294,7 +280,7 @@ auto Graph::validate() const -> ValidationResult {
 
         if (from_node == nullptr || to_node == nullptr) {
             add_error(format("Connection ", conn.id.value, " references missing node"),
-                      kErrorValidationBrokenNodeRef);
+                      error_codes::graph_validation::BrokenNodeReference);
             continue;
         }
 
@@ -303,7 +289,7 @@ auto Graph::validate() const -> ValidationResult {
 
         if (from_port == nullptr || to_port == nullptr) {
             add_error(format("Connection ", conn.id.value, " references missing port"),
-                      kErrorValidationBrokenPortRef);
+                      error_codes::graph_validation::BrokenPortReference);
             continue;
         }
 
@@ -315,34 +301,34 @@ auto Graph::validate() const -> ValidationResult {
 
         if (!connection_type_matches || !from_port->can_connect_to(*to_port)) {
             add_error(format("Connection ", conn.id.value, " has incompatible port types"),
-                      kErrorValidationTypeMismatch);
+                      error_codes::graph_validation::TypeMismatch);
         }
 
         const auto out_it = adjacency_out_.find(conn.from_node);
         if (out_it == adjacency_out_.end() ||
             std::count(out_it->second.begin(), out_it->second.end(), conn.id) != 1) {
             add_error(format("Outgoing adjacency mismatch for connection ", conn.id.value),
-                      kErrorValidationAdjacencyMismatch);
+                      error_codes::graph_validation::AdjacencyMismatch);
         }
 
         const auto in_it = adjacency_in_.find(conn.to_node);
         if (in_it == adjacency_in_.end() ||
             std::count(in_it->second.begin(), in_it->second.end(), conn.id) != 1) {
             add_error(format("Incoming adjacency mismatch for connection ", conn.id.value),
-                      kErrorValidationAdjacencyMismatch);
+                      error_codes::graph_validation::AdjacencyMismatch);
         }
     }
 
     for (const auto& [conn_id, index] : connection_lookup_) {
         if (index >= connections_.size()) {
             add_error(format("Lookup points outside connection storage for id ", conn_id.value),
-                      kErrorValidationLookupMismatch);
+                      error_codes::graph_validation::LookupMismatch);
             continue;
         }
 
         if (connections_[index].id != conn_id) {
             add_error(format("Lookup points to wrong connection id for ", conn_id.value),
-                      kErrorValidationLookupMismatch);
+                      error_codes::graph_validation::LookupMismatch);
         }
     }
 
@@ -352,7 +338,7 @@ auto Graph::validate() const -> ValidationResult {
                 if (!has_node(node_id)) {
                     add_error(
                         format("Adjacency ", direction, " references missing node ", node_id.value),
-                        kErrorValidationBrokenNodeRef);
+                        error_codes::graph_validation::BrokenNodeReference);
                 }
 
                 for (const auto conn_id : connection_ids) {
@@ -362,7 +348,7 @@ auto Graph::validate() const -> ValidationResult {
                                          direction,
                                          " references missing connection ",
                                          conn_id.value),
-                                  kErrorValidationAdjacencyMismatch);
+                                  error_codes::graph_validation::AdjacencyMismatch);
                         continue;
                     }
 
@@ -373,7 +359,7 @@ auto Graph::validate() const -> ValidationResult {
                                          direction,
                                          " references connection with wrong endpoint ",
                                          conn_id.value),
-                                  kErrorValidationAdjacencyMismatch);
+                                  error_codes::graph_validation::AdjacencyMismatch);
                     }
                 }
             }
@@ -407,7 +393,8 @@ auto Graph::empty() const noexcept -> bool {
 
 auto Graph::validate_node_exists(NodeId id) const -> Result<void> {
     if (!has_node(id)) {
-        return Result<void>(Error{"Node does not exist", kErrorConnectionNodeNotFound});
+        return Result<void>(
+            Error{"Node does not exist", error_codes::graph_connection::NodeNotFound});
     }
     return Result<void>();
 }
@@ -417,11 +404,13 @@ auto Graph::validate_connection(NodeId from_node,
                                 NodeId to_node,
                                 PortId to_port) const -> Result<void> {
     if (!has_node(from_node) || !has_node(to_node)) {
-        return Result<void>(Error{"Node does not exist", kErrorConnectionNodeNotFound});
+        return Result<void>(
+            Error{"Node does not exist", error_codes::graph_connection::NodeNotFound});
     }
 
     if (from_node == to_node) {
-        return Result<void>(Error{"Self-connection is not allowed", kErrorConnectionSelfReference});
+        return Result<void>(
+            Error{"Self-connection is not allowed", error_codes::graph_connection::SelfReference});
     }
 
     const auto* from_node_ptr = get_node(from_node);
@@ -430,17 +419,18 @@ auto Graph::validate_connection(NodeId from_node,
     const auto* source_port = from_node_ptr->find_port(from_port);
     if (source_port == nullptr) {
         return Result<void>(
-            Error{"Source port does not exist", kErrorConnectionSourcePortNotFound});
+            Error{"Source port does not exist", error_codes::graph_connection::SourcePortNotFound});
     }
 
     const auto* target_port = to_node_ptr->find_port(to_port);
     if (target_port == nullptr) {
         return Result<void>(
-            Error{"Target port does not exist", kErrorConnectionTargetPortNotFound});
+            Error{"Target port does not exist", error_codes::graph_connection::TargetPortNotFound});
     }
 
     if (!source_port->can_connect_to(*target_port)) {
-        return Result<void>(Error{"Incompatible port types", kErrorConnectionTypeMismatch});
+        return Result<void>(
+            Error{"Incompatible port types", error_codes::graph_connection::TypeMismatch});
     }
 
     const bool duplicate_connection =
@@ -450,7 +440,8 @@ auto Graph::validate_connection(NodeId from_node,
         });
 
     if (duplicate_connection) {
-        return Result<void>(Error{"Duplicate connection", kErrorConnectionDuplicate});
+        return Result<void>(
+            Error{"Duplicate connection", error_codes::graph_connection::DuplicateConnection});
     }
 
     return Result<void>();
@@ -460,6 +451,9 @@ auto Graph::generate_connection_id() -> ConnectionId {
     return ConnectionId{next_connection_id_.value++};
 }
 
+// Вход/выход: удаляет все входящие/исходящие связи для узла из всех внутренних индексов.
+// Edge cases: дубли ConnectionId в in/out списках удаляются один раз через set.
+// Почему так: централизованное удаление через disconnect сохраняет инварианты lookup/adjacency.
 auto Graph::remove_node_connections(NodeId node) -> void {
     std::unordered_set<ConnectionId> to_remove;
 

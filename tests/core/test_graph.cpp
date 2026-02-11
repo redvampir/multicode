@@ -4,6 +4,7 @@
 #include <catch2/catch_all.hpp>
 
 #define private public
+#include "visprog/core/ErrorCodes.hpp"
 #include "visprog/core/Graph.hpp"
 #undef private
 
@@ -159,8 +160,9 @@ TEST_CASE("Graph: validate ловит повреждённые связи и и�
 
         const auto result = graph.validate();
         REQUIRE_FALSE(result.is_valid);
-        REQUIRE(std::ranges::any_of(result.errors,
-                                    [](const Error& error) { return error.code == 510; }));
+        REQUIRE(std::ranges::any_of(result.errors, [](const Error& error) {
+            return error.code == error_codes::graph_validation::BrokenNodeReference;
+        }));
     }
 
     SECTION("несоответствие типов портов") {
@@ -168,8 +170,9 @@ TEST_CASE("Graph: validate ловит повреждённые связи и и�
 
         const auto result = graph.validate();
         REQUIRE_FALSE(result.is_valid);
-        REQUIRE(std::ranges::any_of(result.errors,
-                                    [](const Error& error) { return error.code == 513; }));
+        REQUIRE(std::ranges::any_of(result.errors, [](const Error& error) {
+            return error.code == error_codes::graph_validation::TypeMismatch;
+        }));
     }
 
     SECTION("несогласованность lookup-индекса") {
@@ -177,7 +180,8 @@ TEST_CASE("Graph: validate ловит повреждённые связи и и�
 
         const auto result = graph.validate();
         REQUIRE_FALSE(result.is_valid);
-        REQUIRE(std::ranges::any_of(result.errors,
-                                    [](const Error& error) { return error.code == 512; }));
+        REQUIRE(std::ranges::any_of(result.errors, [](const Error& error) {
+            return error.code == error_codes::graph_validation::LookupMismatch;
+        }));
     }
 }

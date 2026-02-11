@@ -258,10 +258,12 @@ export class CppCodeGenerator implements ICodeGenerator {
       }
     }
     
+    const processedErrors = this.postProcessErrors(context.errors);
+
     return {
-      success: context.errors.length === 0,
+      success: processedErrors.length === 0,
       code,
-      errors: context.errors,
+      errors: processedErrors,
       warnings: context.warnings,
       sourceMap: context.sourceMap,
       stats: {
@@ -270,6 +272,42 @@ export class CppCodeGenerator implements ICodeGenerator {
         generationTimeMs: performance.now() - startTime,
       },
     };
+  }
+
+  /**
+   * Пост-обработка ошибок генерации.
+   *
+   * INVARIANT: сохраняем стабильный порядок первого появления ошибки.
+   */
+  private postProcessErrors(errors: CodeGenError[], groupByNodeId = false): CodeGenError[] {
+    const uniqueErrors: CodeGenError[] = [];
+    const seen = new Set<string>();
+
+    for (const error of errors) {
+      const key = `${error.nodeId}\u0000${error.code}\u0000${error.message}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      uniqueErrors.push(error);
+    }
+
+    if (!groupByNodeId) {
+      return uniqueErrors;
+    }
+
+    const groupedByNode = new Map<string, CodeGenError[]>();
+    for (const error of uniqueErrors) {
+      const group = groupedByNode.get(error.nodeId);
+      if (group) {
+        group.push(error);
+      } else {
+        groupedByNode.set(error.nodeId, [error]);
+      }
+    }
+
+    return Array.from(groupedByNode.values()).flat();
   }
 
   private hasFunctionWithMultipleOutputs(functions: BlueprintFunction[]): boolean {

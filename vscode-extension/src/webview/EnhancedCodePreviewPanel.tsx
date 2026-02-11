@@ -269,7 +269,9 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       return [] as string[];
     }
 
-    const hasUnknownNodes = graph.nodes.some((node) => !(node.type in NODE_TYPE_DEFINITIONS));
+    const hasUnknownNodes = graph.nodes.some(
+      (node) => !Object.prototype.hasOwnProperty.call(NODE_TYPE_DEFINITIONS, node.type),
+    );
     if (!hasUnknownNodes) {
       return [] as string[];
     }

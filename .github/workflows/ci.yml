@@ -61,3 +61,18 @@ jobs:
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --verbose --progress
+
+      - name: Debug CTest failure log
+        if: failure()
+        run: |
+          echo "CTest failed. Showing build/Testing/Temporary/LastTest.log (if present):"
+          if [ -f build/Testing/Temporary/LastTest.log ]; then
+            cat build/Testing/Temporary/LastTest.log
+          else
+            echo "LastTest.log not found at build/Testing/Temporary/LastTest.log"
+          fi
+          echo "Tip: for reruns use -R '<pattern>' to focus on problematic suites, e.g.:"
+          echo "ctest --test-dir build --output-on-failure --verbose --progress -R '<pattern>'"

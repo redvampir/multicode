@@ -419,6 +419,64 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('switch (multi_gate_index_multigate)');
     });
 
+    it('should use deterministic random generator for MultiGate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-rng');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-rng', 'multigate-rng-exec-in'),
+          createEdge('multigate-rng', 'multigate-rng-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static std::mt19937 multi_gate_rng_multigaterng');
+      expect(result.code).toContain('std::uniform_int_distribution<int>');
+    });
+
+    it('should warn about partially connected MultiGate outputs', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-partial');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-partial', 'multigate-partial-exec-in'),
+          createEdge('multigate-partial', 'multigate-partial-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('MultiGate: подключено 1 из 3 выходов Out-*'))).toBe(true);
+    });
+
+    it('should warn about partially connected Parallel outputs', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel-partial');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, parallelNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'parallel-partial', 'parallel-partial-exec-in'),
+          createEdge('parallel-partial', 'parallel-partial-thread-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('Parallel: подключено 1 из 2 Thread-веток'))).toBe(true);
+    });
+
     it('should generate ForEach', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const forEachNode = createNode('ForEach', { x: 200, y: 0 }, 'foreach');

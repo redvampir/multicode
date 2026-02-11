@@ -254,6 +254,9 @@ export class ParallelNodeGenerator extends BaseNodeGenerator {
     const ind = helpers.indent();
     const lines: string[] = [];
 
+    const threadGroupVar = `parallel_threads_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const threadErrorVar = `parallel_error_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+
     const threadPorts = node.outputs
       .filter(port => port.id.includes('thread-'))
       .sort((a, b) => {
@@ -271,23 +274,49 @@ export class ParallelNodeGenerator extends BaseNodeGenerator {
       }
     }
 
+    if (threadPorts.length > connectedThreads.length) {
+      helpers.addWarning(
+        node.id,
+        CodeGenWarningCode.EMPTY_BRANCH,
+        `Parallel: подключено ${connectedThreads.length} из ${threadPorts.length} Thread-веток`
+      );
+    }
+
     if (connectedThreads.length === 0) {
       helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Parallel: нет подключённых Thread-веток');
     } else {
-      lines.push(`${ind}std::vector<std::thread> parallel_threads_${node.id.replace(/[^a-zA-Z0-9]/g, '')};`);
+      lines.push(`${ind}std::vector<std::thread> ${threadGroupVar};`);
+      lines.push(`${ind}std::exception_ptr ${threadErrorVar};`);
 
       for (const threadNode of connectedThreads) {
-        lines.push(`${ind}parallel_threads_${node.id.replace(/[^a-zA-Z0-9]/g, '')}.emplace_back([&]() {`);
+        lines.push(`${ind}${threadGroupVar}.emplace_back([&]() {`);
+        helpers.pushIndent();
+        lines.push(`${helpers.indent()}try {`);
         helpers.pushIndent();
         const threadLines = helpers.generateFromNode(threadNode);
         lines.push(...threadLines);
         helpers.popIndent();
+        lines.push(`${helpers.indent()}} catch (...) {`);
+        helpers.pushIndent();
+        lines.push(`${helpers.indent()}if (!${threadErrorVar}) {`);
+        helpers.pushIndent();
+        lines.push(`${helpers.indent()}${threadErrorVar} = std::current_exception();`);
+        helpers.popIndent();
+        lines.push(`${helpers.indent()}}`);
+        helpers.popIndent();
+        lines.push(`${helpers.indent()}}`);
+        helpers.popIndent();
         lines.push(`${ind}});`);
       }
 
-      lines.push(`${ind}for (auto& thread : parallel_threads_${node.id.replace(/[^a-zA-Z0-9]/g, '')}) {`);
+      lines.push(`${ind}for (auto& thread : ${threadGroupVar}) {`);
       helpers.pushIndent();
       lines.push(`${helpers.indent()}thread.join();`);
+      helpers.popIndent();
+      lines.push(`${ind}}`);
+      lines.push(`${ind}if (${threadErrorVar}) {`);
+      helpers.pushIndent();
+      lines.push(`${helpers.indent()}std::rethrow_exception(${threadErrorVar});`);
       helpers.popIndent();
       lines.push(`${ind}}`);
     }
@@ -495,6 +524,7 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
     const ind = helpers.indent();
     const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '');
     const indexVar = `multi_gate_index_${suffix}`;
+    const rngVar = `multi_gate_rng_${suffix}`;
     const randomExpr = helpers.getInputExpression(node, 'is-random') ?? 'false';
     const loopExpr = helpers.getInputExpression(node, 'loop') ?? 'true';
 
@@ -515,7 +545,19 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
       }
     }
 
-    const lines: string[] = [`${ind}static int ${indexVar} = 0;`];
+    const deterministicSeed = Array.from(node.id).reduce((acc, ch) => ((acc * 131) + ch.charCodeAt(0)) >>> 0, 0);
+    const lines: string[] = [
+      `${ind}static int ${indexVar} = 0;`,
+      `${ind}static std::mt19937 ${rngVar}(${deterministicSeed});`,
+    ];
+
+    if (outputPorts.length > branches.length) {
+      helpers.addWarning(
+        node.id,
+        CodeGenWarningCode.EMPTY_BRANCH,
+        `MultiGate: подключено ${branches.length} из ${outputPorts.length} выходов Out-*`
+      );
+    }
 
     if (branches.length === 0) {
       lines.push(`${ind}// MultiGate: нет подключённых выходов Out-*`);
@@ -525,7 +567,8 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
 
     lines.push(`${ind}if (${randomExpr}) {`);
     helpers.pushIndent();
-    lines.push(`${helpers.indent()}const int multi_gate_pick_${suffix} = std::rand() % ${branches.length};`);
+    lines.push(`${helpers.indent()}std::uniform_int_distribution<int> multi_gate_dist_${suffix}(0, ${branches.length - 1});`);
+    lines.push(`${helpers.indent()}const int multi_gate_pick_${suffix} = multi_gate_dist_${suffix}(${rngVar});`);
     lines.push(`${helpers.indent()}switch (multi_gate_pick_${suffix}) {`);
     helpers.pushIndent();
 
@@ -547,6 +590,11 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
     lines.push(`${ind}} else {`);
 
     helpers.pushIndent();
+    lines.push(`${helpers.indent()}if (${indexVar} >= ${branches.length}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}${indexVar} = ${branches.length - 1};`);
+    helpers.popIndent();
+    lines.push(`${helpers.indent()}}`);
     lines.push(`${helpers.indent()}switch (${indexVar}) {`);
     helpers.pushIndent();
 
@@ -568,7 +616,7 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
     helpers.pushIndent();
     lines.push(`${helpers.indent()}${indexVar} = (${indexVar} + 1) % ${branches.length};`);
     helpers.popIndent();
-    lines.push(`${helpers.indent()}} else if (${indexVar} < ${branches.length}) {`);
+    lines.push(`${helpers.indent()}} else if (${indexVar} < ${branches.length - 1}) {`);
     helpers.pushIndent();
     lines.push(`${helpers.indent()}++${indexVar};`);
     helpers.popIndent();

@@ -1,26 +1,63 @@
-﻿name: C++ CI
+name: C++ CI Smoke
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [main, develop]
+    paths:
+      - 'CMakeLists.txt'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'vcpkg.json'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cpp-build.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'CMakeLists.txt'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'vcpkg.json'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cpp-build.yml'
+
+concurrency:
+  group: cpp-ci-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_TYPE: Release
+  CXX_COMPILER: g++-12
+  CMAKE_GENERATOR: Ninja
+  VCPKG_COMMIT_ID: 10b7a178346f3f0abef60cecd5130e295afd8da4
 
 jobs:
-  build:
+  smoke-build-linux:
+    name: Linux smoke (configure + build)
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y cmake g++-11 clang-format
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ${{ env.CXX_COMPILER }}
 
-    - name: Configure CMake
-      run: cmake -B build -DCMAKE_CXX_COMPILER=g++-11
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
 
-    - name: Build
-      run: cmake --build build
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -G "${{ env.CMAKE_GENERATOR }}" \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_CXX_COMPILER=${{ env.CXX_COMPILER }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
 
-    - name: Run tests
-      run: ctest --test-dir build
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}

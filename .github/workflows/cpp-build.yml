@@ -1,171 +1,198 @@
-﻿name: C++ Build and Test
+name: C++ Build and Test
 
 on:
-  push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+    paths:
+      - 'CMakeLists.txt'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'vcpkg.json'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cpp-build.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'CMakeLists.txt'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'vcpkg.json'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cpp-build.yml'
+
+concurrency:
+  group: cpp-full-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   BUILD_TYPE: Release
+  CXX_COMPILER: g++-12
+  CMAKE_GENERATOR: Ninja
+  VCPKG_COMMIT_ID: 10b7a178346f3f0abef60cecd5130e295afd8da4
 
 jobs:
   build-windows:
     name: Windows MSVC Build
     runs-on: windows-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup MSVC
-      uses: microsoft/setup-msbuild@v2
 
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11.5
-      with:
-        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
-      
-    - name: Configure CMake
-      run: |
-        # РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅР°СЏ СѓСЃС‚Р°РЅРѕРІРєР° UTF-8 РґР»СЏ РїСЂРµРґРѕС‚РІСЂР°С‰РµРЅРёСЏ РїСЂРѕР±Р»РµРј СЃ РєРёСЂРёР»Р»РёС†РµР№
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $env:PYTHONUTF8 = "1"
-        
-        cmake -B build -S . `
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-      
-    - name: Build
-      run: cmake --build build --config ${{ env.BUILD_TYPE }}
-      
-    - name: Test
-      working-directory: build
-      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
-      
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4.3.3
-      with:
-        name: multicode-windows-${{ env.BUILD_TYPE }}
-        path: |
-          build/${{ env.BUILD_TYPE }}/multicode_core.lib
-          build/${{ env.BUILD_TYPE }}/multicode_tests.exe
-          
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $env:PYTHONUTF8 = "1"
+
+          cmake -B build -S . `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Test
+        working-directory: build
+        run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: multicode-windows-${{ env.BUILD_TYPE }}
+          path: |
+            build/${{ env.BUILD_TYPE }}/multicode_core.lib
+            build/${{ env.BUILD_TYPE }}/multicode_tests.exe
+
   build-linux:
     name: Linux GCC Build
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build
-        
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11.5
-      with:
-        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
-        
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-          -G Ninja
-      
-    - name: Build
-      run: cmake --build build --config ${{ env.BUILD_TYPE }}
-      
-    - name: Test
-      working-directory: build
-      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
-      
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4.3.3
-      with:
-        name: multicode-linux-${{ env.BUILD_TYPE }}
-        path: |
-          build/libmulticode_core.a
-          build/multicode_tests
-          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ${{ env.CXX_COMPILER }}
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -G "${{ env.CMAKE_GENERATOR }}" \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_CXX_COMPILER=${{ env.CXX_COMPILER }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Test
+        working-directory: build
+        run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: multicode-linux-${{ env.BUILD_TYPE }}
+          path: |
+            build/libmulticode_core.a
+            build/multicode_tests
+
   code-quality:
     name: Code Quality Checks
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential ninja-build clang-tidy
-        
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11.5
-      with:
-        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
-        
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      
-    - name: Run clang-tidy
-      run: |
-        clang-tidy --version
-        # Run clang-tidy on source files
-        find src include -name '*.cpp' -o -name '*.hpp' | \
-          xargs clang-tidy -p build --warnings-as-errors='*'
-      continue-on-error: true
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cmake ninja-build ${{ env.CXX_COMPILER }}
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . \
+            -G "${{ env.CMAKE_GENERATOR }}" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=${{ env.CXX_COMPILER }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        run: |
+          clang-tidy --version
+          find src include -name '*.cpp' -o -name '*.hpp' | \
+            xargs clang-tidy -p build --warnings-as-errors='*'
+        continue-on-error: true
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build lcov
-        
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11.5
-      with:
-        vcpkgGitCommitId: '10b7a178346f3f0abef60cecd5130e295afd8da4'
-        
-    - name: Configure CMake with Coverage
-      run: |
-        cmake -B build -S . \
-          -DCMAKE_BUILD_TYPE=Coverage \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-          -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
-      
-    - name: Build
-      run: cmake --build build
-      
-    - name: Test
-      working-directory: build
-      run: ctest --output-on-failure
-      
-    - name: Generate coverage report
-      run: |
-        lcov --capture --directory build --output-file coverage.info
-        lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info
-        lcov --list coverage.info
-        
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4.5.0
-      with:
-        files: ./coverage.info
-        flags: unittests
-        name: codecov-multicode
-      continue-on-error: true
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build lcov ${{ env.CXX_COMPILER }}
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Configure CMake with Coverage
+        run: |
+          cmake -B build -S . \
+            -G "${{ env.CMAKE_GENERATOR }}" \
+            -DCMAKE_BUILD_TYPE=Coverage \
+            -DCMAKE_CXX_COMPILER=${{ env.CXX_COMPILER }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory build --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4.5.0
+        with:
+          files: ./coverage.info
+          flags: unittests
+          name: codecov-multicode
+        continue-on-error: true

@@ -10,8 +10,11 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
+import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
 
 // ============================================
 // Стили
@@ -289,14 +292,44 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   
   // Генерируем код
   const result: CodeGenerationResult = useMemo(() => {
-    const generator = new CppCodeGenerator();
-    return generator.generate(graph, {
-      includeHeaders: true,
-      generateMainWrapper: true,
-      includeRussianComments: true,
-      includeSourceMarkers: true,
-    });
-  }, [graph]);
+    try {
+      const generator = createGenerator(graph.language);
+      return generator.generate(graph, {
+        includeHeaders: true,
+        generateMainWrapper: true,
+        includeRussianComments: true,
+        includeSourceMarkers: true,
+      });
+    } catch (error) {
+      if (error instanceof UnsupportedLanguageError) {
+        const languageError = createUnsupportedLanguageError(error.language);
+        return {
+          success: false,
+          code: displayLanguage === 'ru'
+            ? `// Предпросмотр недоступен: ${languageError.message}`
+            : `// Preview unavailable: ${languageError.messageEn}`,
+          errors: [languageError],
+          warnings: [],
+          sourceMap: [],
+          stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+        };
+      }
+
+      return {
+        success: false,
+        code: displayLanguage === 'ru' ? '// Ошибка генерации кода' : '// Code generation failed',
+        errors: [{
+          nodeId: '',
+          code: CodeGenErrorCode.UNKNOWN_NODE_TYPE,
+          message: String(error),
+          messageEn: String(error),
+        }],
+        warnings: [],
+        sourceMap: [],
+        stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+      } as CodeGenerationResult;
+    }
+  }, [graph, displayLanguage]);
   
   // Разбиваем код на строки
   const lines = useMemo(() => result.code.split('\n'), [result.code]);
@@ -355,8 +388,12 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   
   if (!visible) return null;
   
+  const supportInfo = getLanguageSupportInfo(graph.language);
+
   const t = {
-    title: displayLanguage === 'ru' ? 'C++ Код' : 'C++ Code',
+    title: displayLanguage === 'ru'
+      ? `Код (${graph.language.toUpperCase()})`
+      : `Code (${graph.language.toUpperCase()})`,
     copy: displayLanguage === 'ru' ? 'Копировать' : 'Copy',
     copied: displayLanguage === 'ru' ? 'Скопировано!' : 'Copied!',
     close: displayLanguage === 'ru' ? 'Закрыть' : 'Close',
@@ -365,6 +402,9 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
     time: displayLanguage === 'ru' ? 'мс' : 'ms',
     errors: displayLanguage === 'ru' ? 'Ошибки' : 'Errors',
     warnings: displayLanguage === 'ru' ? 'Предупреждения' : 'Warnings',
+    supportStatus: getTranslation(displayLanguage, 'codegen.supportStatus'),
+    supportReady: getTranslation(displayLanguage, 'codegen.support.ready'),
+    supportMissing: getTranslation(displayLanguage, 'codegen.support.unsupported'),
   };
   
   return (
@@ -374,6 +414,9 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
         <div style={styles.title}>
           <span>{'</>'}</span>
           <span>{t.title}</span>
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {t.supportStatus}: {supportInfo.supportsGenerator ? t.supportReady : t.supportMissing}
+          </span>
         </div>
         <div style={styles.headerActions}>
           <button

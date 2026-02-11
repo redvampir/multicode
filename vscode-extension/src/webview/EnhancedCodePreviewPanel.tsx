@@ -11,8 +11,11 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
-import type { CodeGenerationResult, CodeGenErrorCode } from '../codegen/types';
+import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
+import { CodeGenErrorCode } from '../codegen/types';
+import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
 
 // ============================================
 // Расширенные стили
@@ -241,6 +244,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const [showMinimap, setShowMinimap] = useState(true);
   const [showFunctionsPanel, setShowFunctionsPanel] = useState(false);  
   const codeRef = useRef<HTMLDivElement>(null);
+  const supportInfo = getLanguageSupportInfo(graph.language);
 
   // Генерация кода
   useEffect(() => {
@@ -248,7 +252,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       setIsLoading(true);
       
       try {
-        const generator = new CppCodeGenerator();
+        const generator = createGenerator(graph.language);
         const generationResult = generator.generate(graph);
         
         setResult(generationResult);
@@ -275,10 +279,26 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
         setLineInfos(lineInfos);
       } catch (error) {
         console.error('Error generating code:', error);
+
+        if (error instanceof UnsupportedLanguageError) {
+          const languageError = createUnsupportedLanguageError(error.language);
+          setResult({
+            success: false,
+            code: locale === 'ru'
+              ? `// Предпросмотр недоступен: ${languageError.message}`
+              : `// Preview unavailable: ${languageError.messageEn}`,
+            errors: [languageError],
+            warnings: [],
+            sourceMap: [],
+            stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+          });
+          return;
+        }
+
         setResult({
           success: false,
-          code: '// Ошибка генерации кода',
-          errors: [{ message: String(error), code: 'INTERNAL_ERROR' as CodeGenErrorCode, messageEn: 'Generation error', nodeId: '' }],
+          code: locale === 'ru' ? '// Ошибка генерации кода' : '// Code generation failed',
+          errors: [{ message: String(error), code: CodeGenErrorCode.UNKNOWN_NODE_TYPE, messageEn: 'Generation error', nodeId: '' }],
           warnings: [],
           sourceMap: [],
           stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
@@ -289,7 +309,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     };
     
     generateCode();
-  }, [graph, onGenerateComplete]);
+  }, [graph, locale, onGenerateComplete]);
 
   // Клик на строку кода
   const handleLineClick = useCallback((lineInfo: CodeLineInfo) => {
@@ -503,10 +523,13 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.title}>
-          {locale === 'ru' ? '🔍 Предпросмотр C++' : '🔍 C++ Preview'}
+          {locale === 'ru' ? `🔍 Предпросмотр ${graph.language.toUpperCase()}` : `🔍 ${graph.language.toUpperCase()} Preview`}
           {isLoading && <span style={{ color: '#f9e2af' }}>⏳</span>}
           {result?.success === false && <span style={{ color: '#f38ba8' }}>❌</span>}
           {result?.success === true && <span style={{ color: '#a6e3a1' }}>✅</span>}
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {getTranslation(locale, 'codegen.supportStatus')}: {supportInfo.supportsGenerator ? getTranslation(locale, 'codegen.support.ready') : getTranslation(locale, 'codegen.support.unsupported')}
+          </span>
         </div>
         <div style={styles.headerActions}>
           <div style={styles.windowControls}>

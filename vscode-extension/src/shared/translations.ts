@@ -68,6 +68,10 @@ export type TranslationKey =
   | 'toast.close'
   | 'toast.generation.success'
   | 'toast.generation.error'
+  | 'codegen.unsupportedLanguage'
+  | 'codegen.supportStatus'
+  | 'codegen.support.ready'
+  | 'codegen.support.unsupported'
   | 'search.placeholder'
   | 'search.hint'
   | 'search.results'
@@ -193,6 +197,10 @@ const translations: Record<Locale, TranslationMap> = {
     'toast.close': 'Закрыть уведомление',
     'toast.generation.success': 'Код успешно сгенерирован',
     'toast.generation.error': 'Ошибка генерации кода',
+    'codegen.unsupportedLanguage': 'Язык {language} пока не поддерживается кодогенератором',
+    'codegen.supportStatus': 'Статус поддержки',
+    'codegen.support.ready': 'готово',
+    'codegen.support.unsupported': 'не поддерживается',
     'search.placeholder': 'Поиск узла или связи',
     'search.hint': 'Ctrl+F — фокус на поиск, Enter — следующее, Shift+Enter — предыдущее',
     'search.results': 'Совпадений: {count}',
@@ -315,6 +323,10 @@ const translations: Record<Locale, TranslationMap> = {
     'toast.close': 'Close notification',
     'toast.generation.success': 'Code generated successfully',
     'toast.generation.error': 'Code generation error',
+    'codegen.unsupportedLanguage': 'Language {language} is not supported by code generator yet',
+    'codegen.supportStatus': 'Support status',
+    'codegen.support.ready': 'ready',
+    'codegen.support.unsupported': 'unsupported',
     'search.placeholder': 'Search nodes or edges',
     'search.hint': 'Ctrl+F — focus search, Enter — next, Shift+Enter — previous',
     'search.results': 'Matches: {count}',

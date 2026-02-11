@@ -12,7 +12,9 @@ export type PortDataType =
   | 'double'      // Двойная точность (зелёный)
   | 'string'      // Строка (пурпурный/розовый)
   | 'vector'      // Вектор (жёлтый)
-  | 'object'      // Объект/класс (синий)
+  | 'object'      // Объект (синий, legacy)
+  | 'pointer'     // Указатель/ссылка на объект
+  | 'class'       // Класс/экземпляр по значению
   | 'array'       // Массив (оранжевый)
   | 'any';        // Wildcard (серый)
 
@@ -42,6 +44,8 @@ export const PORT_TYPE_COLORS: Record<PortDataType, { main: string; light: strin
   string:    { main: '#E91E63', light: '#EC407A', dark: '#D81B60' },
   vector:    { main: '#FFC107', light: '#FFCA28', dark: '#FFB300' },
   object:    { main: '#2196F3', light: '#42A5F5', dark: '#1E88E5' },
+  pointer:   { main: '#1E88E5', light: '#42A5F5', dark: '#1565C0' },
+  class:     { main: '#3F51B5', light: '#5C6BC0', dark: '#303F9F' },
   array:     { main: '#FF9800', light: '#FFA726', dark: '#FB8C00' },
   any:       { main: '#9E9E9E', light: '#BDBDBD', dark: '#757575' },
 };
@@ -57,6 +61,8 @@ export const PORT_TYPE_ICONS: Record<PortDataType, string> = {
   string:    '"',
   vector:    '↗',
   object:    '◆',
+  pointer:   '🔗',
+  class:     '🏷',
   array:     '[]',
   any:       '*',
 };
@@ -87,6 +93,12 @@ export function areTypesCompatible(from: PortDataType, to: PortDataType): boolea
     return true;
   }
   
+  // Объектные типы совместимы между собой (legacy object + новые pointer/class)
+  const objectLikeTypes: PortDataType[] = ['object', 'pointer', 'class'];
+  if (objectLikeTypes.includes(from) && objectLikeTypes.includes(to)) {
+    return true;
+  }
+
   // Всё может конвертироваться в string
   if (to === 'string') {
     return true;
@@ -107,6 +119,8 @@ export function getTypeDisplayName(type: PortDataType): string {
     string:    'String',
     vector:    'Vector',
     object:    'Object',
+    pointer:   'Pointer',
+    class:     'Class',
     array:     'Array',
     any:       'Wildcard',
   };

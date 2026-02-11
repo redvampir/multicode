@@ -1,7 +1,104 @@
-import type { GraphEdge, GraphEdgeKind, GraphState } from './graphState';
+import type { GraphEdge, GraphEdgeKind, GraphNode, GraphState } from './graphState';
 import type { ValidationIssue, ValidationResult } from './messages';
 
 export type { ValidationIssue, ValidationResult } from './messages';
+
+type EmbeddedNode = {
+  type?: unknown;
+  inputs?: unknown;
+  outputs?: unknown;
+};
+
+type EmbeddedEdge = {
+  kind?: unknown;
+  sourcePort?: unknown;
+  targetPort?: unknown;
+};
+
+type EmbeddedPort = {
+  dataType?: unknown;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isGraphEdgeKind = (value: unknown): value is GraphEdgeKind =>
+  value === 'execution' || value === 'data';
+
+const toEmbeddedNode = (value: unknown): EmbeddedNode | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return value as EmbeddedNode;
+};
+
+const toEmbeddedEdge = (value: unknown): EmbeddedEdge | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return value as EmbeddedEdge;
+};
+
+const toEmbeddedPorts = (value: unknown): EmbeddedPort[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => isRecord(item)) as EmbeddedPort[];
+};
+
+const getEffectiveEdgeKind = (edge: GraphEdge): GraphEdgeKind => {
+  if (isGraphEdgeKind(edge.kind)) {
+    return edge.kind;
+  }
+  const embedded = toEmbeddedEdge(edge.blueprintEdge);
+  if (embedded && isGraphEdgeKind(embedded.kind)) {
+    return embedded.kind;
+  }
+  return 'execution';
+};
+
+const getEmbeddedNodeType = (node: GraphNode): string | null => {
+  const embedded = toEmbeddedNode(node.blueprintNode);
+  if (!embedded || typeof embedded.type !== 'string') {
+    return null;
+  }
+  return embedded.type;
+};
+
+const hasExecutionPorts = (node: GraphNode): boolean => {
+  const embedded = toEmbeddedNode(node.blueprintNode);
+  if (!embedded) {
+    return false;
+  }
+  const ports = [...toEmbeddedPorts(embedded.inputs), ...toEmbeddedPorts(embedded.outputs)];
+  return ports.some((port) => port.dataType === 'execution');
+};
+
+const isExecutionRelevantNode = (node: GraphNode): boolean => {
+  if (node.type === 'Start' || node.type === 'End' || node.type === 'Function') {
+    return true;
+  }
+  if (node.type === 'Variable') {
+    // Для Blueprint-переменных учитываем реальные execution-порты.
+    return hasExecutionPorts(node);
+  }
+  return true;
+};
+
+const isGetSetVariableLink = (source: GraphNode, target: GraphNode): boolean => {
+  const sourceType = getEmbeddedNodeType(source);
+  const targetType = getEmbeddedNodeType(target);
+  return sourceType === 'GetVariable' && targetType === 'SetVariable';
+};
+
+const getEdgeHandleSignature = (edge: GraphEdge): { sourceHandle: string; targetHandle: string } => {
+  const embedded = toEmbeddedEdge(edge.blueprintEdge);
+  const sourceHandle =
+    embedded && typeof embedded.sourcePort === 'string' ? embedded.sourcePort : '';
+  const targetHandle =
+    embedded && typeof embedded.targetPort === 'string' ? embedded.targetPort : '';
+  return { sourceHandle, targetHandle };
+};
 
 export const validateGraphState = (state: GraphState): ValidationResult => {
   const errors: string[] = [];
@@ -69,7 +166,7 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
       return;
     }
 
-    const kind: GraphEdgeKind = edge.kind ?? 'execution';
+    const kind = getEffectiveEdgeKind(edge);
     if (kind === 'execution') {
       executionEdges.push(edge);
       if (source.type === 'End') {
@@ -111,11 +208,14 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
 
   const seenEdges = new Set<string>();
   state.edges.forEach((edge) => {
-    const signature = `${edge.source}->${edge.target}:${edge.kind ?? 'execution'}`;
+    const kind = getEffectiveEdgeKind(edge);
+    const { sourceHandle, targetHandle } = getEdgeHandleSignature(edge);
+    const signature =
+      `${edge.source}->${edge.target}:${kind}:${sourceHandle}:${targetHandle}`;
     if (seenEdges.has(signature)) {
       pushIssue(
         'warning',
-        `Duplicate edge ${edge.source} -> ${edge.target} (${edge.kind ?? 'execution'}).`,
+        `Duplicate edge ${edge.source} -> ${edge.target} (${kind}).`,
         { edges: [edge.id] }
       );
     } else {
@@ -153,9 +253,9 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
   }
 
   if (startNode && executionEdges.length) {
-    const reachable = traverse(startNode.id, state);
+    const reachable = traverse(startNode.id, executionEdges);
     const unreachable = state.nodes.filter(
-      (node) => node.type !== 'Start' && !reachable.has(node.id)
+      (node) => node.type !== 'Start' && isExecutionRelevantNode(node) && !reachable.has(node.id)
     );
     if (unreachable.length) {
       pushIssue(
@@ -166,7 +266,7 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
     }
   }
 
-  const cycle = detectCycle(state);
+  const cycle = detectCycle(state.nodes, executionEdges);
   if (cycle) {
     pushIssue('error', `Execution cycle detected: ${cycle.join(' -> ')}`, { nodes: cycle });
   }
@@ -178,6 +278,9 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
       return;
     }
     if (source.type === 'Variable' && target.type === 'Variable') {
+      if (isGetSetVariableLink(source, target)) {
+        return;
+      }
       pushIssue(
         'warning',
         `Data edge ${edge.source} -> ${edge.target} connects two Variable nodes.`,
@@ -194,7 +297,14 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
   };
 };
 
-const traverse = (startId: string, state: GraphState): Set<string> => {
+const traverse = (startId: string, executionEdges: GraphEdge[]): Set<string> => {
+  const adjacency = new Map<string, string[]>();
+  for (const edge of executionEdges) {
+    const list = adjacency.get(edge.source) ?? [];
+    list.push(edge.target);
+    adjacency.set(edge.source, list);
+  }
+
   const visited = new Set<string>();
   const queue: string[] = [startId];
 
@@ -204,23 +314,20 @@ const traverse = (startId: string, state: GraphState): Set<string> => {
       continue;
     }
     visited.add(current);
-    state.edges
-      .filter((edge) => (edge.kind ?? 'execution') === 'execution' && edge.source === current)
-      .forEach((edge) => queue.push(edge.target));
+    const targets = adjacency.get(current) ?? [];
+    targets.forEach((target) => queue.push(target));
   }
 
   return visited;
 };
 
-const detectCycle = (state: GraphState): string[] | null => {
+const detectCycle = (nodes: GraphNode[], executionEdges: GraphEdge[]): string[] | null => {
   const adjacency = new Map<string, string[]>();
-  state.edges
-    .filter((edge) => (edge.kind ?? 'execution') === 'execution')
-    .forEach((edge) => {
-      const list = adjacency.get(edge.source) ?? [];
-      list.push(edge.target);
-      adjacency.set(edge.source, list);
-    });
+  executionEdges.forEach((edge) => {
+    const list = adjacency.get(edge.source) ?? [];
+    list.push(edge.target);
+    adjacency.set(edge.source, list);
+  });
 
   const visited = new Set<string>();
   const stack = new Set<string>();
@@ -246,7 +353,7 @@ const detectCycle = (state: GraphState): string[] | null => {
     return null;
   };
 
-  for (const node of state.nodes) {
+  for (const node of nodes) {
     const cycle = dfs(node.id, []);
     if (cycle) {
       return cycle;

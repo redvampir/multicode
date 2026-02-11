@@ -434,6 +434,99 @@ describe('validator', () => {
 
         expect(result.warnings.some(w => w.includes('connects two Variable nodes'))).toBe(true);
       });
+
+      it('не должен предупреждать для валидной связи GetVariable -> SetVariable', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Get to Set',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            {
+              ...createNode('start', 'Start'),
+              blueprintNode: {
+                type: 'Start',
+                outputs: [{ id: 'exec-out', dataType: 'execution' }],
+              },
+            },
+            {
+              ...createNode('get-var', 'Variable', 'Получить'),
+              blueprintNode: {
+                type: 'GetVariable',
+                outputs: [{ id: 'value-out', dataType: 'int32' }],
+              },
+            },
+            {
+              ...createNode('set-var', 'Variable', 'Установить'),
+              blueprintNode: {
+                type: 'SetVariable',
+                inputs: [
+                  { id: 'exec-in', dataType: 'execution' },
+                  { id: 'value-in', dataType: 'int32' },
+                ],
+                outputs: [{ id: 'exec-out', dataType: 'execution' }],
+              },
+            },
+            {
+              ...createNode('end', 'End'),
+              blueprintNode: {
+                type: 'End',
+                inputs: [{ id: 'exec-in', dataType: 'execution' }],
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'e1',
+              source: 'start',
+              target: 'set-var',
+              kind: 'execution',
+              blueprintEdge: {
+                id: 'e1',
+                sourceNode: 'start',
+                sourcePort: 'exec-out',
+                targetNode: 'set-var',
+                targetPort: 'exec-in',
+                kind: 'execution',
+              },
+            },
+            {
+              id: 'e2',
+              source: 'get-var',
+              target: 'set-var',
+              kind: 'data',
+              blueprintEdge: {
+                id: 'e2',
+                sourceNode: 'get-var',
+                sourcePort: 'value-out',
+                targetNode: 'set-var',
+                targetPort: 'value-in',
+                kind: 'data',
+                dataType: 'int32',
+              },
+            },
+            {
+              id: 'e3',
+              source: 'set-var',
+              target: 'end',
+              kind: 'execution',
+              blueprintEdge: {
+                id: 'e3',
+                sourceNode: 'set-var',
+                sourcePort: 'exec-out',
+                targetNode: 'end',
+                targetPort: 'exec-in',
+                kind: 'execution',
+              },
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+
+        expect(result.warnings.some(w => w.includes('connects two Variable nodes'))).toBe(false);
+      });
     });
 
     describe('проверка достижимости', () => {
@@ -470,6 +563,36 @@ describe('validator', () => {
 
         expect(result.ok).toBe(true);
         expect(result.errors.filter(e => e.includes('Unreachable'))).toHaveLength(0);
+      });
+
+      it('не должен считать pure data узел недостижимой ошибкой', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Pure data node',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            createNode('start', 'Start'),
+            {
+              ...createNode('get-var', 'Variable', 'Получить'),
+              blueprintNode: {
+                type: 'GetVariable',
+                outputs: [{ id: 'value-out', dataType: 'int32' }],
+              },
+            },
+            createNode('func', 'Function'),
+            createNode('end', 'End'),
+          ],
+          edges: [
+            createEdge('e1', 'start', 'func'),
+            createEdge('e2', 'func', 'end'),
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+
+        expect(result.errors.some(e => e.includes('Unreachable') && e.includes('Получить'))).toBe(false);
       });
     });
 
@@ -665,6 +788,55 @@ describe('validator', () => {
         const result = validateGraphState(graph);
 
         expect(result.ok).toBe(true);
+      });
+
+      it('должен учитывать разные handle как разные связи при поиске дублей', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Handle duplicates',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            createNode('start', 'Start'),
+            createNode('func', 'Function'),
+            createNode('end', 'End'),
+          ],
+          edges: [
+            {
+              id: 'e1',
+              source: 'start',
+              target: 'func',
+              kind: 'execution',
+              blueprintEdge: {
+                id: 'e1',
+                sourceNode: 'start',
+                sourcePort: 'exec-out-a',
+                targetNode: 'func',
+                targetPort: 'exec-in',
+                kind: 'execution',
+              },
+            },
+            {
+              id: 'e2',
+              source: 'start',
+              target: 'func',
+              kind: 'execution',
+              blueprintEdge: {
+                id: 'e2',
+                sourceNode: 'start',
+                sourcePort: 'exec-out-b',
+                targetNode: 'func',
+                targetPort: 'exec-in',
+                kind: 'execution',
+              },
+            },
+            createEdge('e3', 'func', 'end'),
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+        expect(result.warnings.some(w => w.includes('Duplicate edge start -> func'))).toBe(false);
       });
     });
   });

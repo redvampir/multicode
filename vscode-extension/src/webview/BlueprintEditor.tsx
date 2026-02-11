@@ -25,6 +25,7 @@ import {
   XYPosition,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import './blueprint.css';
 
 import { blueprintNodeTypes, BlueprintNodeData, BlueprintFlowNode, BlueprintFlowEdge } from './nodes/BlueprintNode';
 import { 
@@ -36,6 +37,7 @@ import {
   createCallUserFunctionNode,
   BlueprintNodeType as NodeType,
   NodeTypeDefinition,
+  VARIABLE_TYPE_COLORS,
 } from '../shared/blueprintTypes';
 import { PORT_TYPE_COLORS, areTypesCompatible } from '../shared/portTypes';
 import { CodePreviewPanel } from './CodePreviewPanel';
@@ -50,6 +52,17 @@ import {
 import { FunctionListPanel } from './FunctionListPanel';
 import { VariableListPanel } from './VariableListPanel';
 import type { BlueprintFunction } from '../shared/blueprintTypes';
+import {
+  type AvailableVariableBinding,
+  bindVariableToNode,
+  findNonOverlappingPosition,
+  removeNodesByDeletedVariables,
+  resolveVariableForNode,
+} from './variableNodeBinding';
+import {
+  resolveVariableValuesPreview,
+  type ResolvedVariableValues,
+} from './variableValueResolver';
 
 // ============================================
 // Преобразование данных
@@ -60,7 +73,8 @@ function blueprintToFlowNodes(
   displayLanguage: 'ru' | 'en',
   onLabelChange?: (nodeId: string, newLabel: string) => void,
   onPropertyChange?: (nodeId: string, property: string, value: unknown) => void,
-  availableVariables?: Array<{ id: string; name: string; nameRu: string; dataType: string }>
+  availableVariables?: AvailableVariableBinding[],
+  resolvedVariableValues?: ResolvedVariableValues
 ): BlueprintFlowNode[] {
   if (!nodes || !Array.isArray(nodes)) {
     console.warn('[BlueprintEditor] nodes is not an array:', nodes);
@@ -78,7 +92,8 @@ function blueprintToFlowNodes(
         displayLanguage, 
         onLabelChange,
         onPropertyChange,
-        availableVariables
+        availableVariables,
+        resolvedVariableValues,
       },
       selected: false,
     }));
@@ -245,6 +260,65 @@ function getActiveGraphData(
     isFunction: false,
   };
 }
+
+interface ReconciledGraphData {
+  nodes: BlueprintNodeType[];
+  edges: BlueprintEdge[];
+}
+
+const toAvailableVariableBinding = (variable: BlueprintVariable): AvailableVariableBinding => ({
+  id: variable.id,
+  name: variable.name ?? '',
+  nameRu: variable.nameRu ?? variable.name ?? '',
+  dataType: variable.dataType,
+  defaultValue: variable.defaultValue,
+  color: variable.color ?? VARIABLE_TYPE_COLORS[variable.dataType],
+});
+
+const bindVariableNodeIfNeeded = (
+  node: BlueprintNodeType,
+  variables: AvailableVariableBinding[],
+  displayLanguage: 'ru' | 'en'
+): BlueprintNodeType | null => {
+  if (node.type !== 'GetVariable' && node.type !== 'SetVariable') {
+    return node;
+  }
+
+  const variable = resolveVariableForNode(node, variables);
+  if (!variable) {
+    return null;
+  }
+
+  return bindVariableToNode(node, variable, displayLanguage);
+};
+
+const reconcileVariableNodesAndEdges = (
+  nodes: BlueprintNodeType[],
+  edges: BlueprintEdge[],
+  removedVariableIds: Set<string>,
+  variables: AvailableVariableBinding[],
+  displayLanguage: 'ru' | 'en'
+): ReconciledGraphData => {
+  const removedByIdResult = removeNodesByDeletedVariables(nodes, edges, removedVariableIds);
+
+  const boundNodes: BlueprintNodeType[] = [];
+  for (const node of removedByIdResult.nodes) {
+    const boundNode = bindVariableNodeIfNeeded(node, variables, displayLanguage);
+    if (boundNode) {
+      boundNodes.push(boundNode);
+    }
+  }
+
+  const validNodeIds = new Set(boundNodes.map((node) => node.id));
+  const boundEdges = removedByIdResult.edges.filter(
+    (edge) => validNodeIds.has(edge.sourceNode) && validNodeIds.has(edge.targetNode)
+  );
+
+  return {
+    nodes: boundNodes,
+    edges: boundEdges,
+  };
+};
 
 // ============================================
 // Node Palette Component
@@ -474,12 +548,25 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     getActiveGraphData(graph, activeFunctionId),
     [graph, activeFunctionId]
   );
+
+  const resolvedVariableValues = useMemo<ResolvedVariableValues>(() =>
+    resolveVariableValuesPreview({
+      nodes: activeGraphData.nodes,
+      edges: activeGraphData.edges,
+      variables: graph.variables ?? [],
+    }),
+    [activeGraphData.nodes, activeGraphData.edges, graph.variables]
+  );
   
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    blueprintToFlowNodes(activeGraphData.nodes, displayLanguage)
+    blueprintToFlowNodes(activeGraphData.nodes, displayLanguage, undefined, undefined, undefined, resolvedVariableValues)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     blueprintToFlowEdges(activeGraphData.edges)
+  );
+  const edgesRef = useRef(edges);
+  const notifyGraphChangeRef = useRef<(newNodes: BlueprintFlowNode[], newEdges: Edge[]) => void>(
+    () => undefined
   );
   
   const [paletteVisible, setPaletteVisible] = useState(false);
@@ -487,63 +574,72 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [packageManagerVisible, setPackageManagerVisible] = useState(false);
   const [functionPanelVisible, setFunctionPanelVisible] = useState(true); // Панель функций видна по умолчанию
   const [variablePanelVisible, setVariablePanelVisible] = useState(true); // Панель переменных видна по умолчанию
+  const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
+  const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     position: ContextMenuPosition;
     type: 'canvas' | 'node';
   } | null>(null);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
   
   // ============================================
   // Inline Label Editing & Property Changes
   // ============================================
   
   const handleLabelChange = useCallback((nodeId: string, newLabel: string) => {
-    setNodes(nds => nds.map(n => {
-      if (n.id !== nodeId) return n;
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          node: {
-            ...n.data.node,
-            customLabel: newLabel || undefined, // Empty string = reset to default
+    setNodes((nds) => {
+      const updatedNodes = nds.map((n) => {
+        if (n.id !== nodeId) return n;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            node: {
+              ...n.data.node,
+              customLabel: newLabel || undefined, // Empty string = reset to default
+            },
           },
-        },
-      };
-    }));
+        };
+      });
+      setTimeout(() => notifyGraphChangeRef.current(updatedNodes, edgesRef.current), 0);
+      return updatedNodes;
+    });
   }, [setNodes]);
   
   // Обработчик изменения свойств узла (например, выбор переменной из dropdown)
   const handlePropertyChange = useCallback((nodeId: string, property: string, value: unknown) => {
-    setNodes(nds => nds.map(n => {
-      if (n.id !== nodeId) return n;
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          node: {
-            ...n.data.node,
-            properties: {
-              ...n.data.node.properties,
-              [property]: value,
+    setNodes((nds) => {
+      const updatedNodes = nds.map((n) => {
+        if (n.id !== nodeId) return n;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            node: {
+              ...n.data.node,
+              properties: {
+                ...n.data.node.properties,
+                [property]: value,
+              },
             },
           },
-        },
-      };
-    }));
+        };
+      });
+      setTimeout(() => notifyGraphChangeRef.current(updatedNodes, edgesRef.current), 0);
+      return updatedNodes;
+    });
   }, [setNodes]);
   
   // Мемоизация списка доступных переменных
-  const availableVariables = useMemo(() => {
+  const availableVariables = useMemo<AvailableVariableBinding[]>(() => {
     if (!graph.variables || !Array.isArray(graph.variables)) {
       return [];
     }
-    return graph.variables.map(v => ({
-      id: v.id ?? '',
-      name: v.name ?? '',
-      nameRu: v.nameRu ?? v.name ?? '',
-      dataType: v.dataType ?? 'int',
-    }));
+    return graph.variables.map((variable) => toAvailableVariableBinding(variable));
   }, [graph.variables]);
   
   // Inject callbacks into node data (needed because callbacks defined after state init)
@@ -555,9 +651,34 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         onLabelChange: handleLabelChange,
         onPropertyChange: handlePropertyChange,
         availableVariables,
+        resolvedVariableValues,
       },
     })));
-  }, [handleLabelChange, handlePropertyChange, availableVariables, setNodes]);
+  }, [handleLabelChange, handlePropertyChange, availableVariables, resolvedVariableValues, setNodes]);
+
+  const buildFlowNode = useCallback((node: BlueprintNodeType): BlueprintFlowNode => ({
+    id: node.id,
+    type: 'blueprint',
+    position: node.position,
+    data: {
+      node,
+      displayLanguage,
+      onLabelChange: handleLabelChange,
+      onPropertyChange: handlePropertyChange,
+      availableVariables,
+      resolvedVariableValues,
+    },
+  }), [availableVariables, displayLanguage, handleLabelChange, handlePropertyChange, resolvedVariableValues]);
+
+  const computeNodePosition = useCallback((
+    basePosition: XYPosition,
+    currentNodes: BlueprintFlowNode[],
+    collisionDistance: number
+  ): XYPosition => findNonOverlappingPosition(
+    basePosition,
+    currentNodes.map((node) => ({ id: node.id, position: node.position })),
+    { collisionDistance }
+  ), []);
   
   // ============================================
   // Undo/Redo система
@@ -572,28 +693,31 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     { nodes: blueprintToFlowNodes(graph.nodes, displayLanguage), edges: blueprintToFlowEdges(graph.edges) },
     { maxHistory: 50, debounceMs: 500 }
   );
+  const pushHistoryState = historyActions.set;
+  const undoHistory = historyActions.undo;
+  const redoHistory = historyActions.redo;
   
   // Синхронизация с историей при изменении nodes/edges
   const isRestoringHistory = useRef(false);
   
   useEffect(() => {
     if (isRestoringHistory.current) return;
-    historyActions.set({ nodes, edges });
-  }, [nodes, edges, historyActions]);
+    pushHistoryState({ nodes, edges });
+  }, [nodes, edges, pushHistoryState]);
   
   // Функции Undo/Redo
   const handleUndo = useCallback(() => {
     if (!historyState.canUndo) return;
     isRestoringHistory.current = true;
-    historyActions.undo();
+    undoHistory();
     // Состояние обновится через эффект ниже
-  }, [historyState.canUndo, historyActions]);
+  }, [historyState.canUndo, undoHistory]);
   
   const handleRedo = useCallback(() => {
     if (!historyState.canRedo) return;
     isRestoringHistory.current = true;
-    historyActions.redo();
-  }, [historyState.canRedo, historyActions]);
+    redoHistory();
+  }, [historyState.canRedo, redoHistory]);
   
   // Восстановление состояния из истории
   useEffect(() => {
@@ -669,6 +793,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     
     onGraphChange(updatedGraph);
   }, [graph, activeFunctionId, onGraphChange]);
+
+  useEffect(() => {
+    notifyGraphChangeRef.current = notifyGraphChange;
+  }, [notifyGraphChange]);
   
   // ============================================
   // Обработчики для функций
@@ -691,7 +819,19 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     
     // Загружаем узлы/рёбра выбранного графа
     const graphData = getActiveGraphData(graph, functionId);
-    setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+    const resolvedValuesForGraph = resolveVariableValuesPreview({
+      nodes: graphData.nodes,
+      edges: graphData.edges,
+      variables: graph.variables ?? [],
+    });
+    setNodes(blueprintToFlowNodes(
+      graphData.nodes,
+      displayLanguage,
+      handleLabelChange,
+      handlePropertyChange,
+      availableVariables,
+      resolvedValuesForGraph
+    ));
     setEdges(blueprintToFlowEdges(graphData.edges));
     
     // Обновляем активную функцию в состоянии графа
@@ -700,7 +840,16 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       activeFunctionId: functionId,
     };
     onGraphChange(updatedGraph);
-  }, [graph, displayLanguage, setNodes, setEdges, onGraphChange]);
+  }, [
+    graph,
+    displayLanguage,
+    handleLabelChange,
+    handlePropertyChange,
+    availableVariables,
+    setNodes,
+    setEdges,
+    onGraphChange,
+  ]);
   
   // ============================================
   // Copy/Paste система
@@ -809,16 +958,49 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       initializedGraphId.current = graph.id;
       initializedFunctionId.current = activeFunctionId;
       const graphData = getActiveGraphData(graph, activeFunctionId);
-      setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+      const resolvedValuesForGraph = resolveVariableValuesPreview({
+        nodes: graphData.nodes,
+        edges: graphData.edges,
+        variables: graph.variables ?? [],
+      });
+      setNodes(blueprintToFlowNodes(
+        graphData.nodes,
+        displayLanguage,
+        handleLabelChange,
+        handlePropertyChange,
+        availableVariables,
+        resolvedValuesForGraph
+      ));
       setEdges(blueprintToFlowEdges(graphData.edges));
     } else if (functionIdChanged) {
       console.log('[BlueprintEditor] Function changed, syncing from parent');
       initializedFunctionId.current = activeFunctionId;
       const graphData = getActiveGraphData(graph, activeFunctionId);
-      setNodes(blueprintToFlowNodes(graphData.nodes, displayLanguage));
+      const resolvedValuesForGraph = resolveVariableValuesPreview({
+        nodes: graphData.nodes,
+        edges: graphData.edges,
+        variables: graph.variables ?? [],
+      });
+      setNodes(blueprintToFlowNodes(
+        graphData.nodes,
+        displayLanguage,
+        handleLabelChange,
+        handlePropertyChange,
+        availableVariables,
+        resolvedValuesForGraph
+      ));
       setEdges(blueprintToFlowEdges(graphData.edges));
     }
-  }, [graph, activeFunctionId, displayLanguage, setNodes, setEdges]);
+  }, [
+    graph,
+    activeFunctionId,
+    displayLanguage,
+    handleLabelChange,
+    handlePropertyChange,
+    availableVariables,
+    setNodes,
+    setEdges,
+  ]);
   
   // ============================================
   // Обработчики событий
@@ -871,7 +1053,20 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       },
     };
     
-    setEdges(eds => {
+    setEdges((eds) => {
+      const duplicateExists = eds.some((edge) => {
+        return (
+          edge.source === connection.source &&
+          edge.sourceHandle === connection.sourceHandle &&
+          edge.target === connection.target &&
+          edge.targetHandle === connection.targetHandle
+        );
+      });
+
+      if (duplicateExists) {
+        return eds;
+      }
+
       const newEdges = addEdge(newEdge, eds);
       setTimeout(() => notifyGraphChange(nodes, newEdges), 0);
       return newEdges;
@@ -922,7 +1117,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     
-    const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    const dropPosition = screenToFlowPosition({ x: e.clientX, y: e.clientY });
     
     // Проверяем, что дропнули - узел из палитры или переменную
     const nodeType = e.dataTransfer.getData('application/reactflow') as NodeType;
@@ -931,27 +1126,27 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     if (variableData) {
       // Drag & Drop переменной из VariableListPanel
       try {
-        const { variable, nodeType: varNodeType } = JSON.parse(variableData);
-        const type = varNodeType === 'get' ? 'GetVariable' : 'SetVariable';
-        const newNode = createNode(type, position);
-        newNode.properties = { variableId: variable.id };
-        
-        const flowNode: BlueprintFlowNode = {
-          id: newNode.id,
-          type: 'blueprint',
-          position: newNode.position,
-          data: { 
-            node: newNode, 
-            displayLanguage, 
-            onLabelChange: handleLabelChange,
-            onPropertyChange: handlePropertyChange,
-            availableVariables,
-          },
+        const parsed = JSON.parse(variableData) as {
+          variable?: BlueprintVariable;
+          nodeType?: 'get' | 'set';
         };
-        
-        setNodes(nds => {
-          const newNodes = [...nds, flowNode];
-          setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+
+        if (!parsed.variable || typeof parsed.variable.id !== 'string') {
+          return;
+        }
+
+        const sourceVariable =
+          graph.variables?.find((variable) => variable.id === parsed.variable?.id) ?? parsed.variable;
+        const availableVariable = toAvailableVariableBinding(sourceVariable);
+        const variableNodeType = parsed.nodeType === 'set' ? 'SetVariable' : 'GetVariable';
+
+        setNodes((currentNodes) => {
+          const nonOverlappingPosition = computeNodePosition(dropPosition, currentNodes, 1);
+          const createdNode = createNode(variableNodeType, nonOverlappingPosition);
+          const boundNode = bindVariableToNode(createdNode, availableVariable, displayLanguage);
+          const flowNode = buildFlowNode(boundNode);
+          const newNodes = [...currentNodes, flowNode];
+          setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
           return newNodes;
         });
       } catch (err) {
@@ -962,50 +1157,36 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     
     if (nodeType) {
       // Drag & Drop узла из палитры
-      const newNode = createNode(nodeType, position);
-      
-      const flowNode: BlueprintFlowNode = {
-        id: newNode.id,
-        type: 'blueprint',
-        position: newNode.position,
-        data: { 
-          node: newNode, 
-          displayLanguage, 
-          onLabelChange: handleLabelChange,
-          onPropertyChange: handlePropertyChange,
-          availableVariables,
-        },
-      };
-      
-      setNodes(nds => {
-        const newNodes = [...nds, flowNode];
-        setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+      setNodes((currentNodes) => {
+        const nonOverlappingPosition = computeNodePosition(dropPosition, currentNodes, 1);
+        const newNode = createNode(nodeType, nonOverlappingPosition);
+        const flowNode = buildFlowNode(newNode);
+        const newNodes = [...currentNodes, flowNode];
+        setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
         return newNodes;
       });
     }
-  }, [screenToFlowPosition, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  }, [
+    screenToFlowPosition,
+    graph.variables,
+    displayLanguage,
+    setNodes,
+    computeNodePosition,
+    buildFlowNode,
+    notifyGraphChange,
+  ]);
   
   // Add node from palette click
   const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
-    const newNode = createNode(type, position);
-    const flowNode: BlueprintFlowNode = {
-      id: newNode.id,
-      type: 'blueprint',
-      position: newNode.position,
-      data: { 
-        node: newNode, 
-        displayLanguage, 
-        onLabelChange: handleLabelChange,
-        onPropertyChange: handlePropertyChange,
-        availableVariables,
-      },
-    };
-    setNodes(nds => {
-      const newNodes = [...nds, flowNode];
-      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(position, currentNodes, 20);
+      const newNode = createNode(type, nonOverlappingPosition);
+      const flowNode = buildFlowNode(newNode);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
       return newNodes;
     });
-  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  }, [setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
   
   // Add CallUserFunction node from palette
   const handleAddCallFunction = useCallback((functionId: string, position: XYPosition) => {
@@ -1013,87 +1194,123 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     if (!func) return;
     
     // Используем функцию из blueprintTypes для создания узла вызова
-    const newNode = createCallUserFunctionNode(func, position);
-    
-    const flowNode: BlueprintFlowNode = {
-      id: newNode.id,
-      type: 'blueprint',
-      position: newNode.position,
-      data: { 
-        node: newNode, 
-        displayLanguage, 
-        onLabelChange: handleLabelChange,
-        onPropertyChange: handlePropertyChange,
-        availableVariables,
-      },
-    };
-    setNodes(nds => {
-      const newNodes = [...nds, flowNode];
-      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(position, currentNodes, 20);
+      const newNode = createCallUserFunctionNode(func, nonOverlappingPosition);
+      const flowNode = buildFlowNode(newNode);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
       return newNodes;
     });
-  }, [graph.functions, displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  }, [graph.functions, setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
   
   // Create GetVariable node from VariableListPanel
   const handleCreateGetVariable = useCallback((variable: BlueprintVariable) => {
-    const position: XYPosition = { x: 100, y: 100 }; // Default position
-    const newNode = createNode('GetVariable', position);
-    newNode.properties = { variableId: variable.id };
-    
-    const flowNode: BlueprintFlowNode = {
-      id: newNode.id,
-      type: 'blueprint',
-      position: newNode.position,
-      data: { 
-        node: newNode, 
-        displayLanguage, 
-        onLabelChange: handleLabelChange,
-        onPropertyChange: handlePropertyChange,
-        availableVariables,
-      },
-    };
-    setNodes(nds => {
-      const newNodes = [...nds, flowNode];
-      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+    const basePosition: XYPosition = { x: 100, y: 100 }; // Default position
+    const availableVariable = toAvailableVariableBinding(variable);
+
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(basePosition, currentNodes, 20);
+      const createdNode = createNode('GetVariable', nonOverlappingPosition);
+      const boundNode = bindVariableToNode(createdNode, availableVariable, displayLanguage);
+      const flowNode = buildFlowNode(boundNode);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
       return newNodes;
     });
-  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  }, [displayLanguage, setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
   
   // Create SetVariable node from VariableListPanel
   const handleCreateSetVariable = useCallback((variable: BlueprintVariable) => {
-    const position: XYPosition = { x: 100, y: 200 }; // Default position
-    const newNode = createNode('SetVariable', position);
-    newNode.properties = { variableId: variable.id };
-    
-    const flowNode: BlueprintFlowNode = {
-      id: newNode.id,
-      type: 'blueprint',
-      position: newNode.position,
-      data: { 
-        node: newNode, 
-        displayLanguage, 
-        onLabelChange: handleLabelChange,
-        onPropertyChange: handlePropertyChange,
-        availableVariables,
-      },
-    };
-    setNodes(nds => {
-      const newNodes = [...nds, flowNode];
-      setTimeout(() => notifyGraphChange(newNodes, edges), 0);
+    const basePosition: XYPosition = { x: 100, y: 200 }; // Default position
+    const availableVariable = toAvailableVariableBinding(variable);
+
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(basePosition, currentNodes, 20);
+      const createdNode = createNode('SetVariable', nonOverlappingPosition);
+      const boundNode = bindVariableToNode(createdNode, availableVariable, displayLanguage);
+      const flowNode = buildFlowNode(boundNode);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
       return newNodes;
     });
-  }, [displayLanguage, setNodes, handleLabelChange, handlePropertyChange, availableVariables, edges, notifyGraphChange]);
+  }, [displayLanguage, setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
   
   // Handle variables change from VariableListPanel
   const handleVariablesChange = useCallback((variables: BlueprintVariable[]) => {
+    const availableBindings = variables.map((variable) => toAvailableVariableBinding(variable));
+    const previousVariableIds = new Set((graph.variables ?? []).map((variable) => variable.id));
+    const nextVariableIds = new Set(variables.map((variable) => variable.id));
+    const removedVariableIds = new Set(
+      Array.from(previousVariableIds).filter((id) => !nextVariableIds.has(id))
+    );
+
+    const reconciledMainGraph = reconcileVariableNodesAndEdges(
+      graph.nodes,
+      graph.edges,
+      removedVariableIds,
+      availableBindings,
+      displayLanguage
+    );
+
+    const reconciledFunctions = graph.functions?.map((func) => {
+      const reconciledFunctionGraph = reconcileVariableNodesAndEdges(
+        func.graph.nodes,
+        func.graph.edges,
+        removedVariableIds,
+        availableBindings,
+        displayLanguage
+      );
+
+      return {
+        ...func,
+        graph: {
+          nodes: reconciledFunctionGraph.nodes,
+          edges: reconciledFunctionGraph.edges,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
     const updatedGraph: BlueprintGraphState = {
       ...graph,
       variables,
+      nodes: reconciledMainGraph.nodes,
+      edges: reconciledMainGraph.edges,
+      functions: reconciledFunctions,
       updatedAt: new Date().toISOString(),
       dirty: true,
     };
+
+    const currentGraphData = getActiveGraphData(updatedGraph, activeFunctionId);
+    const resolvedValuesForGraph = resolveVariableValuesPreview({
+      nodes: currentGraphData.nodes,
+      edges: currentGraphData.edges,
+      variables,
+    });
+    setNodes(
+      blueprintToFlowNodes(
+        currentGraphData.nodes,
+        displayLanguage,
+        handleLabelChange,
+        handlePropertyChange,
+        availableBindings,
+        resolvedValuesForGraph
+      )
+    );
+    setEdges(blueprintToFlowEdges(currentGraphData.edges));
+
     onGraphChange(updatedGraph);
-  }, [graph, onGraphChange]);
+  }, [
+    graph,
+    activeFunctionId,
+    displayLanguage,
+    handleLabelChange,
+    handlePropertyChange,
+    onGraphChange,
+    setEdges,
+    setNodes,
+  ]);
   
   // Delete selected nodes
   const handleDeleteSelected = useCallback(() => {
@@ -1345,29 +1562,61 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     }
     return t.eventGraph;
   }, [activeFunctionId, graph.functions, displayLanguage, t.eventGraph]);
+
+  const previewGraph = useMemo(() => ({
+    ...graph,
+    nodes: Array.isArray(graph.nodes) ? graph.nodes : [],
+    edges: Array.isArray(graph.edges) ? graph.edges : [],
+  }), [graph]);
+
+  const hasLeftSidebar = functionPanelVisible || variablePanelVisible;
+  const areBothSectionsExpanded =
+    functionPanelVisible &&
+    variablePanelVisible &&
+    !isFunctionsSectionCollapsed &&
+    !isVariablesSectionCollapsed;
   
   return (
     <div ref={reactFlowWrapper} style={editorStyles.container}>
-      {/* Панель функций слева */}
-      {functionPanelVisible && (
-        <FunctionListPanel
-          graphState={graph}
-          onFunctionsChange={handleFunctionsChange}
-          onSelectFunction={handleSelectFunction}
-          activeFunctionId={activeFunctionId}
-          displayLanguage={displayLanguage}
-        />
-      )}
-      
-      {/* Панель переменных справа */}
-      {variablePanelVisible && (
-        <VariableListPanel
-          graphState={graph}
-          onVariablesChange={handleVariablesChange}
-          onCreateGetVariable={handleCreateGetVariable}
-          onCreateSetVariable={handleCreateSetVariable}
-          displayLanguage={displayLanguage}
-        />
+      {hasLeftSidebar && (
+        <div className="left-sidebar-stack">
+          {functionPanelVisible && (
+            <div
+              className={`left-sidebar-section ${isFunctionsSectionCollapsed ? 'collapsed' : ''} ${areBothSectionsExpanded ? 'balanced' : ''}`}
+            >
+              <FunctionListPanel
+                graphState={graph}
+                onFunctionsChange={handleFunctionsChange}
+                onSelectFunction={handleSelectFunction}
+                activeFunctionId={activeFunctionId}
+                displayLanguage={displayLanguage}
+                collapsed={isFunctionsSectionCollapsed}
+                onToggleCollapsed={() => setIsFunctionsSectionCollapsed(value => !value)}
+              />
+            </div>
+          )}
+
+          {functionPanelVisible && variablePanelVisible && (
+            <div className="left-sidebar-divider" />
+          )}
+
+          {variablePanelVisible && (
+            <div
+              className={`left-sidebar-section ${isVariablesSectionCollapsed ? 'collapsed' : ''} ${areBothSectionsExpanded ? 'balanced' : ''}`}
+            >
+              <VariableListPanel
+                graphState={graph}
+                onVariablesChange={handleVariablesChange}
+                onCreateGetVariable={handleCreateGetVariable}
+                onCreateSetVariable={handleCreateSetVariable}
+                displayLanguage={displayLanguage}
+                resolvedVariableValues={resolvedVariableValues}
+                collapsed={isVariablesSectionCollapsed}
+                onToggleCollapsed={() => setIsVariablesSectionCollapsed(value => !value)}
+              />
+            </div>
+          )}
+        </div>
       )}
       
       <div style={editorStyles.graphContainer}>
@@ -1541,7 +1790,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       
       {/* Панель предпросмотра кода */}
       <CodePreviewPanel
-        graph={graph}
+        graph={previewGraph}
         displayLanguage={displayLanguage}
         visible={codePreviewVisible}
         onClose={() => setCodePreviewVisible(false)}

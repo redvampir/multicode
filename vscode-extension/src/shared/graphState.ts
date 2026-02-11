@@ -9,6 +9,8 @@ export interface GraphNode {
   label: string;
   type: GraphNodeType;
   position?: { x: number; y: number };
+  /** Полный снимок узла Blueprint для round-trip без потерь */
+  blueprintNode?: unknown;
 }
 
 export interface GraphEdge {
@@ -17,6 +19,8 @@ export interface GraphEdge {
   target: string;
   label?: string;
   kind?: GraphEdgeKind;
+  /** Полный снимок ребра Blueprint для round-trip без потерь */
+  blueprintEdge?: unknown;
 }
 
 export interface GraphState {
@@ -28,6 +32,10 @@ export interface GraphState {
   edges: GraphEdge[];
   updatedAt: string;
   dirty?: boolean;
+  /** Переменные графа (Blueprint-style) */
+  variables?: unknown[];
+  /** Пользовательские функции (Blueprint-style) */
+  functions?: unknown[];
 }
 
 export const createDefaultGraphState = (): GraphState => {

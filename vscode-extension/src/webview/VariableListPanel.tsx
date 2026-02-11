@@ -21,6 +21,7 @@ import {
   VARIABLE_DATA_TYPES,
 } from "../shared/blueprintTypes";
 import type { PortDataType } from "../shared/portTypes";
+import type { ResolvedVariableValues } from "./variableValueResolver";
 
 interface VariableListPanelProps {
   /** Текущее состояние графа */
@@ -33,6 +34,12 @@ interface VariableListPanelProps {
   onCreateSetVariable: (variable: BlueprintVariable) => void;
   /** Язык отображения */
   displayLanguage: "ru" | "en";
+  /** Свернута ли секция */
+  collapsed: boolean;
+  /** Переключить состояние сворачивания */
+  onToggleCollapsed: () => void;
+  /** Вычисленные текущие значения переменных (preview) */
+  resolvedVariableValues?: ResolvedVariableValues;
 }
 
 interface EditDialogState {
@@ -58,12 +65,32 @@ const initialDialogState: EditDialogState = {
   editId: null,
 };
 
+const isPortDataType = (value: unknown): value is PortDataType =>
+  value === "execution" ||
+  value === "bool" ||
+  value === "int32" ||
+  value === "int64" ||
+  value === "float" ||
+  value === "double" ||
+  value === "string" ||
+  value === "vector" ||
+  value === "pointer" ||
+  value === "class" ||
+  value === "array" ||
+  value === "any";
+
+const isVariableCategory = (value: unknown): value is VariableCategory =>
+  value === "default" || value === "input" || value === "output" || value === "local";
+
 export const VariableListPanel: React.FC<VariableListPanelProps> = ({
   graphState,
   onVariablesChange,
   onCreateGetVariable,
   onCreateSetVariable,
   displayLanguage,
+  collapsed,
+  onToggleCollapsed,
+  resolvedVariableValues,
 }) => {
   const isRu = displayLanguage === "ru";
   const variables = useMemo(
@@ -129,6 +156,8 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
 
   const handleSaveVariable = useCallback(() => {
     const { mode, variable, editId } = dialog;
+    const nextDataType = isPortDataType(variable.dataType) ? variable.dataType : undefined;
+    const nextCategory = isVariableCategory(variable.category) ? variable.category : undefined;
 
     if (!variable.name?.trim()) {
       alert(isRu ? "Введите имя переменной" : "Enter variable name");
@@ -136,17 +165,19 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
     }
 
     if (mode === "create") {
+      const createDataType: PortDataType = nextDataType ?? "bool";
+      const createCategory: VariableCategory = nextCategory ?? "default";
       const newVar = createVariable(
         variable.name,
-        variable.dataType as PortDataType,
+        createDataType,
         {
           nameRu: variable.nameRu || variable.name,
           defaultValue: variable.defaultValue,
-          category: variable.category as VariableCategory,
+          category: createCategory,
           description: variable.description,
           isArray: variable.isArray,
           isPrivate: variable.isPrivate,
-          color: VARIABLE_TYPE_COLORS[variable.dataType as PortDataType],
+          color: VARIABLE_TYPE_COLORS[createDataType],
         },
       );
       logger.action(
@@ -163,19 +194,21 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
     } else if (mode === "edit" && editId) {
       const updatedVars = variables.map((v) => {
         if (v.id === editId) {
+          const editedDataType = nextDataType ?? v.dataType;
+          const editedCategory = nextCategory ?? v.category;
           const updated = {
             ...v,
             name: variable.name?.replace(/[^a-zA-Z0-9_]/g, "_") || v.name,
             nameRu: variable.nameRu || v.nameRu,
-            dataType: (variable.dataType as PortDataType) || v.dataType,
+            dataType: editedDataType,
             defaultValue: variable.defaultValue,
-            category: (variable.category as VariableCategory) || v.category,
+            category: editedCategory,
             description: variable.description ?? v.description,
             isArray: variable.isArray ?? v.isArray,
             isPrivate: variable.isPrivate ?? v.isPrivate,
             color:
               VARIABLE_TYPE_COLORS[
-                (variable.dataType as PortDataType) || v.dataType
+                editedDataType
               ],
           };
           logger.action(
@@ -267,12 +300,12 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
   );
 
   // === Получение значения по умолчанию в строковом виде ===
-  const getDefaultValueDisplay = (variable: BlueprintVariable): string => {
-    if (variable.defaultValue === null || variable.defaultValue === undefined) {
+  const formatValueDisplay = useCallback((value: unknown): string => {
+    if (value === null || value === undefined) {
       return isRu ? "(нет)" : "(none)";
     }
-    if (typeof variable.defaultValue === "boolean") {
-      return variable.defaultValue
+    if (typeof value === "boolean") {
+      return value
         ? isRu
           ? "Истина"
           : "True"
@@ -280,16 +313,36 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
           ? "Ложь"
           : "False";
     }
-    if (Array.isArray(variable.defaultValue)) {
+    if (Array.isArray(value)) {
       // Вектор: отображаем как "X, Y, Z"
-      return variable.defaultValue.join(', ');
+      return value.join(', ');
     }
-    return String(variable.defaultValue);
-  };
+    return String(value);
+  }, [isRu]);
+
+  const getDefaultValueDisplay = useCallback((variable: BlueprintVariable): string =>
+    formatValueDisplay(variable.defaultValue), [formatValueDisplay]
+  );
+
+  const getCurrentValueDisplay = useCallback((variable: BlueprintVariable): string => {
+    const resolved = resolvedVariableValues?.[variable.id];
+    if (!resolved) {
+      return formatValueDisplay(variable.defaultValue);
+    }
+    if (resolved.status === "ambiguous") {
+      return "~";
+    }
+    if (resolved.status === "unknown") {
+      return "?";
+    }
+    return formatValueDisplay(resolved.currentValue);
+  }, [formatValueDisplay, resolvedVariableValues]);
 
   // === Ввод значения по умолчанию ===
   const renderDefaultValueInput = () => {
-    const dataType = dialog.variable.dataType as PortDataType;
+    const dataType = isPortDataType(dialog.variable.dataType)
+      ? dialog.variable.dataType
+      : "bool";
     const value = dialog.variable.defaultValue;
 
     switch (dataType) {
@@ -349,11 +402,12 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
           />
         );
       case "vector":
+      {
         // Отображаем как строку "X,Y,Z", но храним как массив [X, Y, Z]
-        const vectorStr = Array.isArray(value) 
-          ? value.join(',') 
+        const vectorStr = Array.isArray(value)
+          ? value.join(',')
           : (typeof value === "string" ? value : "0,0,0");
-        
+
         return (
           <input
             type="text"
@@ -367,6 +421,7 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
             placeholder="X,Y,Z"
           />
         );
+      }
       default:
         return (
           <span className="variable-value-na">
@@ -379,7 +434,18 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
   return (
     <div className="variable-list-panel">
       <div className="variable-list-header">
-        <h3>{isRu ? "Переменные" : "Variables"}</h3>
+        <div className="panel-header-title">
+          <button
+            className="panel-collapse-btn"
+            onClick={onToggleCollapsed}
+            title={isRu ? "Свернуть или развернуть секцию" : "Collapse or expand section"}
+            data-testid="variables-section-toggle"
+            aria-label={isRu ? "Переключить секцию переменных" : "Toggle variables section"}
+          >
+            {collapsed ? "▶" : "▼"}
+          </button>
+          <h3>{isRu ? "Переменные" : "Variables"}</h3>
+        </div>
         <button
           className="btn-add-variable"
           onClick={handleOpenCreate}
@@ -389,7 +455,8 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
         </button>
       </div>
 
-      <div className="variable-list">
+      {!collapsed && (
+        <div className="variable-list">
         {(["default", "input", "output", "local"] as VariableCategory[]).map(
           (category) => {
             const vars = groupedVariables[category];
@@ -450,6 +517,9 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
 
                         <div className="variable-value">
                           = {getDefaultValueDisplay(variable)}
+                        </div>
+                        <div className="variable-value variable-current-value">
+                          {isRu ? "Текущее:" : "Current:"} {getCurrentValueDisplay(variable)}
                         </div>
 
                         <div className="variable-actions">
@@ -514,7 +584,8 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
             );
           },
         )}
-      </div>
+        </div>
+      )}
 
       {/* Диалог создания/редактирования переменной */}
       {dialog.isOpen && (
@@ -557,10 +628,13 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
               <select
                 value={dialog.variable.dataType || "bool"}
                 onChange={(e) => {
-                  const newType = e.target.value as PortDataType;
-                  handleDialogChange("dataType", newType);
+                  const nextType = e.target.value;
+                  if (!isPortDataType(nextType)) {
+                    return;
+                  }
+                  handleDialogChange("dataType", nextType);
                   // Сброс значения по умолчанию при смене типа
-                  const defaults: Record<string, unknown> = {
+                  const defaults: Partial<Record<PortDataType, unknown>> = {
                     bool: false,
                     int32: 0,
                     int64: 0,
@@ -568,11 +642,13 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
                     double: 0.0,
                     string: "",
                     vector: "0,0,0",
-                    object: null,
+                    pointer: null,
+                    class: null,
                     array: null,
                     any: null,
+                    execution: null,
                   };
-                  handleDialogChange("defaultValue", defaults[newType] ?? null);
+                  handleDialogChange("defaultValue", defaults[nextType] ?? null);
                 }}
                 className="variable-select"
               >
@@ -595,7 +671,12 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
               <label>{isRu ? "Категория" : "Category"}</label>
               <select
                 value={dialog.variable.category || "default"}
-                onChange={(e) => handleDialogChange("category", e.target.value)}
+                onChange={(e) => {
+                  const nextCategory = e.target.value;
+                  if (isVariableCategory(nextCategory)) {
+                    handleDialogChange("category", nextCategory);
+                  }
+                }}
                 className="variable-select"
               >
                 {(

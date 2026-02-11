@@ -15,7 +15,8 @@ const graphNodeSchema = z.object({
   id: z.string(),
   label: z.string(),
   type: graphNodeTypeSchema,
-  position: positionSchema.optional()
+  position: positionSchema.optional(),
+  blueprintNode: z.unknown().optional()
 });
 
 const graphEdgeSchema = z.object({
@@ -23,7 +24,8 @@ const graphEdgeSchema = z.object({
   source: z.string(),
   target: z.string(),
   label: z.string().optional(),
-  kind: graphEdgeKindSchema.optional()
+  kind: graphEdgeKindSchema.optional(),
+  blueprintEdge: z.unknown().optional()
 });
 
 export const graphStateSchema: z.ZodType<GraphState> = z.object({
@@ -34,7 +36,10 @@ export const graphStateSchema: z.ZodType<GraphState> = z.object({
   nodes: z.array(graphNodeSchema),
   edges: z.array(graphEdgeSchema),
   updatedAt: z.string(),
-  dirty: z.boolean().optional()
+  dirty: z.boolean().optional(),
+  // Blueprint-style расширения
+  variables: z.array(z.unknown()).optional(),
+  functions: z.array(z.unknown()).optional(),
 });
 
 const translationDirectionSchema = z.enum(['ru-en', 'en-ru']);
@@ -46,14 +51,18 @@ const graphMutationSchema = z.object({
         id: z.string(),
         label: z.string().optional(),
         type: graphNodeTypeSchema.optional(),
-        position: positionSchema.optional()
+        position: positionSchema.optional(),
+        blueprintNode: z.unknown().optional()
       })
     )
     .optional(),
   edges: z.array(graphEdgeSchema).optional(),
   name: z.string().optional(),
   language: graphLanguageSchema.optional(),
-  displayLanguage: graphDisplayLanguageSchema.optional()
+  displayLanguage: graphDisplayLanguageSchema.optional(),
+  // Blueprint-style расширения
+  variables: z.array(z.unknown()).optional(),
+  functions: z.array(z.unknown()).optional(),
 });
 
 const themeMessageSchema = z.object({

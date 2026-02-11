@@ -12,8 +12,16 @@ import {
   BlueprintNodeType as NodeTypeEnum,
   VARIABLE_TYPE_COLORS
 } from '../../shared/blueprintTypes';
-import { PORT_TYPE_COLORS } from '../../shared/portTypes';
+import { PORT_TYPE_COLORS, type PortDataType } from '../../shared/portTypes';
 import { getIconForCategory } from '../../shared/iconMap';
+import {
+  type AvailableVariableBinding,
+  formatVariableValueForDisplay,
+  getEffectiveSetInputValue,
+  getVariableNodeTitle,
+  resolveVariableForNode,
+} from '../variableNodeBinding';
+import type { ResolvedVariableValues } from '../variableValueResolver';
 
 /** CSS стили для узла (inline для webview совместимости) */
 const styles = {
@@ -173,7 +181,8 @@ export interface BlueprintNodeData extends Record<string, unknown> {
   displayLanguage: 'ru' | 'en';
   onLabelChange?: (nodeId: string, newLabel: string) => void;
   onPropertyChange?: (nodeId: string, property: string, value: unknown) => void;
-  availableVariables?: Array<{ id: string; name: string; nameRu: string; dataType: string }>; // Для селектора указателей
+  availableVariables?: AvailableVariableBinding[]; // Для селектора указателей и синхронизации variable-узлов
+  resolvedVariableValues?: ResolvedVariableValues;
 }
 
 /** Тип узла для React Flow */
@@ -209,27 +218,46 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   // Определяем, является ли узел SetVariable или GetVariable
   const isVariableNode = node.type === 'SetVariable' || node.type === 'GetVariable';
   const isSetVariable = node.type === 'SetVariable';
-  const variableDataType = node.properties?.dataType as string | undefined;
+  const isGetVariable = node.type === 'GetVariable';
+  const resolvedVariable = resolveVariableForNode(node, data.availableVariables);
+  const resolvedVariableValue = resolvedVariable
+    ? data.resolvedVariableValues?.[resolvedVariable.id]
+    : undefined;
+  const variableDataType = resolvedVariable?.dataType
+    ?? (typeof node.properties?.dataType === 'string'
+      ? (node.properties.dataType as PortDataType)
+      : undefined);
+  const variableName = resolvedVariable
+    ? (displayLanguage === 'ru'
+      ? (resolvedVariable.nameRu || resolvedVariable.name)
+      : (resolvedVariable.name || resolvedVariable.nameRu))
+    : undefined;
   
   // Определяем тип переменной для выбора редактора
   const isNumericType = ['int32', 'int64', 'float', 'double'].includes(variableDataType ?? '');
   const isFloatType = ['float', 'double'].includes(variableDataType ?? '');
   
   // Проверяем, подключён ли входной порт данных (value-in)
-  const valueInputPort = node.inputs.find(p => p.id === 'value-in');
+  const valueInputPort = node.inputs.find((port) => port.id === 'value-in' || port.id.endsWith('-value-in'));
   const isValueInputConnected = valueInputPort?.connected ?? false;
+  const effectiveSetInputValue = getEffectiveSetInputValue(node, resolvedVariable?.defaultValue);
   
   const defaultLabel = displayLanguage === 'ru' 
     ? (definition?.labelRu ?? node.label)
     : (definition?.label ?? node.label);
+  const nodeTitle = isVariableNode
+    ? getVariableNodeTitle(node.type, variableName, defaultLabel)
+    : defaultLabel;
   
   // Use custom label if set, otherwise use default
-  const displayLabel = node.customLabel ?? defaultLabel;
+  const displayLabel = node.customLabel ?? nodeTitle;
   
   // 🎨 Динамический цвет шапки: для переменных используем цвет типа данных
-  const headerColor = isVariableNode && variableDataType
-    ? VARIABLE_TYPE_COLORS[variableDataType as keyof typeof VARIABLE_TYPE_COLORS] ?? definition?.headerColor ?? '#6c7086'
-    : definition?.headerColor ?? '#6c7086';
+  const variableHeaderColor = resolvedVariable?.color
+    ?? (variableDataType ? VARIABLE_TYPE_COLORS[variableDataType] : undefined);
+  const headerColor = isVariableNode
+    ? (variableHeaderColor ?? definition?.headerColor ?? '#6c7086')
+    : (definition?.headerColor ?? '#6c7086');
     
   const iconSrc = getIconForCategory(definition?.category ?? 'other');
   
@@ -292,6 +320,25 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   const handleBlur = useCallback(() => {
     commitEdit();
   }, [commitEdit]);
+
+  const setSetNodeInputValue = useCallback((nextValue: unknown): void => {
+    if (!onPropertyChange) {
+      return;
+    }
+    onPropertyChange(node.id, 'inputValue', nextValue);
+    onPropertyChange(node.id, 'inputValueIsOverride', true);
+  }, [node.id, onPropertyChange]);
+
+  const getNodeDefaultValueDisplay = isGetVariable
+    ? formatVariableValueForDisplay(resolvedVariable?.defaultValue, displayLanguage)
+    : '';
+  const currentValueDisplay = resolvedVariableValue
+    ? (resolvedVariableValue.status === 'ambiguous'
+      ? '~'
+      : resolvedVariableValue.status === 'unknown'
+        ? '?'
+        : formatVariableValueForDisplay(resolvedVariableValue.currentValue, displayLanguage))
+    : '';
   
   return (
     <div
@@ -433,11 +480,9 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           }}>
             <input
               type="checkbox"
-              checked={Boolean(node.properties?.inputValue)}
+              checked={Boolean(effectiveSetInputValue)}
               onChange={(e) => {
-                if (onPropertyChange) {
-                  onPropertyChange(node.id, 'inputValue', e.target.checked);
-                }
+                setSetNodeInputValue(e.target.checked);
               }}
               style={{ 
                 width: 16, 
@@ -447,11 +492,11 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
               }}
             />
             <span style={{ 
-              color: node.properties?.inputValue ? '#a6e3a1' : '#f38ba8',
+              color: effectiveSetInputValue ? '#a6e3a1' : '#f38ba8',
               fontWeight: 500,
               fontSize: 12,
             }}>
-              {node.properties?.inputValue 
+              {effectiveSetInputValue 
                 ? (displayLanguage === 'ru' ? 'Истина' : 'True')
                 : (displayLanguage === 'ru' ? 'Ложь' : 'False')
               }
@@ -491,13 +536,11 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           </span>
           <input
             type="number"
-            value={typeof node.properties?.inputValue === 'number' ? node.properties.inputValue : 0}
+            value={typeof effectiveSetInputValue === 'number' ? effectiveSetInputValue : 0}
             step={isFloatType ? 0.1 : 1}
             onChange={(e) => {
-              if (onPropertyChange) {
-                const value = isFloatType ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
-                onPropertyChange(node.id, 'inputValue', isNaN(value) ? 0 : value);
-              }
+              const value = isFloatType ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+              setSetNodeInputValue(Number.isNaN(value) ? 0 : value);
             }}
             style={{ 
               flex: 1,
@@ -546,12 +589,10 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           </span>
           <input
             type="text"
-            value={typeof node.properties?.inputValue === 'string' ? node.properties.inputValue : ''}
+            value={typeof effectiveSetInputValue === 'string' ? effectiveSetInputValue : ''}
             placeholder={displayLanguage === 'ru' ? 'Текст...' : 'Text...'}
             onChange={(e) => {
-              if (onPropertyChange) {
-                onPropertyChange(node.id, 'inputValue', e.target.value);
-              }
+              setSetNodeInputValue(e.target.value);
             }}
             style={{ 
               flex: 1,
@@ -591,11 +632,9 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
             {displayLanguage === 'ru' ? 'Привязка к:' : 'Bind to:'}
           </span>
           <select
-            value={typeof node.properties?.inputValue === 'string' ? node.properties.inputValue : ''}
+            value={typeof effectiveSetInputValue === 'string' ? effectiveSetInputValue : ''}
             onChange={(e) => {
-              if (onPropertyChange) {
-                onPropertyChange(node.id, 'inputValue', e.target.value);
-              }
+              setSetNodeInputValue(e.target.value);
             }}
             style={{
               width: '100%',
@@ -647,8 +686,8 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           </span>
           {['X', 'Y', 'Z'].map((axis, idx) => {
             // Значение вектора всегда массив [X, Y, Z]
-            const vectorValue = Array.isArray(node.properties?.inputValue) 
-              ? node.properties.inputValue 
+            const vectorValue = Array.isArray(effectiveSetInputValue) 
+              ? effectiveSetInputValue 
               : [0, 0, 0];
             
             return (
@@ -661,11 +700,9 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
                   value={vectorValue[idx] ?? 0}
                   step={0.1}
                   onChange={(e) => {
-                    if (onPropertyChange) {
-                      const newVector = [...vectorValue];
-                      newVector[idx] = parseFloat(e.target.value) || 0;
-                      onPropertyChange(node.id, 'inputValue', newVector);
-                    }
+                    const newVector = [...vectorValue];
+                    newVector[idx] = parseFloat(e.target.value) || 0;
+                    setSetNodeInputValue(newVector);
                   }}
                   style={{ 
                     flex: 1,
@@ -696,6 +733,60 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
         }}>
           <span style={{ color: '#89b4fa', fontSize: 11, fontStyle: 'italic' }}>
             {displayLanguage === 'ru' ? '← из подключения' : '← from connection'}
+          </span>
+        </div>
+      )}
+
+      {/* Read-only значение по умолчанию для GetVariable */}
+      {isGetVariable && (
+        <div style={{ 
+          padding: '8px 12px', 
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {displayLanguage === 'ru' ? 'По умолч.:' : 'Default:'}
+          </span>
+          <span
+            style={{
+              color: '#cdd6f4',
+              fontSize: 11,
+              fontStyle: 'italic',
+              textAlign: 'right',
+            }}
+            title={getNodeDefaultValueDisplay}
+          >
+            {getNodeDefaultValueDisplay}
+          </span>
+        </div>
+      )}
+
+      {/* Read-only текущее вычисленное значение для переменных */}
+      {isVariableNode && resolvedVariableValue && (
+        <div style={{ 
+          padding: '8px 12px',
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}>
+          <span style={{ color: '#89b4fa', fontSize: 11, whiteSpace: 'nowrap' }}>
+            {displayLanguage === 'ru' ? 'Текущее:' : 'Current:'}
+          </span>
+          <span
+            style={{
+              color: resolvedVariableValue.status === 'resolved' ? '#cdd6f4' : '#f9e2af',
+              fontSize: 11,
+              fontStyle: resolvedVariableValue.status === 'resolved' ? 'normal' : 'italic',
+              textAlign: 'right',
+            }}
+            title={currentValueDisplay}
+          >
+            {currentValueDisplay}
           </span>
         </div>
       )}

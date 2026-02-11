@@ -4,6 +4,7 @@
 #include <array>
 #include <catch2/catch_all.hpp>
 #include <nlohmann/json.hpp>
+#include <random>
 
 #include "visprog/core/GraphSerializer.hpp"
 #include "visprog/core/NodeFactory.hpp"
@@ -11,6 +12,8 @@
 using namespace visprog::core;
 
 // Error codes matching those in GraphSerializer.cpp
+constexpr int kTestErrorInvalidDocument = 600;
+constexpr int kTestErrorMissingField = 601;
 constexpr int kTestErrorInvalidEnum = 602;
 constexpr int kTestErrorConnection = 605;
 
@@ -335,4 +338,123 @@ TEST_CASE("GraphSerializer: Ошибка если connection Execution->StringVi
     auto restored_result = GraphSerializer::from_json(json_doc);
     REQUIRE(!restored_result.has_value());
     REQUIRE(restored_result.error().code == kTestErrorConnection);
+}
+
+TEST_CASE("GraphSerializer: Агрегирует ошибки нескольких битых connections",
+          "[graph][serialization][negative]") {
+    Graph graph("AggregateErrorsGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_id = print_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_exec_out = print_node->get_exec_output_ports().at(0);
+
+    REQUIRE(graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(graph.add_node(std::move(print_node)) == print_id);
+
+    nlohmann::json json_doc = GraphSerializer::to_json(graph);
+    json_doc["connections"] = nlohmann::json::array({
+        {
+            {"id", 1},
+            {"from", {{"nodeId", 999999}, {"portId", start_exec_out->get_id().value}}},
+            {"to", {{"nodeId", print_id.value}, {"portId", print_exec_out->get_id().value}}},
+        },
+        {
+            {"id", 2},
+            {"from", {{"nodeId", start_id.value}, {"portId", start_exec_out->get_id().value}}},
+            {"to", {{"nodeId", print_id.value}, {"portId", print_exec_out->get_id().value}}},
+        },
+    });
+
+    const auto restored_result = GraphSerializer::from_json(json_doc);
+    REQUIRE(!restored_result.has_value());
+    REQUIRE(restored_result.error().code == kTestErrorConnection);
+    REQUIRE(restored_result.error().message.find("connections[0]") != std::string::npos);
+    REQUIRE(restored_result.error().message.find("connections[1]") != std::string::npos);
+}
+
+TEST_CASE("GraphSerializer: Fuzz-десериализация connections не падает",
+          "[graph][serialization][fuzz]") {
+    Graph base_graph("FuzzGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_id = print_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_exec_in = print_node->get_exec_input_ports().at(0);
+
+    REQUIRE(base_graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(base_graph.add_node(std::move(print_node)) == print_id);
+    REQUIRE(
+        base_graph.connect(start_id, start_exec_out->get_id(), print_id, print_exec_in->get_id())
+            .has_value());
+
+    const nlohmann::json seed_json = GraphSerializer::to_json(base_graph);
+
+    std::mt19937_64 rng(0xC0FFEEULL);
+    std::uniform_int_distribution<int> mutation_dist(0, 6);
+    std::uniform_int_distribution<int> bad_id_dist(0, 3);
+
+    for (int iteration = 0; iteration < 200; ++iteration) {
+        nlohmann::json mutated = seed_json;
+
+        switch (mutation_dist(rng)) {
+            case 0:
+                mutated["connections"][0].erase("id");
+                break;
+            case 1:
+                mutated["connections"][0]["from"]["nodeId"] = bad_id_dist(rng) == 0 ? -1 : 999999;
+                break;
+            case 2:
+                mutated["connections"][0]["to"]["portId"] = bad_id_dist(rng) == 0 ? -1 : 999999;
+                break;
+            case 3:
+                mutated["connections"][0]["from"]["portId"] = "not-a-number";
+                break;
+            case 4: {
+                const auto connection_copy = mutated["connections"][0];
+                mutated["connections"] = nlohmann::json::array({connection_copy, connection_copy});
+                mutated["connections"][1]["id"] = connection_copy.value("id", 1);
+                break;
+            }
+            case 5:
+                mutated["connections"][0]["to"] = nlohmann::json::object();
+                break;
+            case 6:
+                mutated["connections"][0]["from"]["nodeId"] = print_id.value;
+                mutated["connections"][0]["to"]["nodeId"] = start_id.value;
+                mutated["connections"][0]["to"]["portId"] = start_exec_out->get_id().value;
+                break;
+            default:
+                FAIL("Недостижимая ветка fuzz мутации");
+        }
+
+        bool threw_exception = false;
+        auto res = Result<Graph>(Error{.message = "", .code = 0});
+        try {
+            res = GraphSerializer::from_json(mutated);
+        } catch (...) {
+            threw_exception = true;
+        }
+
+        REQUIRE(!threw_exception);
+        if (res.has_error()) {
+            REQUIRE((res.error().code == kTestErrorConnection ||
+                     res.error().code == kTestErrorMissingField ||
+                     res.error().code == kTestErrorInvalidDocument));
+        }
+    }
 }

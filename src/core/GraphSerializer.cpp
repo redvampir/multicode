@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
@@ -529,30 +530,53 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
     uint64_t max_connection_id = 0;
     std::unordered_set<uint64_t> seen_connection_ids;
     std::unordered_set<ConnectionKey, ConnectionKeyHash> seen_connection_edges;
+    std::vector<std::pair<std::size_t, ParsedConnection>> parsed_connections;
+    std::vector<std::string> connection_errors;
 
     if (connections_it != doc.end()) {
+        parsed_connections.reserve(connections_it->size());
+        connection_errors.reserve(connections_it->size());
+
         for (std::size_t i = 0; i < connections_it->size(); ++i) {
             const auto parsed_conn_res = parse_connection(
                 connections_it->at(i), i, seen_connection_ids, seen_connection_edges);
             if (!parsed_conn_res) {
-                return Result<Graph>(parsed_conn_res.error());
+                connection_errors.push_back(parsed_conn_res.error().message);
+                continue;
             }
 
             const auto parsed_conn = parsed_conn_res.value();
             max_connection_id = std::max(max_connection_id, parsed_conn.id.value);
+            parsed_connections.emplace_back(i, parsed_conn);
+        }
 
-            if (auto validation_res = validate_connection_semantics(graph, parsed_conn, i);
+        for (const auto& [index, parsed_conn] : parsed_connections) {
+            if (auto validation_res = validate_connection_semantics(graph, parsed_conn, index);
                 !validation_res) {
-                return Result<Graph>(validation_res.error());
+                connection_errors.push_back(validation_res.error().message);
             }
+        }
 
+        if (!connection_errors.empty()) {
+            std::string aggregated =
+                format("Connection validation failed (", connection_errors.size(), " error(s)): ");
+            for (std::size_t i = 0; i < connection_errors.size(); ++i) {
+                if (i > 0) {
+                    aggregated += " | ";
+                }
+                aggregated += connection_errors[i];
+            }
+            return Result<Graph>(Error{.message = std::move(aggregated), .code = kErrorConnection});
+        }
+
+        for (const auto& [index, parsed_conn] : parsed_connections) {
             auto connect_result = graph.connect(parsed_conn.from.node_id,
                                                 parsed_conn.from.port_id,
                                                 parsed_conn.to.node_id,
                                                 parsed_conn.to.port_id);
             if (!connect_result) {
                 return Result<Graph>(Error{.message = format("connections[",
-                                                             i,
+                                                             index,
                                                              "]: failed to connect ",
                                                              parsed_conn.from.node_id.value,
                                                              ":",

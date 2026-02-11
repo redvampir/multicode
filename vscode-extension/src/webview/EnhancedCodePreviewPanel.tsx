@@ -10,9 +10,11 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
-import { getLanguageSupportInfo } from '../codegen/languageSupport';
+import type { BlueprintGraphState, BlueprintNodeType } from '../shared/blueprintTypes';
+import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo, isLanguageSupported } from '../codegen/languageSupport';
+import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import type { NodeDefinitionGetter } from '../codegen/generators/template';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
 import { getTranslation } from '../shared/translations';
@@ -222,6 +224,8 @@ interface EnhancedCodePreviewProps {
   locale: 'ru' | 'en';
   onNodeSelect?: (nodeId: string) => void;
   onGenerateComplete?: (result: CodeGenerationResult) => void;
+  getNodeDefinition?: NodeDefinitionGetter;
+  packageNodeTypes?: BlueprintNodeType[];
 }
 
 // ============================================
@@ -233,6 +237,8 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   locale,
   onNodeSelect,
   onGenerateComplete,
+  getNodeDefinition,
+  packageNodeTypes,
 }) => {
   const [result, setResult] = useState<CodeGenerationResult | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -252,7 +258,18 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       setIsLoading(true);
       
       try {
-        const generator = createGenerator(graph.language);
+        if (!isLanguageSupported(graph.language)) {
+          throw new UnsupportedLanguageError(graph.language);
+        }
+
+        const hasPackageRegistry =
+          typeof getNodeDefinition === 'function' &&
+          Array.isArray(packageNodeTypes) &&
+          packageNodeTypes.length > 0;
+
+        const generator = hasPackageRegistry
+          ? CppCodeGenerator.withPackages(getNodeDefinition, packageNodeTypes)
+          : new CppCodeGenerator();
         const generationResult = generator.generate(graph);
         
         setResult(generationResult);
@@ -309,7 +326,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     };
     
     generateCode();
-  }, [graph, locale, onGenerateComplete]);
+  }, [graph, locale, onGenerateComplete, getNodeDefinition, packageNodeTypes]);
 
   // Клик на строку кода
   const handleLineClick = useCallback((lineInfo: CodeLineInfo) => {

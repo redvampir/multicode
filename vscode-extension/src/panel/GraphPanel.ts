@@ -11,7 +11,7 @@ import {
 import { serializeGraphState, deserializeGraphState, parseSerializedGraph } from '../shared/serializer';
 import { validateGraphState, type ValidationResult } from '../shared/validator';
 import { migrateToBlueprintFormat } from '../shared/blueprintTypes';
-import { CppCodeGenerator } from '../codegen';
+import { createGenerator, UnsupportedLanguageError } from '../codegen';
 import { getTranslation, type TranslationKey } from '../shared/translations';
 import {
   extensionToWebviewMessageSchema,
@@ -350,10 +350,23 @@ export class GraphPanel {
   }
 
   public async handleGenerateCode(): Promise<void> {
-    const generator = new CppCodeGenerator();
     const blueprintState = migrateToBlueprintFormat(this.graphState);
-    const result = generator.generate(blueprintState);
-    
+    let result;
+
+    try {
+      const generator = createGenerator(this.graphState.language);
+      result = generator.generate(blueprintState);
+    } catch (error) {
+      if (error instanceof UnsupportedLanguageError) {
+        this.postToast(
+          'warning',
+          this.translate('codegen.unsupportedLanguage', { language: error.language.toUpperCase() })
+        );
+        return;
+      }
+      throw error;
+    }
+
     if (result.success) {
       this.outputChannel.appendLine('');
       this.outputChannel.appendLine('═'.repeat(60));

@@ -37,3 +37,8 @@ export {
   getUnsupportedLanguageMessages,
   createUnsupportedLanguageError,
 } from './factory';
+
+export {
+  getLanguageSupportInfo,
+  isLanguageSupported,
+} from './languageSupport';

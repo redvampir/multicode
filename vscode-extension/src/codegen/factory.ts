@@ -10,6 +10,7 @@ import { CppCodeGenerator } from './CppCodeGenerator';
 import type { ICodeGenerator } from './types';
 import { CodeGenErrorCode } from './types';
 import type { GraphLanguage } from '../shared/blueprintTypes';
+import { isLanguageSupported } from './languageSupport';
 
 export class UnsupportedLanguageError extends Error {
   public readonly language: GraphLanguage;
@@ -34,11 +35,11 @@ export function getUnsupportedLanguageMessages(language: GraphLanguage): Unsuppo
 }
 
 export function createGenerator(language: GraphLanguage): ICodeGenerator {
-  if (language === 'cpp') {
-    return new CppCodeGenerator();
+  if (!isLanguageSupported(language)) {
+    throw new UnsupportedLanguageError(language);
   }
 
-  throw new UnsupportedLanguageError(language);
+  return new CppCodeGenerator();
 }
 
 export function createUnsupportedLanguageError(language: GraphLanguage) {

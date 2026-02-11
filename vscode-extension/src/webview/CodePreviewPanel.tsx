@@ -11,8 +11,10 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
 import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
 
 // ============================================
 // Стили
@@ -386,6 +388,8 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   
   if (!visible) return null;
   
+  const supportInfo = getLanguageSupportInfo(graph.language);
+
   const t = {
     title: displayLanguage === 'ru'
       ? `Код (${graph.language.toUpperCase()})`
@@ -398,9 +402,9 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
     time: displayLanguage === 'ru' ? 'мс' : 'ms',
     errors: displayLanguage === 'ru' ? 'Ошибки' : 'Errors',
     warnings: displayLanguage === 'ru' ? 'Предупреждения' : 'Warnings',
-    supportStatus: displayLanguage === 'ru' ? 'Статус поддержки' : 'Support status',
-    supportReady: displayLanguage === 'ru' ? 'готово' : 'ready',
-    supportMissing: displayLanguage === 'ru' ? 'не поддерживается' : 'unsupported',
+    supportStatus: getTranslation(displayLanguage, 'codegen.supportStatus'),
+    supportReady: getTranslation(displayLanguage, 'codegen.support.ready'),
+    supportMissing: getTranslation(displayLanguage, 'codegen.support.unsupported'),
   };
   
   return (
@@ -410,8 +414,8 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
         <div style={styles.title}>
           <span>{'</>'}</span>
           <span>{t.title}</span>
-          <span style={{ fontSize: 11, color: graph.language === 'cpp' ? '#a6e3a1' : '#f9e2af' }}>
-            {t.supportStatus}: {graph.language === 'cpp' ? t.supportReady : t.supportMissing}
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {t.supportStatus}: {supportInfo.supportsGenerator ? t.supportReady : t.supportMissing}
           </span>
         </div>
         <div style={styles.headerActions}>

@@ -12,8 +12,10 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
 import { createGenerator, UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
 import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
 
 // ============================================
 // Расширенные стили
@@ -242,6 +244,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const [showMinimap, setShowMinimap] = useState(true);
   const [showFunctionsPanel, setShowFunctionsPanel] = useState(false);  
   const codeRef = useRef<HTMLDivElement>(null);
+  const supportInfo = getLanguageSupportInfo(graph.language);
 
   // Генерация кода
   useEffect(() => {
@@ -524,8 +527,8 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
           {isLoading && <span style={{ color: '#f9e2af' }}>⏳</span>}
           {result?.success === false && <span style={{ color: '#f38ba8' }}>❌</span>}
           {result?.success === true && <span style={{ color: '#a6e3a1' }}>✅</span>}
-          <span style={{ fontSize: 11, color: graph.language === 'cpp' ? '#a6e3a1' : '#f9e2af' }}>
-            {locale === 'ru' ? 'Поддержка:' : 'Support:'} {graph.language === 'cpp' ? (locale === 'ru' ? 'готово' : 'ready') : (locale === 'ru' ? 'не поддерживается' : 'unsupported')}
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {getTranslation(locale, 'codegen.supportStatus')}: {supportInfo.supportsGenerator ? getTranslation(locale, 'codegen.support.ready') : getTranslation(locale, 'codegen.support.unsupported')}
           </span>
         </div>
         <div style={styles.headerActions}>

@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`FunctionEntryNodeGenerator > generateFunctionSignature > корректно строит сигнатуру для кейса $имя 1`] = `"Proverit_flagResult Proverit_flag(int porog)"`;
+
+exports[`FunctionEntryNodeGenerator > generateFunctionSignature > корректно строит сигнатуру для кейса $имя 2`] = `"Sobrat_otchyotResult Sobrat_otchyot(std::string nazvanie)"`;
+
+exports[`FunctionEntryNodeGenerator > generateFunctionSignature > корректно строит сигнатуру для кейса $имя 3`] = `"Szhat_dannyeResult Szhat_dannye(std::vector<float> spisok)"`;
+
+exports[`FunctionReturnNodeGenerator > generate > корректно строит tuple-return и транслитерацию для кейса $имя 1`] = `"    return Proverit_flagResult{404, true};"`;
+
+exports[`FunctionReturnNodeGenerator > generate > корректно строит tuple-return и транслитерацию для кейса $имя 2`] = `"    return Sobrat_otchyotResult{"Итог", 3.14f};"`;
+
+exports[`FunctionReturnNodeGenerator > generate > корректно строит tuple-return и транслитерацию для кейса $имя 3`] = `"    return Szhat_dannyeResult{{1.0f, 2.0f}, "ok"};"`;

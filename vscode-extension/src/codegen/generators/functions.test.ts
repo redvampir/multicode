@@ -298,7 +298,7 @@ describe('FunctionEntryNodeGenerator', () => {
       expect(signature).toBe('int getNumber()');
     });
 
-    it('генерирует auto для множественных выходов', () => {
+    it('генерирует std::tuple для множественных выходов', () => {
       const func = createTestFunction({
         name: 'getMinMax',
         parameters: [
@@ -309,7 +309,7 @@ describe('FunctionEntryNodeGenerator', () => {
 
       const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
       
-      expect(signature).toBe('auto getMinMax()');
+      expect(signature).toBe('std::tuple<int, int> getMinMax()');
     });
 
     it('генерирует полную сигнатуру с входами и выходом', () => {
@@ -445,7 +445,7 @@ describe('FunctionReturnNodeGenerator', () => {
 
       const result = generator.generate(node, context, helpers);
 
-      expect(result.lines[0]).toContain('std::make_tuple(1, 100)');
+      expect(result.lines[0]).toContain('std::tuple{1, 100}');
     });
 
     it('добавляет предупреждение без связанной функции', () => {

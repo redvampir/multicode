@@ -648,7 +648,7 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
     });
     
-    it('should generate TODO for Custom node (fallback)', () => {
+    it('should return structured error for Custom node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const customNode: BlueprintNode = {
         id: 'custom-1',
@@ -670,12 +670,15 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Custom');
-      expect(result.code).toContain('MyCustomNode');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'custom-1',
+        code: 'UNKNOWN_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
     
-    it('should generate TODO for Function node (fallback)', () => {
+    it('should return structured error for Function node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const functionNode: BlueprintNode = {
         id: 'func-1',
@@ -697,11 +700,15 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Function');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'func-1',
+        code: 'UNKNOWN_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
     
-    it('should generate TODO for Event node (fallback)', () => {
+    it('should return structured error for Event node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const eventNode: BlueprintNode = {
         id: 'event-1',
@@ -723,9 +730,33 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Event');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'event-1',
+        code: 'UNKNOWN_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
+
+    it('не должен генерировать TODO для поддержанных узлов', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const printNode = createNode('Print', { x: 200, y: 0 }, 'print');
+      const endNode = createNode('End', { x: 400, y: 0 }, 'end');
+
+      const graph = createTestGraph(
+        [startNode, printNode, endNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('print', 'print-exec-out', 'end', 'end-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('TODO');
+    });
+
   });
   
   describe('generate - Variables detailed', () => {

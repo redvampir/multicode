@@ -67,6 +67,25 @@ function transliterate(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
+
+
+/**
+ * C++ тип возврата для функции с учётом multiple return
+ */
+function getFunctionReturnType(func: BlueprintFunction): string {
+  const outputParams = func.parameters.filter(p => p.direction === 'output');
+
+  if (outputParams.length === 0) {
+    return 'void';
+  }
+
+  if (outputParams.length === 1) {
+    return portTypeToCpp(outputParams[0].dataType);
+  }
+
+  const outputTypes = outputParams.map(param => portTypeToCpp(param.dataType));
+  return `std::tuple<${outputTypes.join(', ')}>`;
+}
 // ============================================
 // Интерфейс для получения функций из контекста
 // ============================================
@@ -135,16 +154,9 @@ export class FunctionEntryNodeGenerator extends BaseNodeGenerator {
    */
   static generateFunctionSignature(func: BlueprintFunction): string {
     const inputParams = func.parameters.filter(p => p.direction === 'input');
-    const outputParams = func.parameters.filter(p => p.direction === 'output');
-    
+
     // Определяем тип возврата
-    let returnType = 'void';
-    if (outputParams.length === 1) {
-      returnType = portTypeToCpp(outputParams[0].dataType);
-    } else if (outputParams.length > 1) {
-      // Множественные выходы — используем структуру или tuple
-      returnType = 'auto'; // TODO: генерировать struct
-    }
+    const returnType = getFunctionReturnType(func);
     
     // Формируем параметры
     const params = inputParams.map(p => {
@@ -205,14 +217,13 @@ export class FunctionReturnNodeGenerator extends BaseNodeGenerator {
       return this.code([`${ind}return ${returnValue};`], false);
     }
     
-    // Множественные выходные параметры — return tuple/struct
-    // TODO: поддержка multiple returns через struct
+    // Множественные выходные параметры — возвращаем std::tuple
     const values = outputParams.map(param => {
       const value = helpers.getInputExpression(node, param.id);
       return value ?? getDefaultValue(param.dataType);
     });
-    
-    return this.code([`${ind}return std::make_tuple(${values.join(', ')});`], false);
+
+    return this.code([`${ind}return std::tuple{${values.join(', ')}};`], false);
   }
 }
 

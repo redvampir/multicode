@@ -197,36 +197,53 @@ describe('FallbackNodeGenerator', () => {
     expect(generator.nodeTypes).toContain('Event');
   });
 
-  it('should generate TODO comment for Custom node', () => {
+  it('should return structured error for Custom node', () => {
     const node = createMockNode('Custom', 'MyCustomNode');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('    // TODO: Custom - MyCustomNode');
+    expect(result.lines).toHaveLength(0);
     expect(result.followExecutionFlow).toBe(true);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'custom-1',
+      'UNKNOWN_NODE_TYPE',
+      'Узел Custom "MyCustomNode" пока не поддерживается C++ генератором',
+      'Custom node "MyCustomNode" is not yet supported by C++ generator'
+    );
   });
 
-  it('should generate TODO comment for Function node', () => {
+  it('should return structured error for Function node', () => {
     const node = createMockNode('Function', 'CalculateSum');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines[0]).toContain('// TODO: Function - CalculateSum');
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'function-1',
+      'UNKNOWN_NODE_TYPE',
+      'Узел Function "CalculateSum" пока не поддерживается C++ генератором',
+      'Function node "CalculateSum" is not yet supported by C++ generator'
+    );
   });
 
-  it('should generate TODO comment for Event node', () => {
+  it('should return structured error for Event node', () => {
     const node = createMockNode('Event', 'OnClick');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines[0]).toContain('// TODO: Event - OnClick');
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'event-1',
+      'UNKNOWN_NODE_TYPE',
+      'Узел Event "OnClick" пока не поддерживается C++ генератором',
+      'Event node "OnClick" is not yet supported by C++ generator'
+    );
   });
 });
 

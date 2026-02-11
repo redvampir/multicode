@@ -62,6 +62,7 @@ function createMockContext(): CodeGenContext {
     warnings: [],
     sourceMap: [],
     currentLine: 1,
+    supportedNodeTypes: ['Start', 'End', 'Print', 'Branch'],
   };
 }
 
@@ -209,8 +210,8 @@ describe('FallbackNodeGenerator', () => {
     expect(helpers.addError).toHaveBeenCalledWith(
       'custom-1',
       'UNKNOWN_NODE_TYPE',
-      'Узел Custom "MyCustomNode" пока не поддерживается C++ генератором',
-      'Custom node "MyCustomNode" is not yet supported by C++ generator'
+      'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="MyCustomNode". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=custom-1, type=Custom, label="MyCustomNode". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
   });
 
@@ -225,8 +226,8 @@ describe('FallbackNodeGenerator', () => {
     expect(helpers.addError).toHaveBeenCalledWith(
       'function-1',
       'UNKNOWN_NODE_TYPE',
-      'Узел Function "CalculateSum" пока не поддерживается C++ генератором',
-      'Function node "CalculateSum" is not yet supported by C++ generator'
+      'Неподдерживаемый узел для C++ генератора: id=function-1, type=Function, label="CalculateSum". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=function-1, type=Function, label="CalculateSum". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
   });
 
@@ -241,10 +242,41 @@ describe('FallbackNodeGenerator', () => {
     expect(helpers.addError).toHaveBeenCalledWith(
       'event-1',
       'UNKNOWN_NODE_TYPE',
-      'Узел Event "OnClick" пока не поддерживается C++ генератором',
-      'Event node "OnClick" is not yet supported by C++ generator'
+      'Неподдерживаемый узел для C++ генератора: id=event-1, type=Event, label="OnClick". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=event-1, type=Event, label="OnClick". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
     );
   });
+
+  it('should keep identical message format for FunctionCall node', () => {
+    const node = createMockNode('FunctionCall', 'InvokeSomething');
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+
+    generator.generate(node, context, helpers);
+
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'functioncall-1',
+      'UNKNOWN_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
+    );
+  });
+
+  it('should fallback to documentation path when supported types are unavailable', () => {
+    const node = createMockNode('Custom', 'NoRegistryNode');
+    const helpers = createMockHelpers();
+    const context = { ...createMockContext(), supportedNodeTypes: undefined };
+
+    generator.generate(node, context, helpers);
+
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'custom-1',
+      'UNKNOWN_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="NoRegistryNode". Поддерживаемые типы: см. Документы/Архитектура/VisualEditor.md. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=custom-1, type=Custom, label="NoRegistryNode". Supported types: см. Документы/Архитектура/VisualEditor.md. Hint: check supported node types.'
+    );
+  });
+
 });
 
 // ============================================

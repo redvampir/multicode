@@ -52,7 +52,6 @@ auto require_connect(Graph& graph,
 
 }  // namespace
 
-
 TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     Graph graph;
     NodeFactory factory;
@@ -74,8 +73,11 @@ TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     require_connect(graph, sequence_id, "Then 0", print1_id, "in_exec");
     require_connect(graph, sequence_id, "Then 1", print2_id, "in_exec");
     require_connect(graph, print1_id, "out_exec", end_id, "end");
-    require_connect(graph, 
-        print2_id, "out_exec", end_id, "end");  // An input port can have multiple connections
+    require_connect(graph,
+                    print2_id,
+                    "out_exec",
+                    end_id,
+                    "end");  // An input port can have multiple connections
 
     // Data flow
     require_connect(graph, literal1_id, "output", print1_id, "message");

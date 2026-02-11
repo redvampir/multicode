@@ -673,7 +673,7 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({
         nodeId: 'custom-1',
-        code: 'UNKNOWN_NODE_TYPE',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
       }));
       expect(result.code).not.toContain('TODO');
     });
@@ -703,7 +703,7 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({
         nodeId: 'func-1',
-        code: 'UNKNOWN_NODE_TYPE',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
       }));
       expect(result.code).not.toContain('TODO');
     });
@@ -733,7 +733,7 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({
         nodeId: 'event-1',
-        code: 'UNKNOWN_NODE_TYPE',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
       }));
       expect(result.code).not.toContain('TODO');
     });

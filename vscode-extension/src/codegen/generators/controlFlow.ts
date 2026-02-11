@@ -285,8 +285,10 @@ export class ParallelNodeGenerator extends BaseNodeGenerator {
     if (connectedThreads.length === 0) {
       helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Parallel: нет подключённых Thread-веток');
     } else {
+      const mutexVar = `parallel_mutex_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
       lines.push(`${ind}std::vector<std::thread> ${threadGroupVar};`);
       lines.push(`${ind}std::exception_ptr ${threadErrorVar};`);
+      lines.push(`${ind}std::mutex ${mutexVar};`);
 
       for (const threadNode of connectedThreads) {
         lines.push(`${ind}${threadGroupVar}.emplace_back([&]() {`);
@@ -298,6 +300,7 @@ export class ParallelNodeGenerator extends BaseNodeGenerator {
         helpers.popIndent();
         lines.push(`${helpers.indent()}} catch (...) {`);
         helpers.pushIndent();
+        lines.push(`${helpers.indent()}std::lock_guard<std::mutex> lock(${mutexVar});`);
         lines.push(`${helpers.indent()}if (!${threadErrorVar}) {`);
         helpers.pushIndent();
         lines.push(`${helpers.indent()}${threadErrorVar} = std::current_exception();`);
@@ -344,7 +347,19 @@ export class GateNodeGenerator extends BaseNodeGenerator {
     const ind = helpers.indent();
     const stateVar = `gate_open_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
     const exitNode = helpers.getExecutionTarget(node, 'exit');
-    const lines: string[] = [`${ind}static bool ${stateVar} = false;`, `${ind}if (${stateVar}) {`];
+
+    // TODO: реализовать семантику execution-входов open/close/toggle.
+    // На данный момент Gate ведёт себя как всегда открытый шлюз.
+    helpers.addWarning(
+      node.id,
+      CodeGenWarningCode.EMPTY_BRANCH,
+      'Gate: execution-входы open/close/toggle пока не поддержаны, Gate всегда открыт'
+    );
+
+    const lines: string[] = [
+      `${ind}static bool ${stateVar} = true; // Gate по умолчанию открыт (open/close/toggle не реализованы)`,
+      `${ind}if (${stateVar}) {`
+    ];
 
     helpers.pushIndent();
     if (exitNode) {
@@ -381,10 +396,22 @@ export class DoNNodeGenerator extends BaseNodeGenerator {
     const counterVar = `do_n_counter_${suffix}`;
     const limitExpr = helpers.getInputExpression(node, 'n') ?? '1';
     const exitNode = helpers.getExecutionTarget(node, 'exit');
+
+    // TODO: реализовать семантику execution-входа reset.
+    // На данный момент reset игнорируется и счётчик не сбрасывается.
+    helpers.addWarning(
+      node.id,
+      CodeGenWarningCode.EMPTY_BRANCH,
+      'DoN: execution-вход reset пока не поддержан'
+    );
+
+    const rawLimitVar = `do_n_limit_${suffix}_raw`;
+    const normalizedLimitVar = `do_n_limit_${suffix}`;
     const lines: string[] = [
       `${ind}static int ${counterVar} = 0;`,
-      `${ind}const int do_n_limit_${suffix} = (${limitExpr}) < 0 ? 0 : (${limitExpr});`,
-      `${ind}if (${counterVar} < do_n_limit_${suffix}) {`,
+      `${ind}const int ${rawLimitVar} = (${limitExpr});`,
+      `${ind}const int ${normalizedLimitVar} = ${rawLimitVar} < 0 ? 0 : ${rawLimitVar};`,
+      `${ind}if (${counterVar} < ${normalizedLimitVar}) {`,
     ];
 
     helpers.declareVariable(`${node.id}-counter`, counterVar, 'Counter', 'int', node.id);
@@ -430,6 +457,15 @@ export class DoOnceNodeGenerator extends BaseNodeGenerator {
     const ind = helpers.indent();
     const stateVar = `do_once_done_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
     const completedNode = helpers.getExecutionTarget(node, 'completed');
+
+    // TODO: реализовать семантику execution-входа reset.
+    // На данный момент reset игнорируется и флаг не сбрасывается.
+    helpers.addWarning(
+      node.id,
+      CodeGenWarningCode.EMPTY_BRANCH,
+      'DoOnce: execution-вход reset пока не поддержан'
+    );
+
     const lines: string[] = [
       `${ind}static bool ${stateVar} = false;`,
       `${ind}if (!${stateVar}) {`,
@@ -463,8 +499,8 @@ export class FlipFlopNodeGenerator extends BaseNodeGenerator {
   ): NodeGenerationResult {
     const ind = helpers.indent();
     const stateVar = `flip_flop_is_a_${node.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-    const nodeA = helpers.getExecutionTarget(node, 'a');
-    const nodeB = helpers.getExecutionTarget(node, 'b');
+    const nodeA = helpers.getExecutionTarget(node, `${node.id}-a`);
+    const nodeB = helpers.getExecutionTarget(node, `${node.id}-b`);
     const lines: string[] = [
       `${ind}static bool ${stateVar} = true;`,
       `${ind}if (${stateVar}) {`,
@@ -527,6 +563,14 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
     const rngVar = `multi_gate_rng_${suffix}`;
     const randomExpr = helpers.getInputExpression(node, 'is-random') ?? 'false';
     const loopExpr = helpers.getInputExpression(node, 'loop') ?? 'true';
+
+    // TODO: реализовать семантику execution-входа reset.
+    // На данный момент reset игнорируется и индекс не сбрасывается.
+    helpers.addWarning(
+      node.id,
+      CodeGenWarningCode.EMPTY_BRANCH,
+      'MultiGate: execution-вход reset пока не поддержан'
+    );
 
     const outputPorts = node.outputs
       .filter(port => port.id.includes('out-'))
@@ -616,9 +660,17 @@ export class MultiGateNodeGenerator extends BaseNodeGenerator {
     helpers.pushIndent();
     lines.push(`${helpers.indent()}${indexVar} = (${indexVar} + 1) % ${branches.length};`);
     helpers.popIndent();
-    lines.push(`${helpers.indent()}} else if (${indexVar} < ${branches.length - 1}) {`);
+    lines.push(`${helpers.indent()}} else {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}if (${indexVar} < ${branches.length - 1}) {`);
     helpers.pushIndent();
     lines.push(`${helpers.indent()}++${indexVar};`);
+    helpers.popIndent();
+    lines.push(`${helpers.indent()}} else {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}${indexVar} = ${branches.length}; // Установить в "done" состояние`);
+    helpers.popIndent();
+    lines.push(`${helpers.indent()}}`);
     helpers.popIndent();
     lines.push(`${helpers.indent()}}`);
     helpers.popIndent();

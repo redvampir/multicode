@@ -328,7 +328,7 @@ describe('CppCodeGenerator', () => {
       expect(result.warnings.some(w => w.message.includes('Parallel: нет подключённых Thread-веток'))).toBe(true);
     });
 
-    it('should generate Gate', () => {
+    it('should generate Gate with default open state and warning', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const gateNode = createNode('Gate', { x: 200, y: 0 }, 'gate');
       const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
@@ -344,7 +344,11 @@ describe('CppCodeGenerator', () => {
       const result = generator.generate(graph);
 
       expect(result.success).toBe(true);
-      expect(result.code).toContain('static bool gate_open_gate = false;');
+      expect(result.code).toContain('static bool gate_open_gate = true;'); // Gate по умолчанию открыт
+      expect(result.code).toContain('Gate по умолчанию открыт');
+      expect(result.warnings.some(w => w.message.includes('Gate: execution-входы open/close/toggle пока не поддержаны'))).toBe(true);
+      // Проверяем, что код может пропустить выполнение через Gate (он открыт, поэтому print выполнится)
+      expect(result.code).toContain('std::cout');
     });
 
     it('should generate DoN and expose counter output', () => {
@@ -381,6 +385,25 @@ describe('CppCodeGenerator', () => {
 
       expect(result.success).toBe(true);
       expect(result.code).toContain('static bool do_once_done_doonce = false;');
+      expect(result.warnings.some(w => w.message.includes('DoOnce: execution-вход reset пока не поддержан'))).toBe(true);
+    });
+
+    it('should warn about DoN reset input not supported', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doNNode = createNode('DoN', { x: 200, y: 0 }, 'don-reset');
+
+      const graph = createTestGraph(
+        [startNode, doNNode],
+        [createEdge('start', 'start-exec-out', 'don-reset', 'don-reset-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('DoN: execution-вход reset пока не поддержан'))).toBe(true);
+      // Проверка, что limitExpr вычисляется только один раз
+      expect(result.code).toContain('const int do_n_limit_donreset_raw');
+      expect(result.code).toContain('const int do_n_limit_donreset = do_n_limit_donreset_raw');
     });
 
     it('should generate FlipFlop', () => {
@@ -458,6 +481,47 @@ describe('CppCodeGenerator', () => {
       expect(result.warnings.some(w => w.message.includes('MultiGate: подключено 1 из 3 выходов Out-*'))).toBe(true);
     });
 
+    it('should warn about MultiGate reset input not supported', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-reset');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-reset', 'multigate-reset-exec-in'),
+          createEdge('multigate-reset', 'multigate-reset-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('MultiGate: execution-вход reset пока не поддержан'))).toBe(true);
+    });
+
+    it('should generate MultiGate with loop=false setting index to done state', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-noloop');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-noloop', 'multigate-noloop-exec-in'),
+          createEdge('multigate-noloop', 'multigate-noloop-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      // Проверяем, что код содержит логику перевода индекса в состояние "done"
+      expect(result.code).toContain('Установить в "done" состояние');
+      // Проверяем, что есть присвоение индекса для состояния "done" (должно быть больше количества веток)
+      expect(result.code).toMatch(/multi_gate_index_\w+\s*=\s*\d+/);
+    });
+
     it('should warn about partially connected Parallel outputs', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel-partial');
@@ -475,6 +539,29 @@ describe('CppCodeGenerator', () => {
 
       expect(result.success).toBe(true);
       expect(result.warnings.some(w => w.message.includes('Parallel: подключено 1 из 2 Thread-веток'))).toBe(true);
+    });
+
+    it('should generate Parallel with mutex for thread safety', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel-mutex');
+      const print1Node = createNode('Print', { x: 400, y: 0 }, 'print1');
+      const print2Node = createNode('Print', { x: 400, y: 100 }, 'print2');
+
+      const graph = createTestGraph(
+        [startNode, parallelNode, print1Node, print2Node],
+        [
+          createEdge('start', 'start-exec-out', 'parallel-mutex', 'parallel-mutex-exec-in'),
+          createEdge('parallel-mutex', 'parallel-mutex-thread-0', 'print1', 'print1-exec-in'),
+          createEdge('parallel-mutex', 'parallel-mutex-thread-1', 'print2', 'print2-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::mutex parallel_mutex_parallelmutex');
+      expect(result.code).toContain('std::lock_guard<std::mutex> lock(parallel_mutex_parallelmutex)');
+      expect(result.code).toContain('std::exception_ptr parallel_error_parallelmutex');
     });
 
     it('should generate ForEach', () => {

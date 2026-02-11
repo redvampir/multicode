@@ -210,7 +210,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       lines.push('');
       
       // Стандартные includes
-      const standardIncludes = new Set(['<exception>', '<iostream>', '<random>', '<string>', '<thread>', '<vector>']);
+      const standardIncludes = new Set(['<exception>', '<iostream>', '<mutex>', '<random>', '<string>', '<thread>', '<vector>']);
       
       // Добавляем includes из шаблонных генераторов
       const templateIncludes = TemplateNodeGenerator.getCollectedIncludes();

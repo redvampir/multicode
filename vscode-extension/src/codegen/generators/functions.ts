@@ -83,8 +83,28 @@ function getFunctionReturnType(func: BlueprintFunction): string {
     return portTypeToCpp(outputParams[0].dataType);
   }
 
+  return getFunctionResultTypeName(func);
+}
+
+/**
+ * Получить имя C++ типа результата для функции с несколькими output
+ */
+function getFunctionResultTypeName(func: BlueprintFunction): string {
+  return `${transliterate(func.name)}Result`;
+}
+
+/**
+ * Сгенерировать объявление именованного типа результата функции
+ */
+function generateFunctionResultTypeDeclaration(func: BlueprintFunction): string | null {
+  const outputParams = func.parameters.filter(p => p.direction === 'output');
+  if (outputParams.length <= 1) {
+    return null;
+  }
+
   const outputTypes = outputParams.map(param => portTypeToCpp(param.dataType));
-  return `std::tuple<${outputTypes.join(', ')}>`;
+  const resultTypeName = getFunctionResultTypeName(func);
+  return `using ${resultTypeName} = std::tuple<${outputTypes.join(', ')}>;`;
 }
 // ============================================
 // Интерфейс для получения функций из контекста
@@ -223,7 +243,9 @@ export class FunctionReturnNodeGenerator extends BaseNodeGenerator {
       return value ?? getDefaultValue(param.dataType);
     });
 
-    return this.code([`${ind}return std::tuple{${values.join(', ')}};`], false);
+    const resultTypeName = getFunctionResultTypeName(func);
+
+    return this.code([`${ind}return ${resultTypeName}{${values.join(', ')}};`], false);
   }
 }
 
@@ -368,4 +390,6 @@ export {
   portTypeToCpp,
   transliterate,
   getDefaultValue,
+  getFunctionResultTypeName,
+  generateFunctionResultTypeDeclaration,
 };

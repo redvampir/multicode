@@ -12,6 +12,8 @@ import {
   transliterate,
   getDefaultValue,
   FunctionAwareContext,
+  getFunctionResultTypeName,
+  generateFunctionResultTypeDeclaration,
 } from './functions';
 import type { BlueprintNode, BlueprintFunction } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
@@ -226,6 +228,42 @@ describe('Утилиты functions.ts', () => {
 // Тесты FunctionEntryNodeGenerator
 // ============================================
 
+
+  describe('типы результатов функции', () => {
+    it('генерирует имя типа результата', () => {
+      const func = createTestFunction({ name: 'myFunction' });
+
+      expect(getFunctionResultTypeName(func)).toBe('myFunctionResult');
+    });
+
+    it('генерирует using alias для множественных выходов', () => {
+      const func = createTestFunction({
+        name: 'getMinMax',
+        parameters: [
+          { id: 'out1', name: 'min', nameRu: 'мин', dataType: 'int32', direction: 'output' },
+          { id: 'out2', name: 'max', nameRu: 'макс', dataType: 'int32', direction: 'output' },
+        ],
+      });
+
+      const declaration = generateFunctionResultTypeDeclaration(func);
+
+      expect(declaration).toBe('using getMinMaxResult = std::tuple<int, int>;');
+    });
+
+    it('не генерирует alias для 0 или 1 выхода', () => {
+      const noOutput = createTestFunction({ name: 'noOutput' });
+      const oneOutput = createTestFunction({
+        name: 'oneOutput',
+        parameters: [
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'int32', direction: 'output' },
+        ],
+      });
+
+      expect(generateFunctionResultTypeDeclaration(noOutput)).toBeNull();
+      expect(generateFunctionResultTypeDeclaration(oneOutput)).toBeNull();
+    });
+  });
+
 describe('FunctionEntryNodeGenerator', () => {
   let generator: FunctionEntryNodeGenerator;
 
@@ -298,7 +336,7 @@ describe('FunctionEntryNodeGenerator', () => {
       expect(signature).toBe('int getNumber()');
     });
 
-    it('генерирует std::tuple для множественных выходов', () => {
+    it('генерирует именованный тип для множественных выходов', () => {
       const func = createTestFunction({
         name: 'getMinMax',
         parameters: [
@@ -309,7 +347,7 @@ describe('FunctionEntryNodeGenerator', () => {
 
       const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
       
-      expect(signature).toBe('std::tuple<int, int> getMinMax()');
+      expect(signature).toBe('getMinMaxResult getMinMax()');
     });
 
     it('генерирует полную сигнатуру с входами и выходом', () => {
@@ -423,7 +461,7 @@ describe('FunctionReturnNodeGenerator', () => {
       expect(result.lines).toContain('    return 0;');
     });
 
-    it('генерирует tuple для множественных выходов', () => {
+    it('генерирует именованный тип для множественных выходов', () => {
       const func = createTestFunction({
         parameters: [
           { id: 'min', name: 'min', nameRu: 'мин', dataType: 'int32', direction: 'output' },
@@ -445,7 +483,7 @@ describe('FunctionReturnNodeGenerator', () => {
 
       const result = generator.generate(node, context, helpers);
 
-      expect(result.lines[0]).toContain('std::tuple{1, 100}');
+      expect(result.lines[0]).toContain('testFunctionResult{1, 100}');
     });
 
     it('добавляет предупреждение без связанной функции', () => {

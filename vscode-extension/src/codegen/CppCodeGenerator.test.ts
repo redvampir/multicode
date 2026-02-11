@@ -1627,6 +1627,67 @@ describe('CppCodeGenerator', () => {
       expect(funcPos).toBeLessThan(mainPos);
     });
     
+
+    it('should generate named result type before function signature for multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-minmax',
+        name: 'getMinMax',
+        nameRu: 'Получить минимум и максимум',
+        parameters: [
+          { id: 'min', name: 'min', nameRu: 'мин', dataType: 'int32', direction: 'output' },
+          { id: 'max', name: 'max', nameRu: 'макс', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-minmax' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-1-min', 'min', 'int32', 'input', 1, 1),
+                port('return-1-max', 'max', 'int32', 'input', 2, 10),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-minmax' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('using getMinMaxResult = std::tuple<int, int>;');
+      expect(result.code).toContain('getMinMaxResult getMinMax()');
+      expect(result.code).toContain('return getMinMaxResult{1, 10};');
+
+      const aliasPos = result.code.indexOf('using getMinMaxResult = std::tuple<int, int>;');
+      const signaturePos = result.code.indexOf('getMinMaxResult getMinMax()');
+      expect(aliasPos).toBeLessThan(signaturePos);
+    });
+
     it('should generate function with return value used in main', () => {
       // Функция возвращающая число
       const func = createTestFunction({

@@ -33,6 +33,22 @@ describe('codePreviewGenerator', () => {
     expect(resolution.generator).toBeInstanceOf(CppCodeGenerator);
   });
 
+  it('должен различать пустой реестр и отсутствующий snapshot', () => {
+    const withPackagesSpy = vi.spyOn(CppCodeGenerator, 'withPackages');
+
+    // Валидный snapshot, но пустой список узлов
+    const resolution = resolveCodePreviewGenerator('cpp', {
+      getNodeDefinition: () => undefined,
+      packageNodeTypes: [],
+      registryVersion: 1,
+    });
+
+    expect(withPackagesSpy).not.toHaveBeenCalled();
+    expect(resolution.diagnostics.usedPackageRegistry).toBe(false);
+    expect(resolution.diagnostics.fallbackReason).toBe('registry-empty');
+    expect(resolution.generator).toBeInstanceOf(CppCodeGenerator);
+  });
+
   it('должен валидировать snapshot реестра', () => {
     expect(isPackageRegistrySnapshotAvailable(undefined)).toBe(false);
     expect(isPackageRegistrySnapshotAvailable({ registryVersion: 1 })).toBe(false);

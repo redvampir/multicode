@@ -19,6 +19,7 @@ import type { CodeGenerationResult } from '../codegen/types';
 import { getTranslation } from '../shared/translations';
 import {
   resolveCodePreviewGenerator,
+  isPackageRegistrySnapshotAvailable,
   type PackageRegistrySnapshot,
 } from './codePreviewGenerator';
 
@@ -262,9 +263,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const supportInfo = getLanguageSupportInfo(graph.language);
 
   const previewWarnings = useMemo(() => {
-    const fallbackWithoutRegistry = !packageRegistrySnapshot
-      || !Array.isArray(packageRegistrySnapshot.packageNodeTypes)
-      || packageRegistrySnapshot.packageNodeTypes.length === 0;
+    const fallbackWithoutRegistry = !isPackageRegistrySnapshotAvailable(packageRegistrySnapshot);
 
     if (!fallbackWithoutRegistry) {
       return [] as string[];

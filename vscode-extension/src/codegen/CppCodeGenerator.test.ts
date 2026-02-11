@@ -1901,6 +1901,108 @@ describe('CppCodeGenerator', () => {
       expect(aliasPos).toBeLessThan(signaturePos);
     });
 
+    it('should not include <tuple> when no tuple usage is generated', () => {
+      const func = createTestFunction({
+        id: 'func-single-output',
+        name: 'singleOutput',
+        nameRu: 'Функция с одним выходом',
+        parameters: [
+          { id: 'value', name: 'value', nameRu: 'значение', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-single',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-single-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-single-output' },
+            },
+            {
+              id: 'return-single',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-single-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-single-value', 'value', 'int32', 'input', 1, 7),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-single-output' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-single', 'entry-single-exec-out', 'return-single', 'return-single-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph([createNode('Start', { x: 0, y: 0 }, 'start')], []);
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('#include <tuple>');
+      expect(result.code).toContain('int singleOutput()');
+    });
+
+    it('should include <tuple> when function has multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-multi-output',
+        name: 'multiOutput',
+        nameRu: 'Функция с несколькими выходами',
+        parameters: [
+          { id: 'left', name: 'left', nameRu: 'левый', dataType: 'int32', direction: 'output' },
+          { id: 'right', name: 'right', nameRu: 'правый', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-multi',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-multi-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-multi-output' },
+            },
+            {
+              id: 'return-multi',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-multi-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-multi-left', 'left', 'int32', 'input', 1, 2),
+                port('return-multi-right', 'right', 'int32', 'input', 2, 9),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-multi-output' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-multi', 'entry-multi-exec-out', 'return-multi', 'return-multi-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph([createNode('Start', { x: 0, y: 0 }, 'start')], []);
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('#include <tuple>');
+      expect(result.code).toContain('using multiOutputResult = std::tuple<int, int>;');
+    });
+
     it('should generate function with return value used in main', () => {
       // Функция возвращающая число
       const func = createTestFunction({

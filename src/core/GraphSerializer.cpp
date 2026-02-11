@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "visprog/core/ErrorCodes.hpp"
 #include "visprog/core/FormatCompat.hpp"
 #include "visprog/core/NodeFactory.hpp"
 #include "visprog/core/Port.hpp"
@@ -41,15 +42,6 @@ using visprog::core::Result;
 
 // Access NodeTypes namespace directly
 namespace NodeTypes = visprog::core::NodeTypes;
-
-// --- Error Codes ---
-constexpr int kErrorInvalidDocument = 600;
-constexpr int kErrorMissingField = 601;
-constexpr int kErrorInvalidEnum = 602;
-constexpr int kErrorPropertyValue = 603;
-constexpr int kErrorTypeName = 604;
-constexpr int kErrorConnection = 605;
-constexpr int kErrorSchemaVersion = 606;
 
 // --- String Conversion Utilities ---
 
@@ -120,7 +112,7 @@ template <typename T>
         return Result<T>(it->get<T>());
     }
     return Result<T>(Error{.message = format(ctx, ": missing or invalid field '", key, "'"),
-                           .code = kErrorMissingField});
+                           .code = visprog::core::error_codes::serializer::MissingField});
 }
 
 [[nodiscard]] auto require_uint64(const nlohmann::json& obj,
@@ -135,7 +127,7 @@ template <typename T>
     }
     return Result<uint64_t>(
         Error{.message = format(ctx, ": missing or invalid uint64 field '", key, "'"),
-              .code = kErrorMissingField});
+              .code = visprog::core::error_codes::serializer::MissingField});
 }
 
 // --- Property Parsers ---
@@ -144,7 +136,7 @@ template <typename T>
                                          std::string_view ctx) -> Result<void> {
     if (!props_json.is_object()) {
         return Result<void>(Error{.message = format(ctx, ": 'properties' must be an object"),
-                                  .code = kErrorInvalidDocument});
+                                  .code = visprog::core::error_codes::serializer::InvalidDocument});
     }
 
     for (const auto& [key, value] : props_json.items()) {
@@ -159,7 +151,7 @@ template <typename T>
         } else {
             return Result<void>(
                 Error{.message = format(ctx, ": property '", key, "' has unsupported type"),
-                      .code = kErrorPropertyValue});
+                      .code = visprog::core::error_codes::serializer::InvalidPropertyValue});
         }
     }
     return Result<void>();
@@ -206,20 +198,22 @@ struct ConnectionKeyHash {
     if (endpoint_it == conn_json.end() || !endpoint_it->is_object()) {
         return Result<ParsedEndpoint>(
             Error{.message = format(ctx, ": missing or invalid object '", field_name, "'"),
-                  .code = kErrorConnection});
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const auto endpoint_ctx = format(ctx, ".", field_name);
     const auto node_id_res = require_uint64(*endpoint_it, "nodeId", endpoint_ctx);
     if (!node_id_res) {
         return Result<ParsedEndpoint>(
-            Error{.message = node_id_res.error().message, .code = kErrorConnection});
+            Error{.message = node_id_res.error().message,
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const auto port_id_res = require_uint64(*endpoint_it, "portId", endpoint_ctx);
     if (!port_id_res) {
         return Result<ParsedEndpoint>(
-            Error{.message = port_id_res.error().message, .code = kErrorConnection});
+            Error{.message = port_id_res.error().message,
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     return Result<ParsedEndpoint>(ParsedEndpoint{.node_id = NodeId{node_id_res.value()},
@@ -232,25 +226,27 @@ struct ConnectionKeyHash {
                                      std::string_view ctx) -> Result<const Port*> {
     const auto* node = graph.get_node(endpoint.node_id);
     if (!node) {
-        return Result<const Port*>(Error{.message = format(ctx,
-                                                           ": invalid reference ",
-                                                           endpoint_name,
-                                                           ".nodeId=",
-                                                           endpoint.node_id.value,
-                                                           " (node not found)"),
-                                         .code = kErrorConnection});
+        return Result<const Port*>(
+            Error{.message = format(ctx,
+                                    ": invalid reference ",
+                                    endpoint_name,
+                                    ".nodeId=",
+                                    endpoint.node_id.value,
+                                    " (node not found)"),
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const auto* port = node->find_port(endpoint.port_id);
     if (!port) {
-        return Result<const Port*>(Error{.message = format(ctx,
-                                                           ": invalid reference ",
-                                                           endpoint_name,
-                                                           ".portId=",
-                                                           endpoint.port_id.value,
-                                                           " for nodeId=",
-                                                           endpoint.node_id.value),
-                                         .code = kErrorConnection});
+        return Result<const Port*>(
+            Error{.message = format(ctx,
+                                    ": invalid reference ",
+                                    endpoint_name,
+                                    ".portId=",
+                                    endpoint.port_id.value,
+                                    " for nodeId=",
+                                    endpoint.node_id.value),
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     return Result<const Port*>(port);
@@ -264,19 +260,21 @@ struct ConnectionKeyHash {
     const std::string ctx = format("connections[", index, "]");
     if (!conn_json.is_object()) {
         return Result<ParsedConnection>(
-            Error{.message = format(ctx, " must be an object"), .code = kErrorConnection});
+            Error{.message = format(ctx, " must be an object"),
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const auto id_res = require_uint64(conn_json, "id", ctx);
     if (!id_res) {
-        return Result<ParsedConnection>(Error{
-            .message = format(ctx, ".id: ", id_res.error().message), .code = kErrorConnection});
+        return Result<ParsedConnection>(
+            Error{.message = format(ctx, ".id: ", id_res.error().message),
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     if (!seen_ids.insert(id_res.value()).second) {
         return Result<ParsedConnection>(
             Error{.message = format(ctx, ": duplicate connection id ", id_res.value()),
-                  .code = kErrorConnection});
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const auto from_res = parse_connection_endpoint(conn_json, "from", ctx);
@@ -296,16 +294,17 @@ struct ConnectionKeyHash {
                             .to_node = to.node_id,
                             .to_port = to.port_id};
     if (!seen_edges.insert(key).second) {
-        return Result<ParsedConnection>(Error{.message = format(ctx,
-                                                                ": duplicate edge ",
-                                                                from.node_id.value,
-                                                                ":",
-                                                                from.port_id.value,
-                                                                " -> ",
-                                                                to.node_id.value,
-                                                                ":",
-                                                                to.port_id.value),
-                                              .code = kErrorConnection});
+        return Result<ParsedConnection>(
+            Error{.message = format(ctx,
+                                    ": duplicate edge ",
+                                    from.node_id.value,
+                                    ":",
+                                    from.port_id.value,
+                                    " -> ",
+                                    to.node_id.value,
+                                    ":",
+                                    to.port_id.value),
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     return Result<ParsedConnection>(
@@ -336,7 +335,7 @@ struct ConnectionKeyHash {
                                     port_direction_to_string(from_port->get_direction()),
                                     "->",
                                     port_direction_to_string(to_port->get_direction())),
-                  .code = kErrorConnection});
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     const bool is_exec_connection = from_port->is_execution() || to_port->is_execution();
@@ -345,7 +344,7 @@ struct ConnectionKeyHash {
             Error{.message = format(ctx,
                                     ": type mismatch. Execution ports must connect only "
                                     "to Execution ports"),
-                  .code = kErrorConnection});
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     if (!is_exec_connection && from_port->get_data_type() != to_port->get_data_type()) {
@@ -354,7 +353,7 @@ struct ConnectionKeyHash {
         return Result<void>(Error{
             .message = format(
                 ctx, ": data type mismatch: from type #", from_type, " != to type #", to_type),
-            .code = kErrorConnection});
+            .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     return Result<void>();
@@ -407,13 +406,14 @@ auto GraphSerializer::to_json(const Graph& graph) -> nlohmann::json {
 auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
     if (!doc.is_object()) {
         return Result<Graph>(
-            Error{.message = "Root JSON must be an object", .code = kErrorInvalidDocument});
+            Error{.message = "Root JSON must be an object",
+                  .code = visprog::core::error_codes::serializer::InvalidDocument});
     }
 
     const auto graph_it = doc.find("graph");
     if (graph_it == doc.end() || !graph_it->is_object()) {
-        return Result<Graph>(
-            Error{.message = "Missing 'graph' object", .code = kErrorMissingField});
+        return Result<Graph>(Error{.message = "Missing 'graph' object",
+                                   .code = visprog::core::error_codes::serializer::MissingField});
     }
 
     const auto graph_id_res = require_uint64(*graph_it, "id", "graph");
@@ -427,13 +427,15 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
 
     const auto nodes_it = doc.find("nodes");
     if (nodes_it == doc.end() || !nodes_it->is_array()) {
-        return Result<Graph>(Error{.message = "Missing 'nodes' array", .code = kErrorMissingField});
+        return Result<Graph>(Error{.message = "Missing 'nodes' array",
+                                   .code = visprog::core::error_codes::serializer::MissingField});
     }
 
     const auto connections_it = doc.find("connections");
     if (connections_it != doc.end() && !connections_it->is_array()) {
         return Result<Graph>(
-            Error{.message = "'connections' must be an array", .code = kErrorConnection});
+            Error{.message = "'connections' must be an array",
+                  .code = visprog::core::error_codes::serializer::InvalidConnection});
     }
 
     // NOTE: десериализация не должна загрязнять глобальные счётчики фабрики.
@@ -482,7 +484,8 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         const std::string ctx = format("nodes[", i, "]");
         if (!node_json.is_object()) {
             return Result<Graph>(
-                Error{.message = format(ctx, " must be an object"), .code = kErrorInvalidDocument});
+                Error{.message = format(ctx, " must be an object"),
+                      .code = visprog::core::error_codes::serializer::InvalidDocument});
         }
 
         const auto node_id_res = require_uint64(node_json, "id", ctx);
@@ -499,7 +502,7 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         if (it == node_type_lookup.end()) {
             return Result<Graph>(
                 Error{.message = format(ctx, ": unknown node type '", type_name_res.value(), "'"),
-                      .code = kErrorInvalidEnum});
+                      .code = visprog::core::error_codes::serializer::InvalidEnum});
         }
         const NodeType* node_type = it->second;
 
@@ -520,8 +523,9 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
         }
 
         if (!graph.add_node(std::move(node))) {
-            return Result<Graph>(Error{.message = format("Failed to add node ", node_id.value),
-                                       .code = kErrorInvalidDocument});
+            return Result<Graph>(
+                Error{.message = format("Failed to add node ", node_id.value),
+                      .code = visprog::core::error_codes::serializer::InvalidDocument});
         }
     }
 
@@ -566,7 +570,9 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
                 }
                 aggregated += connection_errors[i];
             }
-            return Result<Graph>(Error{.message = std::move(aggregated), .code = kErrorConnection});
+            return Result<Graph>(
+                Error{.message = std::move(aggregated),
+                      .code = visprog::core::error_codes::serializer::InvalidConnection});
         }
 
         for (const auto& [index, parsed_conn] : parsed_connections) {
@@ -575,20 +581,21 @@ auto GraphSerializer::from_json(const nlohmann::json& doc) -> Result<Graph> {
                                                 parsed_conn.to.node_id,
                                                 parsed_conn.to.port_id);
             if (!connect_result) {
-                return Result<Graph>(Error{.message = format("connections[",
-                                                             index,
-                                                             "]: failed to connect ",
-                                                             parsed_conn.from.node_id.value,
-                                                             ":",
-                                                             parsed_conn.from.port_id.value,
-                                                             " -> ",
-                                                             parsed_conn.to.node_id.value,
-                                                             ":",
-                                                             parsed_conn.to.port_id.value,
-                                                             " (",
-                                                             connect_result.error().message,
-                                                             ")"),
-                                           .code = kErrorConnection});
+                return Result<Graph>(
+                    Error{.message = format("connections[",
+                                            index,
+                                            "]: failed to connect ",
+                                            parsed_conn.from.node_id.value,
+                                            ":",
+                                            parsed_conn.from.port_id.value,
+                                            " -> ",
+                                            parsed_conn.to.node_id.value,
+                                            ":",
+                                            parsed_conn.to.port_id.value,
+                                            " (",
+                                            connect_result.error().message,
+                                            ")"),
+                          .code = visprog::core::error_codes::serializer::InvalidConnection});
             }
         }
     }

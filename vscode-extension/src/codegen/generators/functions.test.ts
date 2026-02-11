@@ -579,6 +579,36 @@ describe('CallUserFunctionNodeGenerator', () => {
       expect(result.lines[0]).toContain('= getValue()');
     });
 
+    it('генерирует доступ к каждому output через std::get для функции с тремя выходами', () => {
+      const func = createTestFunction({
+        name: 'splitData',
+        parameters: [
+          { id: 'count', name: 'count', nameRu: 'количество', dataType: 'int32', direction: 'output' },
+          { id: 'title', name: 'title', nameRu: 'заголовок', dataType: 'string', direction: 'output' },
+          { id: 'ratio', name: 'ratio', nameRu: 'коэффициент', dataType: 'float', direction: 'output' },
+        ],
+      });
+      const node: BlueprintNode = {
+        ...createCallUserFunctionNode(func.id, func.name),
+        id: 'call-out123',
+        outputs: [
+          { id: 'call-out123-exec-out', name: 'exec', dataType: 'execution', direction: 'output', index: 0 },
+          { id: 'call-out123-count', name: 'count', dataType: 'int32', direction: 'output', index: 1 },
+          { id: 'call-out123-title', name: 'title', dataType: 'string', direction: 'output', index: 2 },
+          { id: 'call-out123-ratio', name: 'ratio', dataType: 'float', direction: 'output', index: 3 },
+        ],
+      };
+      const context = createMockContext({ functions: [func] });
+      const helpers = createMockHelpers(context);
+
+      const result = generator.generate(node, context, helpers);
+
+      expect(result.lines).toContain('    auto result_out123 = splitData();');
+      expect(result.lines).toContain('    auto count_out123 = std::get<0>(result_out123);');
+      expect(result.lines).toContain('    auto title_out123 = std::get<1>(result_out123);');
+      expect(result.lines).toContain('    auto ratio_out123 = std::get<2>(result_out123);');
+    });
+
     it('добавляет ошибку без functionId', () => {
       const node: BlueprintNode = {
         id: 'call-bad',
@@ -646,6 +676,75 @@ describe('CallUserFunctionNodeGenerator', () => {
       const expr = generator.getOutputExpression(node, 'exec-out', context, helpers);
 
       expect(expr).toBe('');
+    });
+
+    it('возвращает выражение конкретного output-порта для множественного результата', () => {
+      const func = createTestFunction({
+        id: 'func-multi',
+        name: 'extract',
+        parameters: [
+          { id: 'min', name: 'min', nameRu: 'мин', dataType: 'int32', direction: 'output' },
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'output' },
+          { id: 'valid', name: 'valid', nameRu: 'валиден', dataType: 'bool', direction: 'output' },
+        ],
+      });
+      const node: BlueprintNode = {
+        ...createCallUserFunctionNode(func.id, func.name),
+        id: 'call-multi1',
+        outputs: [
+          { id: 'call-multi1-exec-out', name: 'exec', dataType: 'execution', direction: 'output', index: 0 },
+          { id: 'call-multi1-min', name: 'min', dataType: 'int32', direction: 'output', index: 1 },
+          { id: 'call-multi1-name', name: 'name', dataType: 'string', direction: 'output', index: 2 },
+          { id: 'call-multi1-valid', name: 'valid', dataType: 'bool', direction: 'output', index: 3 },
+        ],
+        properties: { functionId: func.id, functionName: func.name },
+      };
+
+      const context = createMockContext({ functions: [func] });
+      const helpers = createMockHelpers(context);
+      helpers.declareVariable('call-multi1-result', 'result_multi1', 'Result', 'auto', 'call-multi1');
+
+      const secondOutput = generator.getOutputExpression(node, 'name', context, helpers);
+      const thirdOutput = generator.getOutputExpression(node, 'valid', context, helpers);
+
+      expect(secondOutput).toBe('std::get<1>(result_multi1)');
+      expect(thirdOutput).toBe('std::get<2>(result_multi1)');
+    });
+
+    it('сохраняет порядок индексов по BlueprintFunction.parameters, а не по порядку портов узла', () => {
+      const func = createTestFunction({
+        id: 'func-ordered',
+        name: 'ordered',
+        parameters: [
+          { id: 'first', name: 'first', nameRu: 'первый', dataType: 'int32', direction: 'output' },
+          { id: 'second', name: 'second', nameRu: 'второй', dataType: 'string', direction: 'output' },
+          { id: 'third', name: 'third', nameRu: 'третий', dataType: 'double', direction: 'output' },
+        ],
+      });
+
+      const node: BlueprintNode = {
+        ...createCallUserFunctionNode(func.id, func.name),
+        id: 'call-order1',
+        outputs: [
+          { id: 'call-order1-exec-out', name: 'exec', dataType: 'execution', direction: 'output', index: 0 },
+          { id: 'call-order1-third', name: 'third', dataType: 'double', direction: 'output', index: 1 },
+          { id: 'call-order1-first', name: 'first', dataType: 'int32', direction: 'output', index: 2 },
+          { id: 'call-order1-second', name: 'second', dataType: 'string', direction: 'output', index: 3 },
+        ],
+        properties: { functionId: func.id, functionName: func.name },
+      };
+
+      const context = createMockContext({ functions: [func] });
+      const helpers = createMockHelpers(context);
+      helpers.declareVariable('call-order1-result', 'result_order1', 'Result', 'auto', 'call-order1');
+
+      const firstExpr = generator.getOutputExpression(node, 'call-order1-first', context, helpers);
+      const secondExpr = generator.getOutputExpression(node, 'call-order1-second', context, helpers);
+      const thirdExpr = generator.getOutputExpression(node, 'call-order1-third', context, helpers);
+
+      expect(firstExpr).toBe('std::get<0>(result_order1)');
+      expect(secondExpr).toBe('std::get<1>(result_order1)');
+      expect(thirdExpr).toBe('std::get<2>(result_order1)');
     });
   });
 });

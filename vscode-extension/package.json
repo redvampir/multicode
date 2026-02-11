@@ -41,7 +41,8 @@
     "onCommand:multicode.saveGraph",
     "onCommand:multicode.loadGraph",
     "onCommand:multicode.generateCode",
-    "onCommand:multicode.translateGraph"
+    "onCommand:multicode.translateGraph",
+    "onCommand:multicode.generateCodeBinding"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -75,6 +76,11 @@
         "command": "multicode.translateGraph",
         "title": "МультиКод: Перевести граф (Marian)",
         "icon": "$(globe)"
+      },
+      {
+        "command": "multicode.generateCodeBinding",
+        "title": "МультиКод: Вставить код в существующий файл",
+        "icon": "$(link)"
       }
     ],
     "keybindings": [
@@ -106,6 +112,11 @@
         },
         {
           "command": "multicode.generateCode",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode"
+        },
+        {
+          "command": "multicode.generateCodeBinding",
           "when": "editorLangId == cpp || editorLangId == rust",
           "group": "multicode"
         }

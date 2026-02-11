@@ -29,6 +29,13 @@ import {
   type ThemeTokens
 } from '../webview/theme';
 import { MarianTranslator } from './marianTranslator';
+import {
+  appendBindingBlock,
+  findBlocksById,
+  parseBindingBlocks,
+  patchBindingBlock,
+  type ParsedBindingBlock
+} from './codeBinding';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -350,21 +357,9 @@ export class GraphPanel {
   }
 
   public async handleGenerateCode(): Promise<void> {
-    const blueprintState = migrateToBlueprintFormat(this.graphState);
-    let result;
-
-    try {
-      const generator = createGenerator(this.graphState.language);
-      result = generator.generate(blueprintState);
-    } catch (error) {
-      if (error instanceof UnsupportedLanguageError) {
-        this.postToast(
-          'warning',
-          this.translate('codegen.unsupportedLanguage', { language: error.language.toUpperCase() })
-        );
-        return;
-      }
-      throw error;
+    const result = this.generateCurrentGraphCode();
+    if (!result) {
+      return;
     }
 
     if (result.success) {
@@ -397,6 +392,47 @@ export class GraphPanel {
       this.outputChannel.show(true);
       this.postToast('error', `Ошибки генерации: ${result.errors.length}`);
     }
+  }
+
+  public async handleGenerateCodeBinding(): Promise<void> {
+    const result = this.generateCurrentGraphCode();
+    if (!result || !result.success) {
+      return;
+    }
+
+    const targetUri = await this.pickTargetCppFile();
+    if (!targetUri) {
+      return;
+    }
+
+    const originalContent = Buffer.from(await vscode.workspace.fs.readFile(targetUri)).toString('utf8');
+    const parsed = parseBindingBlocks(originalContent);
+
+    if (!parsed.success) {
+      const markerError = parsed.error;
+      this.postToast('error', `Ошибка маркеров: ${markerError?.message ?? 'Неизвестная ошибка парсинга маркеров.'}`);
+      return;
+    }
+
+    if (!parsed.blocks.length) {
+      const inserted = await this.tryInsertNewBindingBlock(originalContent, targetUri, result.code);
+      if (inserted) {
+        this.postToast('success', 'Код вставлен в новый multicode-блок.');
+      }
+      return;
+    }
+
+    const targetBlock = await this.selectBindingBlock(parsed.blocks);
+    if (!targetBlock) {
+      return;
+    }
+
+    const patchedContent = patchBindingBlock(originalContent, targetBlock, result.code);
+    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchedContent, 'utf8'));
+    this.postToast(
+      'success',
+      `Блок обновлён: ${targetBlock.id ? `id=${targetBlock.id}` : `строки ${targetBlock.beginLine}-${targetBlock.endLine}`}`
+    );
   }
 
   public async handleValidateGraph(): Promise<void> {
@@ -691,6 +727,9 @@ export class GraphPanel {
       case 'requestGenerate':
         void this.handleGenerateCode();
         break;
+      case 'requestGenerateBinding':
+        void this.handleGenerateCodeBinding();
+        break;
       case 'requestTranslate':
         void this.translateGraphLabels(message.payload?.direction);
         break;
@@ -706,6 +745,100 @@ export class GraphPanel {
       default:
         break;
     }
+  }
+
+  private generateCurrentGraphCode() {
+    const blueprintState = migrateToBlueprintFormat(this.graphState);
+
+    try {
+      const generator = createGenerator(this.graphState.language);
+      return generator.generate(blueprintState);
+    } catch (error) {
+      if (error instanceof UnsupportedLanguageError) {
+        this.postToast(
+          'warning',
+          this.translate('codegen.unsupportedLanguage', { language: error.language.toUpperCase() })
+        );
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async pickTargetCppFile(): Promise<vscode.Uri | undefined> {
+    const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const [uri] =
+      (await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        canSelectFiles: true,
+        canSelectFolders: false,
+        defaultUri: workspaceUri,
+        filters: { 'C++': ['cpp', 'cc', 'cxx', 'hpp', 'h'] },
+        openLabel: 'Выбрать файл для вставки'
+      })) ?? [];
+
+    return uri;
+  }
+
+  private async tryInsertNewBindingBlock(
+    sourceText: string,
+    targetUri: vscode.Uri,
+    generatedCode: string
+  ): Promise<boolean> {
+    const answer = await vscode.window.showWarningMessage(
+      'В файле нет маркеров multicode:begin/end. Добавить новый блок в конец файла?',
+      { modal: true },
+      'Добавить блок'
+    );
+
+    if (!answer) {
+      return false;
+    }
+
+    const defaultBlockId = this.graphState.id;
+    const blockId = await vscode.window.showInputBox({
+      prompt: 'ID нового multicode-блока',
+      value: defaultBlockId,
+      validateInput: (value) => (value.trim().length ? null : 'ID блока не может быть пустым')
+    });
+
+    if (!blockId?.trim()) {
+      return false;
+    }
+
+    const patchedContent = appendBindingBlock(sourceText, blockId, generatedCode);
+    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchedContent, 'utf8'));
+    return true;
+  }
+
+  private async selectBindingBlock(blocks: ParsedBindingBlock[]): Promise<ParsedBindingBlock | undefined> {
+    if (blocks.length === 1) {
+      return blocks[0];
+    }
+
+    const requestedId = await vscode.window.showInputBox({
+      prompt: 'Укажите ID блока (опционально) для точного выбора',
+      placeHolder: 'Например: main_loop'
+    });
+
+    const candidates = findBlocksById(blocks, requestedId);
+    const pool = candidates.length ? candidates : blocks;
+
+    if (pool.length === 1) {
+      return pool[0];
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      pool.map((block) => ({
+        label: block.id ? `$(symbol-key) ${block.id}` : `$(symbol-field) Блок ${block.beginLine}`,
+        description: `строки ${block.beginLine}-${block.endLine}`,
+        detail: block.contextPreview,
+        block
+      })),
+      { title: 'Выберите multicode-блок для обновления' }
+    );
+
+    return picked?.block;
   }
 
   private applyGraphMutation(payload: GraphMutationPayload): void {
@@ -1065,7 +1198,6 @@ const getNonce = (): string => {
     .map(() => possible.charAt(Math.floor(Math.random() * possible.length)))
     .join('');
 };
-
 
 
 

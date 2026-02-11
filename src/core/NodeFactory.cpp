@@ -99,4 +99,9 @@ void NodeFactory::force_id_counters(NodeId next_node_id, PortId next_port_id) {
     next_port_id_.store(next_port_id.value, std::memory_order_relaxed);
 }
 
+auto NodeFactory::get_id_counters() -> IdCounters {
+    return IdCounters{.next_node_id = NodeId{next_node_id_.load(std::memory_order_relaxed)},
+                      .next_port_id = PortId{next_port_id_.load(std::memory_order_relaxed)}};
+}
+
 }  // namespace visprog::core

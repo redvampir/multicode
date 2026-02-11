@@ -12,6 +12,11 @@ namespace visprog::core {
 /// @brief Factory for creating nodes with predefined configurations.
 class NodeFactory {
 public:
+    struct IdCounters {
+        NodeId next_node_id;
+        PortId next_port_id;
+    };
+
     /// @brief Creates a node of a specified type.
     /// @param type The type of node to create.
     /// @param instance_name Optional name for the node instance.
@@ -32,6 +37,9 @@ public:
 
     /// @brief Принудительно выставляет счётчики ID (используется при десериализации snapshot).
     static auto force_id_counters(NodeId next_node_id, PortId next_port_id) -> void;
+
+    /// @brief Получить текущие значения внутренних счётчиков ID.
+    [[nodiscard]] static auto get_id_counters() -> IdCounters;
 
 private:
     [[nodiscard]] static auto generate_node_id() -> NodeId;

@@ -202,3 +202,137 @@ TEST_CASE("GraphSerializer: Ошибка если connection с отсутств
     REQUIRE(!restored_result.has_value());
     REQUIRE(restored_result.error().code == kTestErrorConnection);
 }
+
+TEST_CASE("GraphSerializer: Ошибка если connection без id", "[graph][serialization][negative]") {
+    Graph graph("ConnectedGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_id = print_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_exec_in = print_node->get_exec_input_ports().at(0);
+
+    REQUIRE(graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(graph.add_node(std::move(print_node)) == print_id);
+    REQUIRE(graph.connect(start_id, start_exec_out->get_id(), print_id, print_exec_in->get_id()));
+
+    nlohmann::json json_doc = GraphSerializer::to_json(graph);
+    json_doc["connections"][0].erase("id");
+
+    auto restored_result = GraphSerializer::from_json(json_doc);
+    REQUIRE(!restored_result.has_value());
+    REQUIRE(restored_result.error().code == kTestErrorConnection);
+}
+
+TEST_CASE("GraphSerializer: Ошибка если connection с дублирующимся id",
+          "[graph][serialization][negative]") {
+    Graph graph("ConnectedGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_first_node = NodeFactory::create(NodeTypes::PrintString);
+    auto print_second_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_first_node != nullptr);
+    REQUIRE(print_second_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_first_id = print_first_node->get_id();
+    const auto print_second_id = print_second_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_first_exec_in = print_first_node->get_exec_input_ports().at(0);
+    const auto* print_first_exec_out = print_first_node->get_exec_output_ports().at(0);
+    const auto* print_second_exec_in = print_second_node->get_exec_input_ports().at(0);
+
+    REQUIRE(graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(graph.add_node(std::move(print_first_node)) == print_first_id);
+    REQUIRE(graph.add_node(std::move(print_second_node)) == print_second_id);
+
+    REQUIRE(graph.connect(
+        start_id, start_exec_out->get_id(), print_first_id, print_first_exec_in->get_id()));
+    REQUIRE(graph.connect(print_first_id,
+                          print_first_exec_out->get_id(),
+                          print_second_id,
+                          print_second_exec_in->get_id()));
+
+    nlohmann::json json_doc = GraphSerializer::to_json(graph);
+    REQUIRE(json_doc["connections"].size() == 2);
+    json_doc["connections"][1]["id"] = json_doc["connections"][0]["id"];
+
+    auto restored_result = GraphSerializer::from_json(json_doc);
+    REQUIRE(!restored_result.has_value());
+    REQUIRE(restored_result.error().code == kTestErrorConnection);
+}
+
+TEST_CASE("GraphSerializer: Ошибка если connection Output->Output",
+          "[graph][serialization][negative]") {
+    Graph graph("DirectionMismatchGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_id = print_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_exec_out = print_node->get_exec_output_ports().at(0);
+
+    REQUIRE(graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(graph.add_node(std::move(print_node)) == print_id);
+
+    nlohmann::json json_doc = GraphSerializer::to_json(graph);
+    json_doc["connections"] = nlohmann::json::array({
+        {
+            {"id", 1},
+            {"from", {{"nodeId", start_id.value}, {"portId", start_exec_out->get_id().value}}},
+            {"to", {{"nodeId", print_id.value}, {"portId", print_exec_out->get_id().value}}},
+        },
+    });
+
+    auto restored_result = GraphSerializer::from_json(json_doc);
+    REQUIRE(!restored_result.has_value());
+    REQUIRE(restored_result.error().code == kTestErrorConnection);
+}
+
+TEST_CASE("GraphSerializer: Ошибка если connection Execution->StringView",
+          "[graph][serialization][negative]") {
+    Graph graph("TypeMismatchGraph");
+
+    auto start_node = NodeFactory::create(NodeTypes::Start);
+    auto print_node = NodeFactory::create(NodeTypes::PrintString);
+
+    REQUIRE(start_node != nullptr);
+    REQUIRE(print_node != nullptr);
+
+    const auto start_id = start_node->get_id();
+    const auto print_id = print_node->get_id();
+
+    const auto* start_exec_out = start_node->get_exec_output_ports().at(0);
+    const auto* print_value_input = print_node->get_input_ports().at(1);
+
+    REQUIRE(graph.add_node(std::move(start_node)) == start_id);
+    REQUIRE(graph.add_node(std::move(print_node)) == print_id);
+
+    nlohmann::json json_doc = GraphSerializer::to_json(graph);
+    json_doc["connections"] = nlohmann::json::array({
+        {
+            {"id", 1},
+            {"from", {{"nodeId", start_id.value}, {"portId", start_exec_out->get_id().value}}},
+            {"to", {{"nodeId", print_id.value}, {"portId", print_value_input->get_id().value}}},
+        },
+    });
+
+    auto restored_result = GraphSerializer::from_json(json_doc);
+    REQUIRE(!restored_result.has_value());
+    REQUIRE(restored_result.error().code == kTestErrorConnection);
+}

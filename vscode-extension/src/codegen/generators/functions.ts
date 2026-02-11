@@ -133,6 +133,46 @@ function getFunctionFromNode(
   return context.functions.find(f => f.id === functionId) ?? null;
 }
 
+function getResultVariableName(node: BlueprintNode): string {
+  return `result_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+}
+
+function getOutputIndexByPort(
+  node: BlueprintNode,
+  func: BlueprintFunction,
+  portId: string
+): number {
+  const outputParams = func.parameters.filter(p => p.direction === 'output');
+  const normalizedPortId = portId.split('-').slice(-1)[0] ?? portId;
+
+  const parameterIndex = outputParams.findIndex(param =>
+    portId === param.id ||
+    normalizedPortId === param.id ||
+    portId.endsWith(`-${param.id}`)
+  );
+  if (parameterIndex >= 0) {
+    return parameterIndex;
+  }
+
+  const nodeOutputPorts = node.outputs
+    .filter(port => port.dataType !== 'execution')
+    .sort((a, b) => a.index - b.index);
+  const nodePortIndex = nodeOutputPorts.findIndex(port =>
+    port.id === portId ||
+    port.id.endsWith(`-${normalizedPortId}`) ||
+    port.name === normalizedPortId
+  );
+
+  return nodePortIndex;
+}
+
+function getOutputVariableName(node: BlueprintNode, outputIndex: number, parameterName?: string): string {
+  const baseName = parameterName ? transliterate(parameterName) : `out${outputIndex + 1}`;
+  const sanitizedBaseName = baseName.length > 0 ? baseName : `out${outputIndex + 1}`;
+  const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6);
+  return `${sanitizedBaseName}_${suffix}`;
+}
+
 // ============================================
 // Генераторы
 // ============================================
@@ -315,9 +355,21 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     
     if (hasOutputs) {
       // Генерируем присваивание результата
-      const resultVar = `result_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+      const resultVar = getResultVariableName(node);
       helpers.declareVariable(`${node.id}-result`, resultVar, 'Result', 'auto', node.id);
-      return this.code([`${ind}auto ${resultVar} = ${call};`], true);
+
+      const lines = [`${ind}auto ${resultVar} = ${call};`];
+      const outputParams = func?.parameters.filter(p => p.direction === 'output') ?? [];
+
+      if (outputParams.length > 1) {
+        outputParams.forEach((param, index) => {
+          const outputVar = getOutputVariableName(node, index, param.name);
+          helpers.declareVariable(`${node.id}-result-${param.id}`, outputVar, param.name, 'auto', node.id);
+          lines.push(`${ind}auto ${outputVar} = std::get<${index}>(${resultVar});`);
+        });
+      }
+
+      return this.code(lines, true);
     }
     
     // Нет выходов — просто вызов
@@ -327,21 +379,43 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
   getOutputExpression(
     node: BlueprintNode,
     portId: string,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): string {
-    // Возвращаем имя переменной с результатом
     if (portId.includes('exec')) {
       return ''; // execution порты не имеют значений
     }
-    
+
+    const funcContext = context as FunctionAwareContext;
+    const functionId = node.properties?.functionId as string | undefined;
+    const func = functionId
+      ? funcContext.functions?.find(f => f.id === functionId)
+      : null;
+
     const varInfo = helpers.getVariable(`${node.id}-result`);
-    if (varInfo) {
-      return varInfo.codeName;
+    const resultVar = varInfo?.codeName ?? getResultVariableName(node);
+
+    if (!func) {
+      return resultVar;
     }
-    
-    // Fallback
-    return `result_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+
+    const outputParams = func.parameters.filter(p => p.direction === 'output');
+    if (outputParams.length <= 1) {
+      return resultVar;
+    }
+
+    const outputIndex = getOutputIndexByPort(node, func, portId);
+    if (outputIndex < 0) {
+      return resultVar;
+    }
+
+    const outputParam = outputParams[outputIndex];
+    const outputVarInfo = helpers.getVariable(`${node.id}-result-${outputParam.id}`);
+    if (outputVarInfo) {
+      return outputVarInfo.codeName;
+    }
+
+    return `std::get<${outputIndex}>(${resultVar})`;
   }
 }
 

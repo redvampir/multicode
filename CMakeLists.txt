@@ -147,6 +147,7 @@ if(Catch2_FOUND)
         tests/test_main.cpp
         tests/core/test_node.cpp
         tests/core/test_port.cpp
+        tests/core/test_graph.cpp
         tests/core/test_graph_serializer.cpp
     )
     

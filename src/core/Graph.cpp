@@ -168,10 +168,8 @@ auto Graph::node_count() const noexcept -> std::size_t {
 auto Graph::has_node(NodeId id) const noexcept -> bool {
     return node_lookup_.contains(id);
 }
-auto Graph::connect(NodeId from_node,
-                    PortId from_port,
-                    NodeId to_node,
-                    PortId to_port) -> Result<ConnectionId> {
+auto Graph::connect(NodeId from_node, PortId from_port, NodeId to_node, PortId to_port)
+    -> Result<ConnectionId> {
     // Validate connection
     if (auto result = validate_connection(from_node, from_port, to_node, to_port); !result) {
         return Result<ConnectionId>(result.error());

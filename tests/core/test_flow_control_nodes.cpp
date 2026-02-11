@@ -1,5 +1,4 @@
 #include <catch2/catch_test_macros.hpp>
-
 #include <optional>
 #include <string_view>
 
@@ -11,7 +10,8 @@ using namespace visprog::core;
 namespace {
 
 auto find_port(const Node& node, std::string_view name, PortDirection direction) -> const Port* {
-    const auto ports = direction == PortDirection::Input ? node.get_input_ports() : node.get_output_ports();
+    const auto ports =
+        direction == PortDirection::Input ? node.get_input_ports() : node.get_output_ports();
     for (const auto* port : ports) {
         if (port->get_name() == name) {
             return port;

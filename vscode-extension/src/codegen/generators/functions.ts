@@ -106,6 +106,13 @@ function generateFunctionResultTypeDeclaration(func: BlueprintFunction): string 
   const resultTypeName = getFunctionResultTypeName(func);
   return `using ${resultTypeName} = std::tuple<${outputTypes.join(', ')}>;`;
 }
+
+/**
+ * Сформировать tuple-like выражение в едином стиле для C++ инициализации
+ */
+function buildTupleExpression(values: string[]): string {
+  return `{${values.join(', ')}}`;
+}
 // ============================================
 // Интерфейс для получения функций из контекста
 // ============================================
@@ -285,7 +292,7 @@ export class FunctionReturnNodeGenerator extends BaseNodeGenerator {
 
     const resultTypeName = getFunctionResultTypeName(func);
 
-    return this.code([`${ind}return ${resultTypeName}{${values.join(', ')}};`], false);
+    return this.code([`${ind}return ${resultTypeName}${buildTupleExpression(values)};`], false);
   }
 }
 
@@ -466,4 +473,5 @@ export {
   getDefaultValue,
   getFunctionResultTypeName,
   generateFunctionResultTypeDeclaration,
+  buildTupleExpression,
 };

@@ -14,6 +14,7 @@ import {
   FunctionAwareContext,
   getFunctionResultTypeName,
   generateFunctionResultTypeDeclaration,
+  buildTupleExpression,
 } from './functions';
 import type { BlueprintNode, BlueprintFunction } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
@@ -199,6 +200,17 @@ describe('Утилиты functions.ts', () => {
 
     it('обрабатывает смешанный текст', () => {
       expect(transliterate('myФункция123')).toBe('myFunktsiya123');
+    });
+  });
+
+
+  describe('buildTupleExpression', () => {
+    it('формирует tuple-выражение для нескольких значений', () => {
+      expect(buildTupleExpression(['1', '2', '3'])).toBe('{1, 2, 3}');
+    });
+
+    it('формирует пустое tuple-выражение', () => {
+      expect(buildTupleExpression([])).toBe('{}');
     });
   });
 

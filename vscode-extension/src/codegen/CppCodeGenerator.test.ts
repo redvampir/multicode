@@ -1847,5 +1847,36 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('void emptyFunc()');
       expect(result.code).toContain('// Пустая функция');
     });
+
+
+    it('should use unified tuple expression style for default returns with multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-default-multi',
+        name: 'defaultMulti',
+        nameRu: 'Пустая функция с множественным выходом',
+        parameters: [
+          { id: 'out-int', name: 'resultInt', nameRu: 'целое', dataType: 'int32', direction: 'output' },
+          { id: 'out-bool', name: 'resultBool', nameRu: 'булево', dataType: 'bool', direction: 'output' },
+        ],
+        graph: {
+          nodes: [],
+          edges: [],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('using defaultMultiResult = std::tuple<int, bool>;');
+      expect(result.code).toContain('defaultMultiResult defaultMulti()');
+      expect(result.code).toContain('return defaultMultiResult{0, false};');
+    });
+
   });
 });

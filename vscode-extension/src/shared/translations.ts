@@ -244,7 +244,7 @@ const translations: Record<Locale, TranslationMap> = {
     'tooltip.saveGraph': 'Сохранить граф в файл',
     'tooltip.validateGraph': 'Проверить граф на ошибки',
     'tooltip.generateCode': 'Сгенерировать код из графа',
-    'tooltip.calculateLayout': 'Пересчитать расположение узлов',
+    'tooltip.calculateLayout': 'Пересчитать расположение узлов (без пересчёта значений)',
     'tooltip.copyId': 'Скопировать ID графа в буфер обмена'
   },
   en: {
@@ -366,7 +366,7 @@ const translations: Record<Locale, TranslationMap> = {
     'tooltip.saveGraph': 'Save graph to file',
     'tooltip.validateGraph': 'Validate graph',
     'tooltip.generateCode': 'Generate code from graph',
-    'tooltip.calculateLayout': 'Recalculate node layout',
+    'tooltip.calculateLayout': 'Recalculate node layout (does not recalculate values)',
     'tooltip.copyId': 'Copy graph ID to clipboard'
   }
 };

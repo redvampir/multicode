@@ -539,7 +539,18 @@ describe('blueprintTypes - Node Creation', () => {
       
       expect(node.type).toBe('Branch');
       expect(node.position).toEqual({ x: 100, y: 200 });
-      expect(node.label).toBe('Branch');
+      // label заполняется на уровне UI в BlueprintNode в зависимости от локали.
+      expect(node.label).toBe('');
+    });
+
+    it('should keep label empty by contract for UI-level localization', () => {
+      const nodeTypes = ['Start', 'Branch', 'Print'] as const;
+
+      nodeTypes.forEach((nodeType) => {
+        const node = createNode(nodeType, { x: 0, y: 0 });
+        // createNode не назначает текстовую метку: UI сам берёт label/labelRu из дефиниций узла.
+        expect(node.label).toBe('');
+      });
     });
 
     it('should generate unique id if not provided', () => {
@@ -740,6 +751,214 @@ describe('blueprintTypes - Migration', () => {
       expect(oldState.nodes[2].type).toBe('Function'); // FunctionCall -> Function
       expect(oldState.nodes[3].type).toBe('Variable'); // SetVariable -> Variable
     });
+  });
+
+  it('should preserve Get/Set variable node metadata through round-trip migration', () => {
+    const getNode = createNode('GetVariable', { x: 40, y: 60 }, 'get-var-1');
+    const setNode = createNode('SetVariable', { x: 280, y: 60 }, 'set-var-1');
+
+    getNode.properties = {
+      variableId: 'var-health',
+      dataType: 'float',
+      defaultValue: 10.5,
+      color: '#8BC34A',
+      name: 'health',
+      nameRu: 'Здоровье',
+    };
+    setNode.properties = {
+      variableId: 'var-health',
+      dataType: 'float',
+      defaultValue: 10.5,
+      inputValue: 12.5,
+      inputValueIsOverride: true,
+      color: '#8BC34A',
+      name: 'health',
+      nameRu: 'Здоровье',
+    };
+
+    getNode.outputs = getNode.outputs.map((port) =>
+      port.id.endsWith('value-out') ? { ...port, dataType: 'float' } : port
+    );
+    setNode.inputs = setNode.inputs.map((port) =>
+      port.id.endsWith('value-in') ? { ...port, dataType: 'float' } : port
+    );
+    setNode.outputs = setNode.outputs.map((port) =>
+      port.id.endsWith('value-out') ? { ...port, dataType: 'float' } : port
+    );
+
+    const blueprintState: BlueprintGraphState = {
+      id: 'bp-vars-roundtrip',
+      name: 'Vars Roundtrip',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [getNode, setNode],
+      edges: [
+        {
+          id: 'edge-var-1',
+          sourceNode: getNode.id,
+          sourcePort: `${getNode.id}-value-out`,
+          targetNode: setNode.id,
+          targetPort: `${setNode.id}-value-in`,
+          kind: 'data',
+          dataType: 'float',
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const oldState = migrateFromBlueprintFormat(blueprintState);
+    expect(oldState.nodes[0].blueprintNode).toBeDefined();
+    expect(oldState.edges[0].blueprintEdge).toBeDefined();
+
+    const restored = migrateToBlueprintFormat(oldState);
+    const restoredGet = restored.nodes.find((node) => node.id === getNode.id);
+    const restoredSet = restored.nodes.find((node) => node.id === setNode.id);
+
+    expect(restoredGet?.type).toBe('GetVariable');
+    expect(restoredSet?.type).toBe('SetVariable');
+    expect(restoredGet?.properties).toMatchObject({
+      variableId: 'var-health',
+      dataType: 'float',
+      defaultValue: 10.5,
+      color: '#8BC34A',
+      name: 'health',
+      nameRu: 'Здоровье',
+    });
+    expect(restoredSet?.properties).toMatchObject({
+      variableId: 'var-health',
+      dataType: 'float',
+      defaultValue: 10.5,
+      inputValue: 12.5,
+      inputValueIsOverride: true,
+      color: '#8BC34A',
+      name: 'health',
+      nameRu: 'Здоровье',
+    });
+    expect(restoredGet?.outputs.find((port) => port.id.endsWith('value-out'))?.dataType).toBe('float');
+    expect(restoredSet?.inputs.find((port) => port.id.endsWith('value-in'))?.dataType).toBe('float');
+    expect(restoredSet?.outputs.find((port) => port.id.endsWith('value-out'))?.dataType).toBe('float');
+  });
+
+  it('should preserve variable edge ports through round-trip migration', () => {
+    const blueprintState: BlueprintGraphState = {
+      id: 'bp-edge-roundtrip',
+      name: 'Edge Roundtrip',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        createNode('GetVariable', { x: 20, y: 20 }, 'get-edge-var'),
+        createNode('SetVariable', { x: 240, y: 20 }, 'set-edge-var'),
+      ],
+      edges: [
+        {
+          id: 'edge-roundtrip',
+          sourceNode: 'get-edge-var',
+          sourcePort: 'get-edge-var-value-out',
+          targetNode: 'set-edge-var',
+          targetPort: 'set-edge-var-value-in',
+          kind: 'data',
+          dataType: 'float',
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(blueprintState));
+    const edge = restored.edges.find((item) => item.id === 'edge-roundtrip');
+
+    expect(edge).toMatchObject({
+      sourceNode: 'get-edge-var',
+      sourcePort: 'get-edge-var-value-out',
+      targetNode: 'set-edge-var',
+      targetPort: 'set-edge-var-value-in',
+      kind: 'data',
+      dataType: 'float',
+    });
+  });
+
+  it('should keep backward compatibility for legacy GraphState without embedded snapshots', () => {
+    const oldState: GraphState = {
+      id: 'legacy-graph',
+      name: 'Legacy',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        {
+          id: 'legacy-var',
+          label: 'Legacy Variable',
+          type: 'Variable',
+          position: { x: 120, y: 90 },
+        },
+      ],
+      edges: [
+        {
+          id: 'legacy-edge',
+          source: 'legacy-var',
+          target: 'legacy-var',
+          kind: 'data',
+          label: 'data',
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+    expect(migrated.nodes[0].type).toBe('Variable');
+    expect(migrated.nodes[0].outputs[0].dataType).toBe('any');
+    expect(migrated.edges[0].sourcePort).toBe('value');
+    expect(migrated.edges[0].targetPort).toBe('value-in');
+  });
+
+  it('should normalize legacy execution handles to real node ports', () => {
+    const oldState: GraphState = {
+      id: 'legacy-exec-ports',
+      name: 'Legacy Exec Ports',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        { id: 'legacy-start', label: 'Start', type: 'Start', position: { x: 0, y: 0 } },
+        { id: 'legacy-end', label: 'End', type: 'End', position: { x: 240, y: 0 } },
+      ],
+      edges: [
+        {
+          id: 'legacy-exec-edge',
+          source: 'legacy-start',
+          target: 'legacy-end',
+          kind: 'execution',
+          label: 'flow',
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+    expect(migrated.edges[0]).toMatchObject({
+      sourcePort: 'exec-out',
+      targetPort: 'exec-in',
+      kind: 'execution',
+    });
+  });
+
+  it('should remove exact duplicate legacy edges during migration', () => {
+    const oldState: GraphState = {
+      id: 'legacy-duplicate-edges',
+      name: 'Legacy Duplicates',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        { id: 'start', label: 'Start', type: 'Start', position: { x: 0, y: 0 } },
+        { id: 'end', label: 'End', type: 'End', position: { x: 240, y: 0 } },
+      ],
+      edges: [
+        { id: 'dup-1', source: 'start', target: 'end', kind: 'execution' },
+        { id: 'dup-2', source: 'start', target: 'end', kind: 'execution' },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+    expect(migrated.edges).toHaveLength(1);
+    expect(migrated.edges[0].id).toBe('dup-1');
   });
 });
 

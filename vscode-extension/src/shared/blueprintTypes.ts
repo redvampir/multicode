@@ -92,7 +92,7 @@ export interface BlueprintNode {
   /** Выходные порты (справа) */
   outputs: NodePort[];
   /** Свойства узла (для Variable, Function и т.д.) */
-  properties?: Record<string, string | number | boolean>;
+  properties?: Record<string, unknown>;
   /** Комментарий/описание */
   comment?: string;
   /** Размер узла (для Comment nodes) */
@@ -118,6 +118,113 @@ export interface BlueprintEdge {
   dataType?: PortDataType;
 }
 
+// ============================================
+// Типы для переменных (UE Blueprint-style)
+// ============================================
+
+/** Категория переменной */
+export type VariableCategory = 'default' | 'input' | 'output' | 'local';
+
+/** Переменная Blueprint графа */
+export interface BlueprintVariable {
+  id: string;
+  /** Имя переменной (для кодогенерации) */
+  name: string;
+  /** Отображаемое имя (RU) */
+  nameRu: string;
+  /** Тип данных */
+  dataType: PortDataType;
+  /** Значение по умолчанию (для vector - массив [X, Y, Z] или строка "X,Y,Z") */
+  defaultValue?: string | number | boolean | null | number[];
+  /** Категория переменной */
+  category: VariableCategory;
+  /** Описание */
+  description?: string;
+  /** Является ли публичной (доступна извне) */
+  isPublic?: boolean;
+  /** Является ли массивом */
+  isArray?: boolean;
+  /** Является ли приватной */
+  isPrivate?: boolean;
+  /** Пользовательский цвет */
+  color?: string;
+  /** Дата создания */
+  createdAt?: string;
+}
+
+/** Создать новую переменную */
+export function createVariable(
+  name: string,
+  dataType: PortDataType = 'int32',
+  options?: Partial<Omit<BlueprintVariable, 'id' | 'name' | 'dataType'>>
+): BlueprintVariable {
+  return {
+    id: `var_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    nameRu: options?.nameRu || name,
+    dataType,
+    defaultValue: options?.defaultValue ?? getDefaultValueForType(dataType),
+    category: options?.category || 'default',
+    description: options?.description,
+    isArray: options?.isArray,
+    isPrivate: options?.isPrivate,
+    color: options?.color,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Получить значение по умолчанию для типа */
+function getDefaultValueForType(dataType: PortDataType): string | number | boolean | null | number[] {
+  switch (dataType) {
+    case 'bool': return false;
+    case 'int32':
+    case 'int64': return 0;
+    case 'float':
+    case 'double': return 0.0;
+    case 'string': return '';
+    case 'vector': return [0, 0, 0]; // Массив для вектора
+    default: return null;
+  }
+}
+
+/** Цвета для типов переменных (используем PORT_TYPE_COLORS из portTypes) */
+// 🎨 НАСТРОЙКА: Цвета портов для каждого типа данных (отображаются на портах и в редакторе)
+export const VARIABLE_TYPE_COLORS: Record<PortDataType, string> = {
+  execution: '#FFFFFF',  // 🎨 Белый — поток выполнения (exec порты)
+  bool: '#E53935',       // 🎨 Красный — логический тип (true/false)
+  int32: '#00BCD4',      // 🎨 Cyan — целое 32-бит
+  int64: '#00838F',      // 🎨 Тёмный cyan — целое 64-бит
+  float: '#8BC34A',      // 🎨 Светло-зелёный — дробное 32-бит
+  double: '#689F38',     // 🎨 Зелёный — дробное 64-бит
+  string: '#E91E63',     // 🎨 Розовый/Пурпурный — строка
+  vector: '#FFC107',     // 🎨 Жёлтый — вектор (X, Y, Z)
+  pointer: '#2196F3',    // 🎨 Синий — умный указатель (std::shared_ptr)
+  class: '#3F51B5',      // 🎨 Индиго — класс/экземпляр по значению
+  array: '#FF9800',      // 🎨 Оранжевый — массив
+  any: '#9E9E9E',
+};
+
+/** Метки типов переменных (RU/EN) */
+export const VARIABLE_TYPE_LABELS: Record<PortDataType, { ru: string; en: string }> = {
+  execution: { ru: 'Выполнение', en: 'Execution' },
+  bool: { ru: 'Логический', en: 'Boolean' },
+  int32: { ru: 'Целое (32)', en: 'Integer (32)' },
+  int64: { ru: 'Целое (64)', en: 'Integer (64)' },
+  float: { ru: 'Дробное (32)', en: 'Float' },
+  double: { ru: 'Дробное (64)', en: 'Double' },
+  string: { ru: 'Строка', en: 'String' },
+  vector: { ru: 'Вектор', en: 'Vector' },
+  pointer: { ru: 'Указатель', en: 'Pointer' },
+  class: { ru: 'Класс', en: 'Class' },
+  array: { ru: 'Массив', en: 'Array' },
+  any: { ru: 'Любой', en: 'Any' },
+};
+
+/** Типы данных для переменных (без execution) */
+export const VARIABLE_DATA_TYPES: PortDataType[] = [
+  'bool', 'int32', 'int64', 'float', 'double', 'string', 'vector', 'pointer', 'class', 'array'
+];
+
 /** Полное состояние Blueprint-графа */
 export interface BlueprintGraphState {
   id: string;
@@ -138,6 +245,8 @@ export interface BlueprintGraphState {
   functions?: BlueprintFunction[];
   /** ID текущей редактируемой функции (null = основной граф EventGraph) */
   activeFunctionId?: string | null;
+  /** Переменные графа */
+  variables?: BlueprintVariable[];
 }
 
 // ============================================
@@ -211,6 +320,265 @@ export interface NodeTypeDefinition {
 
 import { GraphState, GraphNode, GraphEdge } from './graphState';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const isPortDirection = (value: unknown): value is NodePort['direction'] =>
+  value === 'input' || value === 'output';
+
+const isPortDataType = (value: unknown): value is PortDataType =>
+  value === 'execution' ||
+  value === 'bool' ||
+  value === 'int32' ||
+  value === 'int64' ||
+  value === 'float' ||
+  value === 'double' ||
+  value === 'string' ||
+  value === 'vector' ||
+  value === 'pointer' ||
+  value === 'class' ||
+  value === 'array' ||
+  value === 'any';
+
+const isBlueprintNodeTypeValue = (value: unknown): value is BlueprintNodeType =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(NODE_TYPE_DEFINITIONS, value);
+
+const isNodePort = (value: unknown): value is NodePort => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.id !== 'string' || typeof value.name !== 'string') {
+    return false;
+  }
+
+  if (!isPortDataType(value.dataType) || !isPortDirection(value.direction)) {
+    return false;
+  }
+
+  if (!isFiniteNumber(value.index)) {
+    return false;
+  }
+
+  if (value.connected !== undefined && typeof value.connected !== 'boolean') {
+    return false;
+  }
+
+  return true;
+};
+
+export const isEmbeddedBlueprintNode = (value: unknown): value is BlueprintNode => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.id !== 'string' || typeof value.label !== 'string') {
+    return false;
+  }
+
+  if (!isBlueprintNodeTypeValue(value.type)) {
+    return false;
+  }
+
+  if (
+    !isRecord(value.position) ||
+    !isFiniteNumber(value.position.x) ||
+    !isFiniteNumber(value.position.y)
+  ) {
+    return false;
+  }
+
+  if (!Array.isArray(value.inputs) || !Array.isArray(value.outputs)) {
+    return false;
+  }
+
+  if (!value.inputs.every(isNodePort) || !value.outputs.every(isNodePort)) {
+    return false;
+  }
+
+  if (value.properties !== undefined && !isRecord(value.properties)) {
+    return false;
+  }
+
+  if (value.comment !== undefined && typeof value.comment !== 'string') {
+    return false;
+  }
+
+  if (value.customLabel !== undefined && typeof value.customLabel !== 'string') {
+    return false;
+  }
+
+  return true;
+};
+
+const isGraphEdgeKind = (value: unknown): value is GraphEdgeKind =>
+  value === 'execution' || value === 'data';
+
+export const isEmbeddedBlueprintEdge = (value: unknown): value is BlueprintEdge => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.sourceNode !== 'string' ||
+    typeof value.sourcePort !== 'string' ||
+    typeof value.targetNode !== 'string' ||
+    typeof value.targetPort !== 'string'
+  ) {
+    return false;
+  }
+
+  if (!isGraphEdgeKind(value.kind)) {
+    return false;
+  }
+
+  if (value.dataType !== undefined && !isPortDataType(value.dataType)) {
+    return false;
+  }
+
+  return true;
+};
+
+const buildBlueprintNodeFromLegacy = (node: GraphNode): BlueprintNode => {
+  const mappedType = mapOldNodeType(node.type ?? 'Custom');
+  return {
+    id: node.id ?? `node-${Math.random().toString(36).slice(2)}`,
+    label: node.label ?? 'Unnamed',
+    type: mappedType,
+    position: node.position ?? { x: 0, y: 0 },
+    inputs: getDefaultInputs(mappedType),
+    outputs: getDefaultOutputs(mappedType),
+  };
+};
+
+const pickPortByKind = (
+  node: BlueprintNode | undefined,
+  direction: 'input' | 'output',
+  kind: GraphEdgeKind
+): string => {
+  const ports = direction === 'input' ? node?.inputs ?? [] : node?.outputs ?? [];
+  if (!ports.length) {
+    if (kind === 'execution') {
+      return direction === 'input' ? 'exec-in' : 'exec-out';
+    }
+    return direction === 'input' ? 'value-in' : 'value-out';
+  }
+
+  if (kind === 'execution') {
+    return ports.find((port) => port.dataType === 'execution')?.id ?? ports[0].id;
+  }
+
+  return ports.find((port) => port.dataType !== 'execution')?.id ?? ports[0].id;
+};
+
+const normalizeEdgePortId = (
+  rawPortId: string,
+  nodeId: string,
+  node: BlueprintNode | undefined,
+  direction: 'input' | 'output',
+  kind: GraphEdgeKind
+): string => {
+  const ports = direction === 'input' ? node?.inputs ?? [] : node?.outputs ?? [];
+  if (!ports.length) {
+    return pickPortByKind(node, direction, kind);
+  }
+
+  if (ports.some((port) => port.id === rawPortId)) {
+    return rawPortId;
+  }
+
+  if (rawPortId.startsWith(`${nodeId}-`)) {
+    const suffix = rawPortId.slice(nodeId.length + 1);
+    if (ports.some((port) => port.id === suffix)) {
+      return suffix;
+    }
+  }
+
+  const tailCandidate = rawPortId.split('-').slice(-2).join('-');
+  if (ports.some((port) => port.id === tailCandidate)) {
+    return tailCandidate;
+  }
+
+  return pickPortByKind(node, direction, kind);
+};
+
+const normalizeBlueprintEdge = (
+  edge: BlueprintEdge,
+  nodeMap: Map<string, BlueprintNode>
+): BlueprintEdge => {
+  const kind: GraphEdgeKind = edge.kind === 'data' ? 'data' : 'execution';
+  const sourceNode = nodeMap.get(edge.sourceNode);
+  const targetNode = nodeMap.get(edge.targetNode);
+
+  return {
+    ...edge,
+    kind,
+    sourcePort: normalizeEdgePortId(edge.sourcePort, edge.sourceNode, sourceNode, 'output', kind),
+    targetPort: normalizeEdgePortId(edge.targetPort, edge.targetNode, targetNode, 'input', kind),
+  };
+};
+
+const dedupeBlueprintEdges = (edges: BlueprintEdge[]): BlueprintEdge[] => {
+  const seen = new Set<string>();
+  const unique: BlueprintEdge[] = [];
+
+  for (const edge of edges) {
+    const signature =
+      `${edge.sourceNode}:${edge.sourcePort}->${edge.targetNode}:${edge.targetPort}:${edge.kind}:${edge.dataType ?? ''}`;
+    if (seen.has(signature)) {
+      continue;
+    }
+    seen.add(signature);
+    unique.push(edge);
+  }
+
+  return unique;
+};
+
+const getPortDataType = (
+  node: BlueprintNode | undefined,
+  direction: 'input' | 'output',
+  portId: string
+): PortDataType | undefined => {
+  if (!node) {
+    return undefined;
+  }
+  const ports = direction === 'input' ? node.inputs : node.outputs;
+  return ports.find((port) => port.id === portId)?.dataType;
+};
+
+const buildBlueprintEdgeFromLegacy = (
+  edge: GraphEdge,
+  nodeMap: Map<string, BlueprintNode>
+): BlueprintEdge => {
+  const kind: GraphEdgeKind = edge.kind ?? 'execution';
+  const sourceNode = nodeMap.get(edge.source);
+  const targetNode = nodeMap.get(edge.target);
+  const sourcePort = pickPortByKind(sourceNode, 'output', kind);
+  const targetPort = pickPortByKind(targetNode, 'input', kind);
+  const inferredDataType = getPortDataType(sourceNode, 'output', sourcePort);
+  const dataType: PortDataType | undefined =
+    kind === 'data'
+      ? inferredDataType && inferredDataType !== 'execution'
+        ? inferredDataType
+        : 'any'
+      : undefined;
+
+  return {
+    id: edge.id ?? `edge-${Math.random().toString(36).slice(2)}`,
+    sourceNode: edge.source,
+    sourcePort,
+    targetNode: edge.target,
+    targetPort,
+    kind,
+    dataType,
+  };
+};
+
 /** Преобразовать старый формат в Blueprint формат */
 export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphState {
   // Защита от undefined/null
@@ -219,25 +587,39 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
   
   const nodes: BlueprintNode[] = safeNodes
     .filter(node => node && typeof node === 'object')
-    .map(node => ({
-      id: node.id ?? `node-${Math.random().toString(36).slice(2)}`,
-      label: node.label ?? 'Unnamed',
-      type: mapOldNodeType(node.type ?? 'Custom'),
-      position: node.position ?? { x: 0, y: 0 },
-      inputs: getDefaultInputs(mapOldNodeType(node.type ?? 'Custom')),
-      outputs: getDefaultOutputs(mapOldNodeType(node.type ?? 'Custom')),
-    }));
+    .map(node => {
+      if (isEmbeddedBlueprintNode(node.blueprintNode)) {
+        const embeddedNode = node.blueprintNode;
+        return {
+          ...embeddedNode,
+          id: node.id ?? embeddedNode.id,
+          label: embeddedNode.label ?? node.label ?? '',
+          position: node.position ?? embeddedNode.position,
+        };
+      }
+      return buildBlueprintNodeFromLegacy(node);
+    });
 
-  const edges: BlueprintEdge[] = safeEdges
-    .filter(edge => edge && typeof edge === 'object' && edge.source && edge.target)
-    .map(edge => ({
-      id: edge.id ?? `edge-${Math.random().toString(36).slice(2)}`,
-      sourceNode: edge.source,
-      sourcePort: `${edge.source}-exec-out`, // Default exec port
-      targetNode: edge.target,
-      targetPort: `${edge.target}-exec-in`,
-      kind: edge.kind ?? 'execution',
-    }));
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+
+  const edges = dedupeBlueprintEdges(
+    safeEdges
+      .filter(edge => edge && typeof edge === 'object' && edge.source && edge.target)
+      .map(edge => {
+        if (isEmbeddedBlueprintEdge(edge.blueprintEdge)) {
+          const embeddedEdge = edge.blueprintEdge;
+          const kind = edge.kind ?? embeddedEdge.kind;
+          return normalizeBlueprintEdge({
+            ...embeddedEdge,
+            id: edge.id ?? embeddedEdge.id,
+            sourceNode: edge.source ?? embeddedEdge.sourceNode,
+            targetNode: edge.target ?? embeddedEdge.targetNode,
+            kind: kind === 'data' ? 'data' : 'execution',
+          }, nodeMap);
+        }
+        return normalizeBlueprintEdge(buildBlueprintEdgeFromLegacy(edge, nodeMap), nodeMap);
+      })
+  );
 
   return {
     id: oldState.id,
@@ -248,6 +630,9 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
     edges,
     updatedAt: oldState.updatedAt,
     dirty: oldState.dirty,
+    // Восстанавливаем переменные и функции
+    variables: (oldState.variables as BlueprintVariable[] | undefined) ?? [],
+    functions: (oldState.functions as BlueprintFunction[] | undefined) ?? [],
   };
 }
 
@@ -601,7 +986,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#2196F3',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'target', name: 'Target', dataType: 'object', direction: 'input', hidden: true }
+      { id: 'target', name: 'Target', dataType: 'pointer', direction: 'input', hidden: true }
     ],
     outputs: [
       { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
@@ -693,7 +1078,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#4CAF50',
     inputs: [],
     outputs: [
-      { id: 'value', name: '', dataType: 'any', direction: 'output' }
+      { id: 'value-out', name: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
   SetVariable: {
@@ -705,11 +1090,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#4CAF50',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'value', name: '', dataType: 'any', direction: 'input' }
+      { id: 'value-in', name: 'Значение', dataType: 'any', direction: 'input' }
     ],
     outputs: [
       { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
-      { id: 'value', name: '', dataType: 'any', direction: 'output' }
+      { id: 'value-out', name: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
   
@@ -1090,6 +1475,7 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
     label: node.label,
     type: mapBlueprintNodeTypeToOld(node.type),
     position: node.position,
+    blueprintNode: node,
   }));
 
   const edges: GraphEdge[] = blueprintState.edges.map(edge => ({
@@ -1098,6 +1484,7 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
     target: edge.targetNode,
     label: edge.kind === 'execution' ? 'flow' : 'data',
     kind: edge.kind,
+    blueprintEdge: edge,
   }));
 
   return {
@@ -1109,6 +1496,9 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
     edges,
     updatedAt: blueprintState.updatedAt,
     dirty: blueprintState.dirty,
+    // Сохраняем переменные и функции
+    variables: blueprintState.variables,
+    functions: blueprintState.functions,
   };
 }
 

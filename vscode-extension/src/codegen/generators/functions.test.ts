@@ -313,6 +313,40 @@ describe('FunctionEntryNodeGenerator', () => {
   });
 
   describe('generateFunctionSignature', () => {
+    const табличныеКейсыСигнатур = [
+      {
+        имя: 'int32/bool',
+        функция: 'Проверить флаг',
+        вход: { id: 'in-value', name: 'порог', nameRu: 'порог', dataType: 'int32' as const },
+        выходы: [
+          { id: 'out-code', name: 'код', nameRu: 'код', dataType: 'int32' as const },
+          { id: 'out-ok', name: 'успех', nameRu: 'успех', dataType: 'bool' as const },
+        ],
+        ожидаемаяСигнатура: 'Proverit_flagResult Proverit_flag(int porog)',
+      },
+      {
+        имя: 'string/float',
+        функция: 'Собрать отчёт',
+        вход: { id: 'in-name', name: 'название', nameRu: 'название', dataType: 'string' as const },
+        выходы: [
+          { id: 'out-title', name: 'заголовок', nameRu: 'заголовок', dataType: 'string' as const },
+          { id: 'out-rating', name: 'оценка', nameRu: 'оценка', dataType: 'float' as const },
+        ],
+        ожидаемаяСигнатура: 'Sobrat_otchyotResult Sobrat_otchyot(std::string nazvanie)',
+      },
+      {
+        имя: 'vector/string',
+        функция: 'Сжать данные',
+        вход: { id: 'in-list', name: 'список', nameRu: 'список', dataType: 'vector' as const },
+        выходы: [
+          { id: 'out-points', name: 'точки', nameRu: 'точки', dataType: 'vector' as const },
+          { id: 'out-comment', name: 'комментарий', nameRu: 'комментарий', dataType: 'string' as const },
+        ],
+        ожидаемаяСигнатура: 'Szhat_dannyeResult Szhat_dannye(std::vector<float> spisok)',
+      },
+    ] as const;
+    type ТабличныйКейсСигнатуры = (typeof табличныеКейсыСигнатур)[number];
+
     it('генерирует void для функции без параметров', () => {
       const func = createTestFunction({ name: 'doSomething' });
       
@@ -390,6 +424,24 @@ describe('FunctionEntryNodeGenerator', () => {
       expect(signature).toBe('void vychislit(int znachenie)');
     });
 
+    it.each(табличныеКейсыСигнатур)(
+      'корректно строит сигнатуру для кейса $имя',
+      ({ функция, вход, выходы, ожидаемаяСигнатура }: ТабличныйКейсСигнатуры) => {
+        const func = createTestFunction({
+          name: функция,
+          parameters: [
+            { ...вход, direction: 'input' },
+            ...выходы.map(param => ({ ...param, direction: 'output' as const })),
+          ],
+        });
+
+        const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
+
+        expect(signature).toBe(ожидаемаяСигнатура);
+        expect(signature).toMatchSnapshot();
+      }
+    );
+
     it('обрабатывает string параметры', () => {
       const func = createTestFunction({
         name: 'greet',
@@ -424,6 +476,37 @@ describe('FunctionReturnNodeGenerator', () => {
   });
 
   describe('generate', () => {
+    const табличныеКейсыTupleReturn = [
+      {
+        имя: 'int32/bool',
+        functionName: 'Проверить флаг',
+        outputs: [
+          { id: 'code', name: 'код', nameRu: 'код', dataType: 'int32' as const, value: '404' },
+          { id: 'valid', name: 'валиден', nameRu: 'валиден', dataType: 'bool' as const, value: 'true' },
+        ],
+        expectedLine: '    return Proverit_flagResult{404, true};',
+      },
+      {
+        имя: 'string/float',
+        functionName: 'Собрать отчёт',
+        outputs: [
+          { id: 'title', name: 'заголовок', nameRu: 'заголовок', dataType: 'string' as const, value: '"Итог"' },
+          { id: 'score', name: 'оценка', nameRu: 'оценка', dataType: 'float' as const, value: '3.14f' },
+        ],
+        expectedLine: '    return Sobrat_otchyotResult{"Итог", 3.14f};',
+      },
+      {
+        имя: 'vector/string',
+        functionName: 'Сжать данные',
+        outputs: [
+          { id: 'points', name: 'точки', nameRu: 'точки', dataType: 'vector' as const, value: '{1.0f, 2.0f}' },
+          { id: 'comment', name: 'комментарий', nameRu: 'комментарий', dataType: 'string' as const, value: '"ok"' },
+        ],
+        expectedLine: '    return Szhat_dannyeResult{{1.0f, 2.0f}, "ok"};',
+      },
+    ] as const;
+    type ТабличныйКейсTupleReturn = (typeof табличныеКейсыTupleReturn)[number];
+
     it('генерирует return; без выходных параметров', () => {
       const func = createTestFunction();
       const node = createFunctionReturnNode(func.id);
@@ -497,6 +580,46 @@ describe('FunctionReturnNodeGenerator', () => {
 
       expect(result.lines[0]).toContain('testFunctionResult{1, 100}');
     });
+
+    it.each(табличныеКейсыTupleReturn)(
+      'корректно строит tuple-return и транслитерацию для кейса $имя',
+      ({ functionName, outputs, expectedLine }: ТабличныйКейсTupleReturn) => {
+        const func = createTestFunction({
+          name: functionName,
+          parameters: outputs.map(output => ({
+            id: output.id,
+            name: output.name,
+            nameRu: output.nameRu,
+            dataType: output.dataType,
+            direction: 'output' as const,
+          })),
+        });
+        const node: BlueprintNode = {
+          ...createFunctionReturnNode(func.id),
+          inputs: [
+            { id: 'return-1-exec-in', name: 'exec', dataType: 'execution', direction: 'input', index: 0 },
+            ...outputs.map((output, index) => ({
+              id: `return-1-${output.id}`,
+              name: output.id,
+              dataType: output.dataType,
+              direction: 'input' as const,
+              index: index + 1,
+            })),
+          ],
+        };
+
+        const context = createMockContext({ currentFunction: func });
+        const helpers = createMockHelpers(context) as GeneratorHelpers & { _setInputValue: (port: string, value: string) => void };
+        for (const output of outputs) {
+          helpers._setInputValue(output.id, output.value);
+        }
+
+        const result = generator.generate(node, context, helpers);
+
+        expect(result.lines[0]).toBe(expectedLine);
+        expect(result.lines[0]).toMatchSnapshot();
+      }
+    );
 
     it('добавляет предупреждение без связанной функции', () => {
       const node = createFunctionReturnNode('unknown-func');

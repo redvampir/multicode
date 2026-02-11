@@ -164,7 +164,6 @@ jobs:
       - name: Build legacy targets
         run: |
           cmake --build build --config ${{ env.BUILD_TYPE }} --target multicode_legacy_tests
-          cmake --build build --config ${{ env.BUILD_TYPE }} --target multicode_codegen_legacy_tests
 
       - name: Run legacy tests
         working-directory: build

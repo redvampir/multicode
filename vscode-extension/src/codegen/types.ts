@@ -46,6 +46,8 @@ export enum CodeGenErrorCode {
   TYPE_MISMATCH = 'TYPE_MISMATCH',
   /** Недостижимый узел */
   UNREACHABLE_NODE = 'UNREACHABLE_NODE',
+  /** Язык кодогенерации не поддерживается */
+  UNSUPPORTED_LANGUAGE = 'UNSUPPORTED_LANGUAGE',
 }
 
 /** Коды предупреждений */
@@ -58,6 +60,8 @@ export enum CodeGenWarningCode {
   EMPTY_BRANCH = 'EMPTY_BRANCH',
   /** Бесконечный цикл (условие всегда true) */
   INFINITE_LOOP = 'INFINITE_LOOP',
+  /** Выбран язык, который пока не поддерживается генератором */
+  UNSUPPORTED_LANGUAGE = 'UNSUPPORTED_LANGUAGE',
 }
 
 /** Маппинг узел → строки кода */

@@ -3,10 +3,13 @@ import type {
   BlueprintNode,
   BlueprintVariable,
   NodePort,
+  PointerMeta,
 } from '../shared/blueprintTypes';
+import { normalizePointerMeta } from '../shared/blueprintTypes';
 import type { PortDataType } from '../shared/portTypes';
+import { formatVectorInput, supportsArrayDataType } from '../shared/vectorValue';
 
-type VariableNodeType = 'GetVariable' | 'SetVariable';
+type VariableNodeType = 'Variable' | 'GetVariable' | 'SetVariable';
 
 const VARIABLE_NODE_TYPES: VariableNodeType[] = ['GetVariable', 'SetVariable'];
 const PORT_DATA_TYPES: PortDataType[] = [
@@ -34,17 +37,33 @@ const DEFAULT_OVERLAP_OPTIONS: Required<OverlapSearchOptions> = {
 interface VariableNodeProperties extends Record<string, unknown> {
   variableId?: string;
   dataType?: PortDataType;
+  isArray?: boolean;
+  arrayRank?: number;
+  vectorElementType?: BlueprintVariable['vectorElementType'];
+  pointerMeta?: PointerMeta;
+  targetVariableId?: string;
   defaultValue?: BlueprintVariable['defaultValue'];
   inputValue?: unknown;
   inputValueIsOverride?: boolean;
   name?: string;
   nameRu?: string;
+  codeName?: string;
   color?: string;
 }
 
 export type AvailableVariableBinding = Pick<
   BlueprintVariable,
-  'id' | 'name' | 'nameRu' | 'dataType' | 'defaultValue' | 'color'
+  | 'id'
+  | 'name'
+  | 'nameRu'
+  | 'codeName'
+  | 'dataType'
+  | 'vectorElementType'
+  | 'defaultValue'
+  | 'color'
+  | 'isArray'
+  | 'arrayRank'
+  | 'pointerMeta'
 >;
 
 export interface PositionedNode {
@@ -83,8 +102,38 @@ const isPortDataType = (value: unknown): value is PortDataType =>
 
 const normalizeDataType = (value: unknown): PortDataType => (isPortDataType(value) ? value : 'any');
 
-const isValuePortId = (portId: string, suffix: 'value-in' | 'value-out'): boolean =>
-  portId === suffix || portId.endsWith(`-${suffix}`);
+const normalizeArrayRank = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.trunc(value));
+  }
+  if (value === true) {
+    return 1;
+  }
+  return 0;
+};
+
+const resolveArrayRank = (dataType: PortDataType, rank: unknown, isArray: unknown): number => {
+  if (!supportsArrayDataType(dataType)) {
+    return 0;
+  }
+  const normalized = normalizeArrayRank(rank);
+  if (normalized > 0) {
+    return normalized;
+  }
+  return isArray === true ? 1 : 0;
+};
+
+const isValueInputPortId = (portId: string): boolean =>
+  portId === 'value-in' ||
+  portId === 'value' ||
+  portId.endsWith('-value-in') ||
+  portId.endsWith('-value');
+
+const isValueOutputPortId = (portId: string): boolean =>
+  portId === 'value-out' ||
+  portId === 'value' ||
+  portId.endsWith('-value-out') ||
+  portId.endsWith('-value');
 
 const normalizeVariableName = (
   variable: AvailableVariableBinding,
@@ -103,13 +152,19 @@ const updateValuePortDataType = (
   dataType: PortDataType
 ): NodePort[] => {
   const shouldUpdatePort = (port: NodePort): boolean => {
+    if (nodeType === 'Variable') {
+      return targetSuffix === 'value-out' && isValueOutputPortId(port.id);
+    }
     if (nodeType === 'GetVariable' && targetSuffix === 'value-in') {
       return false;
     }
     if (nodeType === 'GetVariable' && targetSuffix === 'value-out') {
-      return isValuePortId(port.id, 'value-out');
+      return isValueOutputPortId(port.id);
     }
-    return isValuePortId(port.id, targetSuffix);
+    if (targetSuffix === 'value-in') {
+      return isValueInputPortId(port.id);
+    }
+    return isValueOutputPortId(port.id);
   };
 
   return ports.map((port) =>
@@ -122,7 +177,15 @@ const updateValuePortDataType = (
   );
 };
 
-export const getDefaultValueForDataType = (dataType: PortDataType): BlueprintVariable['defaultValue'] => {
+export const getDefaultValueForDataType = (
+  dataType: PortDataType,
+  arrayRank: number | boolean = 0
+): BlueprintVariable['defaultValue'] => {
+  const normalizedRank = normalizeArrayRank(arrayRank);
+  if (normalizedRank > 0) {
+    return [];
+  }
+
   switch (dataType) {
     case 'bool':
       return false;
@@ -134,7 +197,7 @@ export const getDefaultValueForDataType = (dataType: PortDataType): BlueprintVar
     case 'string':
       return '';
     case 'vector':
-      return [0, 0, 0];
+      return [];
     case 'pointer':
     case 'class':
     case 'array':
@@ -189,20 +252,34 @@ export const getEffectiveSetInputValue = (
 
   const properties = asVariableNodeProperties(node.properties);
   const nodeDataType = normalizeDataType(properties.dataType);
+  const pointerMeta = nodeDataType === 'pointer' ? normalizePointerMeta(properties.pointerMeta) : undefined;
+  const effectiveDataType: PortDataType =
+    pointerMeta &&
+    pointerMeta.mode !== 'weak' &&
+    (pointerMeta.mode === 'reference' ||
+      pointerMeta.mode === 'const_reference' ||
+      (pointerMeta.targetVariableId && pointerMeta.pointeeDataType !== 'class' && pointerMeta.pointeeDataType !== 'array'))
+      ? pointerMeta.pointeeDataType
+      : nodeDataType;
+  const arrayRank = resolveArrayRank(effectiveDataType, properties.arrayRank, properties.isArray);
+  const normalizedVariableDefault =
+    nodeDataType === 'pointer' && effectiveDataType !== nodeDataType && variableDefault === null
+      ? undefined
+      : variableDefault;
 
   if (properties.inputValueIsOverride === true && properties.inputValue !== undefined) {
     return properties.inputValue;
   }
 
-  if (variableDefault !== undefined) {
-    return variableDefault;
+  if (normalizedVariableDefault !== undefined) {
+    return normalizedVariableDefault;
   }
 
   if (properties.inputValue !== undefined) {
     return properties.inputValue;
   }
 
-  return getDefaultValueForDataType(nodeDataType);
+  return getDefaultValueForDataType(effectiveDataType, arrayRank);
 };
 
 export const formatVariableValueForDisplay = (
@@ -221,7 +298,7 @@ export const formatVariableValueForDisplay = (
   }
 
   if (Array.isArray(value)) {
-    return value.join(', ');
+    return formatVectorInput(value);
   }
 
   return String(value);
@@ -237,20 +314,39 @@ export const bindVariableToNode = (
   }
 
   const dataType = normalizeDataType(variable.dataType);
+  const arrayRank = resolveArrayRank(dataType, variable.arrayRank, variable.isArray);
+  const pointerMeta = dataType === 'pointer' ? normalizePointerMeta(variable.pointerMeta) : undefined;
+  const pointerValueDataType: PortDataType | undefined =
+    pointerMeta &&
+    pointerMeta.mode !== 'weak' &&
+    pointerMeta.pointeeDataType !== 'class' &&
+    pointerMeta.pointeeDataType !== 'array' &&
+    (pointerMeta.mode === 'reference' ||
+      pointerMeta.mode === 'const_reference' ||
+      Boolean(pointerMeta.targetVariableId))
+      ? pointerMeta.pointeeDataType
+      : undefined;
+  const portDataType: PortDataType = arrayRank > 0 ? 'array' : (pointerValueDataType ?? dataType);
   const properties = asVariableNodeProperties(node.properties);
   const nextProperties: VariableNodeProperties = {
     ...properties,
     variableId: variable.id,
     dataType,
+    isArray: arrayRank > 0,
+    arrayRank,
+    vectorElementType: variable.vectorElementType,
+    pointerMeta,
+    targetVariableId: pointerMeta?.targetVariableId,
     defaultValue: variable.defaultValue,
     name: variable.name,
     nameRu: variable.nameRu,
+    codeName: variable.codeName,
     color: variable.color,
   };
 
   if (node.type === 'SetVariable') {
     const hasOverride = properties.inputValueIsOverride === true;
-    const fallbackValue = variable.defaultValue ?? getDefaultValueForDataType(dataType);
+    const fallbackValue = variable.defaultValue ?? getDefaultValueForDataType(pointerValueDataType ?? dataType, arrayRank);
 
     nextProperties.inputValueIsOverride = hasOverride;
     nextProperties.inputValue = hasOverride
@@ -262,9 +358,9 @@ export const bindVariableToNode = (
 
   const nextInputs =
     node.type === 'SetVariable'
-      ? updateValuePortDataType(node.type, node.inputs, 'value-in', dataType)
+      ? updateValuePortDataType(node.type, node.inputs, 'value-in', portDataType)
       : node.inputs;
-  const nextOutputs = updateValuePortDataType(node.type, node.outputs, 'value-out', dataType);
+  const nextOutputs = updateValuePortDataType(node.type, node.outputs, 'value-out', portDataType);
 
   return {
     ...node,
@@ -349,4 +445,3 @@ export const removeNodesByDeletedVariables = (
     removedNodeIds,
   };
 };
-

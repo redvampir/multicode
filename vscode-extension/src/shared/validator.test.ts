@@ -527,6 +527,127 @@ describe('validator', () => {
 
         expect(result.warnings.some(w => w.includes('connects two Variable nodes'))).toBe(false);
       });
+
+      it('должен выдавать ошибку для несовместимого data-ребра без правила конвертации', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Incompatible data edge',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            createNode('start', 'Start'),
+            {
+              ...createNode('src', 'Function', 'Source'),
+              blueprintNode: {
+                type: 'Function',
+                inputs: [{ id: 'exec-in', dataType: 'execution' }],
+                outputs: [
+                  { id: 'exec-out', dataType: 'execution' },
+                  { id: 'value-out', dataType: 'bool' },
+                ],
+              },
+            },
+            {
+              ...createNode('dst', 'Function', 'Target'),
+              blueprintNode: {
+                type: 'Function',
+                inputs: [
+                  { id: 'exec-in', dataType: 'execution' },
+                  { id: 'value-in', dataType: 'pointer' },
+                ],
+                outputs: [{ id: 'exec-out', dataType: 'execution' }],
+              },
+            },
+            createNode('end', 'End'),
+          ],
+          edges: [
+            createEdge('e1', 'start', 'src', 'execution'),
+            createEdge('e2', 'src', 'dst', 'execution'),
+            createEdge('e3', 'dst', 'end', 'execution'),
+            {
+              id: 'e4',
+              source: 'src',
+              target: 'dst',
+              kind: 'data',
+              blueprintEdge: {
+                id: 'e4',
+                sourceNode: 'src',
+                sourcePort: 'value-out',
+                targetNode: 'dst',
+                targetPort: 'value-in',
+                kind: 'data',
+                dataType: 'bool',
+              },
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+
+        expect(result.ok).toBe(false);
+        expect(result.errors).toContain('Incompatible data edge src -> dst: bool -> pointer.');
+      });
+
+      it('не должен выдавать ошибку несовместимости для пары, покрытой таблицей конвертаций', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Convertible data edge',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            createNode('start', 'Start'),
+            {
+              ...createNode('src', 'Function', 'Source'),
+              blueprintNode: {
+                type: 'Function',
+                inputs: [{ id: 'exec-in', dataType: 'execution' }],
+                outputs: [
+                  { id: 'exec-out', dataType: 'execution' },
+                  { id: 'value-out', dataType: 'int32' },
+                ],
+              },
+            },
+            {
+              ...createNode('dst', 'Function', 'Target'),
+              blueprintNode: {
+                type: 'Function',
+                inputs: [
+                  { id: 'exec-in', dataType: 'execution' },
+                  { id: 'value-in', dataType: 'string' },
+                ],
+                outputs: [{ id: 'exec-out', dataType: 'execution' }],
+              },
+            },
+            createNode('end', 'End'),
+          ],
+          edges: [
+            createEdge('e1', 'start', 'src', 'execution'),
+            createEdge('e2', 'src', 'dst', 'execution'),
+            createEdge('e3', 'dst', 'end', 'execution'),
+            {
+              id: 'e4',
+              source: 'src',
+              target: 'dst',
+              kind: 'data',
+              blueprintEdge: {
+                id: 'e4',
+                sourceNode: 'src',
+                sourcePort: 'value-out',
+                targetNode: 'dst',
+                targetPort: 'value-in',
+                kind: 'data',
+                dataType: 'int32',
+              },
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+
+        expect(result.errors.some((error) => error.includes('Incompatible data edge'))).toBe(false);
+      });
     });
 
     describe('проверка достижимости', () => {
@@ -837,6 +958,106 @@ describe('validator', () => {
 
         const result = validateGraphState(graph);
         expect(result.warnings.some(w => w.includes('Duplicate edge start -> func'))).toBe(false);
+      });
+    });
+
+    describe('variable data links', () => {
+      it('не должен предупреждать для data-связи Get -> Set по handle-портам', () => {
+        const graph: GraphState = {
+          id: 'graph-1',
+          name: 'Variable transfer',
+          language: 'cpp',
+          displayLanguage: 'ru',
+          nodes: [
+            createNode('start', 'Start'),
+            createNode('get-1', 'Variable', 'Получить: A'),
+            createNode('set-1', 'Variable', 'Установить: B'),
+            createNode('end', 'End'),
+          ],
+          edges: [
+            createEdge('exec-1', 'start', 'set-1', 'execution'),
+            createEdge('exec-2', 'set-1', 'end', 'execution'),
+            {
+              id: 'data-1',
+              source: 'get-1',
+              target: 'set-1',
+              kind: 'data',
+              blueprintEdge: {
+                id: 'data-1',
+                sourceNode: 'get-1',
+                sourcePort: 'get-1-value-out',
+                targetNode: 'set-1',
+                targetPort: 'set-1-value-in',
+                kind: 'data',
+                dataType: 'int32',
+              },
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+
+        const result = validateGraphState(graph);
+        expect(result.warnings.some((warning) => warning.includes('connects two Variable nodes'))).toBe(false);
+      });
+    });
+
+    describe('pointer/reference variables', () => {
+      it('должен валидировать обязательный target для reference', () => {
+        const graph = createValidGraph();
+        graph.variables = [
+          {
+            id: 'ptr-ref',
+            name: 'ptrRef',
+            nameRu: 'ptrRef',
+            dataType: 'pointer',
+            category: 'default',
+            pointerMeta: {
+              mode: 'reference',
+              pointeeDataType: 'int32',
+            },
+          },
+        ];
+
+        const result = validateGraphState(graph);
+
+        expect(
+          result.errors.some((message) => message.includes('requires target for mode reference'))
+        ).toBe(true);
+      });
+
+      it('должен требовать shared target для weak pointer', () => {
+        const graph = createValidGraph();
+        graph.variables = [
+          {
+            id: 'ptr-unique',
+            name: 'ptrUnique',
+            nameRu: 'ptrUnique',
+            dataType: 'pointer',
+            category: 'default',
+            pointerMeta: {
+              mode: 'unique',
+              pointeeDataType: 'int32',
+            },
+          },
+          {
+            id: 'ptr-weak',
+            name: 'ptrWeak',
+            nameRu: 'ptrWeak',
+            dataType: 'pointer',
+            category: 'default',
+            pointerMeta: {
+              mode: 'weak',
+              pointeeDataType: 'int32',
+              targetVariableId: 'ptr-unique',
+            },
+          },
+        ];
+
+        const result = validateGraphState(graph);
+
+        expect(
+          result.errors.some((message) => message.includes('must target shared pointer variable'))
+        ).toBe(true);
       });
     });
   });

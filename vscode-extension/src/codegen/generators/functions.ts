@@ -33,7 +33,8 @@ function portTypeToCpp(dataType: PortDataType): string {
     'double': 'double',
     'string': 'std::string',
     'vector': 'std::vector<float>',
-    'object': 'void*',
+    'pointer': 'std::shared_ptr<void>',
+    'class': 'auto',
     'any': 'auto',
     'array': 'std::vector<int>',
   };
@@ -327,7 +328,8 @@ function getDefaultValue(dataType: PortDataType): string {
     'double': '0.0',
     'string': '""',
     'vector': '{}',
-    'object': 'nullptr',
+    'pointer': 'nullptr',
+    'class': '{}',
     'any': '{}',
     'array': '{}',
   };

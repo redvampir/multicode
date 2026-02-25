@@ -17,6 +17,7 @@ import {
   transliterate,
   toValidIdentifier,
   getCppType,
+  getCppVariableType,
   getDefaultValue,
   // Генератор
   CppCodeGenerator,
@@ -34,6 +35,7 @@ describe('codegen/index', () => {
     it('должен экспортировать CodeGenWarningCode enum', () => {
       expect(CodeGenWarningCode).toBeDefined();
       expect(CodeGenWarningCode.UNUSED_NODE).toBe('UNUSED_NODE');
+      expect(CodeGenWarningCode.UNUSED_SWITCH_INIT).toBe('UNUSED_SWITCH_INIT');
       expect(CodeGenWarningCode.EMPTY_BRANCH).toBe('EMPTY_BRANCH');
     });
 
@@ -132,12 +134,30 @@ describe('codegen/index', () => {
 
       it('должен возвращать контейнерные типы', () => {
         expect(getCppType('vector')).toBe('std::vector<double>');
+        expect(getCppType('vector', 'int32')).toBe('std::vector<int>');
+        expect(getCppType('vector', 'float')).toBe('std::vector<float>');
         expect(getCppType('array')).toBe('std::vector<int>');
       });
 
       it('должен возвращать auto для неизвестных типов', () => {
         expect(getCppType('unknown')).toBe('auto');
         expect(getCppType('any')).toBe('auto');
+      });
+    });
+
+    describe('getCppVariableType', () => {
+      it('должен возвращать базовый тип без array-модификатора', () => {
+        expect(getCppVariableType('int32')).toBe('int');
+        expect(getCppVariableType('vector', 'double')).toBe('std::vector<double>');
+      });
+
+      it('должен оборачивать базовый тип в std::vector<...> при arrayRank>0 (и legacy isArray=true)', () => {
+        expect(getCppVariableType('int32', undefined, true)).toBe('std::vector<int>');
+        expect(getCppVariableType('int32', undefined, 2)).toBe('std::vector<std::vector<int>>');
+        expect(getCppVariableType('string', undefined, true)).toBe('std::vector<std::string>');
+        expect(getCppVariableType('string', undefined, 3)).toBe('std::vector<std::vector<std::vector<std::string>>>');
+        expect(getCppVariableType('vector', 'int32', true)).toBe('std::vector<std::vector<int>>');
+        expect(getCppVariableType('vector', 'int32', 2)).toBe('std::vector<std::vector<std::vector<int>>>');
       });
     });
 
@@ -223,6 +243,7 @@ describe('codegen/index', () => {
     it('CodeGenWarningCode должен содержать все необходимые коды', () => {
       expect(CodeGenWarningCode.UNUSED_NODE).toBeDefined();
       expect(CodeGenWarningCode.UNINITIALIZED_VARIABLE).toBeDefined();
+      expect(CodeGenWarningCode.UNUSED_SWITCH_INIT).toBeDefined();
       expect(CodeGenWarningCode.EMPTY_BRANCH).toBeDefined();
       expect(CodeGenWarningCode.INFINITE_LOOP).toBeDefined();
     });

@@ -148,6 +148,7 @@ export class PackageLoader {
     return {
       id: portDef.id,
       name: portDef.name,
+      nameRu: portDef.nameRu,
       dataType: portDef.dataType as PortDataType,
       direction,
       typeName: portDef.typeName,

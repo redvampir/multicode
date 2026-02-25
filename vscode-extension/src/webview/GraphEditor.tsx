@@ -1340,7 +1340,6 @@ export const GraphEditor: React.FC<{
       { key: 'branch', translationKey: 'palette.node.branch', type: 'Custom' },
       { key: 'switch', translationKey: 'palette.node.switch', type: 'Custom' },
       { key: 'sequence', translationKey: 'palette.node.sequence', type: 'Custom' },
-      { key: 'variable', translationKey: 'palette.node.variable', type: 'Variable' },
       { key: 'comment', translationKey: 'palette.node.comment', type: 'Custom' }
     ];
 

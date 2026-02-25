@@ -10,6 +10,8 @@ const graphNodeTypeSchema = z.enum(['Start', 'Function', 'End', 'Variable', 'Cus
 const graphLanguageSchema = z.enum(['cpp', 'rust', 'asm']);
 const graphDisplayLanguageSchema = z.enum(['ru', 'en']);
 const graphEdgeKindSchema = z.enum(['execution', 'data']);
+const cppStandardSchema = z.enum(['cpp14', 'cpp17', 'cpp20', 'cpp23']);
+const codegenOutputProfileSchema = z.enum(['clean', 'learn', 'debug', 'recovery']);
 
 const graphNodeSchema = z.object({
   id: z.string(),
@@ -81,6 +83,12 @@ const logPayloadSchema = z.object({
   message: z.string()
 });
 
+const webviewTracePayloadSchema = z.object({
+  category: z.string(),
+  message: z.string(),
+  data: z.unknown().optional(),
+});
+
 const validationIssueSchema = z.object({
   severity: z.enum(['error', 'warning']),
   message: z.string(),
@@ -111,7 +119,20 @@ export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('translationFinished'),
     payload: z.object({ success: z.boolean() })
   }),
-  z.object({ type: z.literal('log'), payload: logPayloadSchema })
+  z.object({ type: z.literal('log'), payload: logPayloadSchema }),
+  z.object({
+    type: z.literal('boundFileChanged'),
+    payload: z.object({
+      fileName: z.string().nullable(),
+      filePath: z.string().nullable(),
+    })
+  }),
+  z.object({
+    type: z.literal('codegenProfileChanged'),
+    payload: z.object({
+      profile: codegenOutputProfileSchema
+    })
+  })
 ]);
 
 export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
@@ -148,8 +169,17 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('requestNewGraph') }),
   z.object({ type: z.literal('requestGenerate') }),
   z.object({ type: z.literal('requestValidate') }),
+  z.object({
+    type: z.literal('requestCompileAndRun'),
+    payload: z.object({ standard: cppStandardSchema.optional() }).optional(),
+  }),
+  z.object({
+    type: z.literal('setCodegenProfile'),
+    payload: z.object({ profile: codegenOutputProfileSchema }),
+  }),
   z.object({ type: z.literal('graphChanged'), payload: graphMutationSchema }),
-  z.object({ type: z.literal('reportWebviewError'), payload: z.object({ message: z.string() }) })
+  z.object({ type: z.literal('reportWebviewError'), payload: z.object({ message: z.string() }) }),
+  z.object({ type: z.literal('reportWebviewTrace'), payload: webviewTracePayloadSchema })
 ]);
 
 export type ExtensionToWebviewMessage = z.infer<typeof extensionToWebviewMessageSchema>;
@@ -159,6 +189,7 @@ export type ThemeMessage = z.infer<typeof themeMessageSchema>;
 export type TranslationDirection = z.infer<typeof translationDirectionSchema>;
 export type ToastPayload = z.infer<typeof toastPayloadSchema>;
 export type LogPayload = z.infer<typeof logPayloadSchema>;
+export type WebviewTracePayload = z.infer<typeof webviewTracePayloadSchema>;
 export type GraphMutationPayload = z.infer<typeof graphMutationSchema>;
 export type GraphStateSchema = typeof graphStateSchema;
 export type GraphNodeSchema = typeof graphNodeSchema;

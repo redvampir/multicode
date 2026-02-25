@@ -165,7 +165,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     try {
       await navigator.clipboard.writeText(errorText);
-      alert('Ошибка скопирована в буфер обмена');
+      console.info('[MultiCode ErrorBoundary] Ошибка скопирована в буфер обмена');
     } catch {
       console.error('Failed to copy error');
     }

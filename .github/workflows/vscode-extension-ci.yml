@@ -1,0 +1,44 @@
+name: VSCode Extension CI
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          cd vscode-extension
+          npm ci
+
+      - name: Lint (ESLint)
+        run: |
+          cd vscode-extension
+          npx eslint "src/**/*.{ts,tsx}" --max-warnings=0
+
+      - name: Type check (TypeScript)
+        run: |
+          cd vscode-extension
+          npx tsc --noEmit
+
+      - name: Prettier check
+        run: |
+          cd vscode-extension
+          npx prettier --check "src/**/*.{ts,tsx}"
+
+      - name: Unit tests
+        run: |
+          cd vscode-extension
+          npm run test:unit -- --run

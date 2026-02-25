@@ -60,7 +60,8 @@ const dataTypeOptions: { value: PortDataType; label: string; labelRu: string }[]
   { value: 'bool', label: 'Boolean', labelRu: 'Логическое' },
   { value: 'string', label: 'String', labelRu: 'Строка' },
   { value: 'vector', label: 'Vector', labelRu: 'Вектор' },
-  { value: 'object', label: 'Object', labelRu: 'Объект' },
+  { value: 'pointer', label: 'Pointer', labelRu: 'Указатель' },
+  { value: 'class', label: 'Class', labelRu: 'Класс' },
   { value: 'any', label: 'Any', labelRu: 'Любой' },
 ];
 

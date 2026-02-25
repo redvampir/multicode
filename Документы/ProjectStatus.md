@@ -1,102 +1,53 @@
 # Project Status
 
-> **Обновлено:** 2025-12-25
+> **Обновлено:** 2026-02-07
 
 ## Сводка
 
-| Компонент | Статус | Прогресс |
-|-----------|--------|----------|
-| C++ Core | ✅ Готово | 100% |
-| Сериализация | ✅ Готово | 100% |
-| VS Code Extension | ✅ Работает | 100% |
-| Blueprint Editor | ✅ Готово | 100% |
-| Classic Editor | ✅ Готово | 100% |
-| Кодогенерация | ✅ Готово | 100% |
-| Пакеты узлов | ✅ Готово | 100% |
-| Пользовательские функции | ✅ Готово | 100% |
-| CI/CD | ⚠️ Частично | 50% |
+| Направление | Статус | Комментарий |
+|------------|--------|-------------|
+| C++ Core | ✅ Стабильно | Базовые API и сериализация реализованы |
+| VS Code Extension | ✅ Стабильно | Blueprint + Classic режимы в рабочем состоянии |
+| Кодогенерация C++ | ✅ Работает | Поддержка основных узлов, пакетов и функций |
+| Пакеты узлов | ✅ Работает | Loader/Registry/UI есть, покрыты тестами |
+| Пользовательские функции | ✅ Работает | От UI до генерации кода |
+| CI/CD | ✅ Работает | C++, extension, форматирование и coverage workflows присутствуют |
+| Документация | 🟡 Перестройка | Идёт синхронизация активных и архивных документов |
 
-## Что работает
+## Версия и этап
+
+- **Релизная версия расширения:** `0.4.0` (по `vscode-extension/package.json`)
+- **Внутренний этап разработки:** реализованы вехи roadmap до `v0.6`
+- **Текущий фокус:** подготовка к `v1.0` (стабилизация, качество, публикация)
+
+## Что подтверждено по репозиторию
 
 ### C++ ядро
-- `Node`, `Port`, `Graph`, `NodeFactory` — полностью реализованы
-- `GraphSerializer` — JSON импорт/экспорт с версионированием схемы
-- Catch2 тесты — все проходят
-- Строгие типы: `NodeId`, `PortId`, `ConnectionId`, `Result<T>`
+- Публичные заголовки: `include/visprog/core/`
+- Реализации: `src/core/`
+- Тесты: `tests/`
 
-### VS Code расширение
-- **Blueprint Editor** (React Flow):
-  - Кастомные узлы с визуальными портами
-  - Цветовая схема типов данных
-  - Drag-to-connect с валидацией типов
-  - Палитра узлов с категориями и поиском
-  - MiniMap, Controls, Background
-- **Classic Editor** (Cytoscape):
-  - Базовый редактор (legacy)
-  - Автолейаут через dagre
-- **Общее**:
-  - Переключатель режимов в toolbar
-  - Сохранение/загрузка графа
-  - Локализация RU/EN
-  - Поддержка светлой/тёмной темы
-  - Zod валидация IPC сообщений
+### Webview/Extension
+- Основной редактор: `vscode-extension/src/webview/BlueprintEditor.tsx`
+- Legacy-редактор: `vscode-extension/src/webview/GraphEditor.tsx`
+- IPC с Zod: `vscode-extension/src/shared/messages.ts`
+- Локализация RU/EN: `vscode-extension/src/shared/translations.ts`
 
-### Кодогенерация (v0.3)
-- [x] Интерфейс `ICodeGenerator`
-- [x] Реализация `CppCodeGenerator`:
-  - Start/End, Branch, циклы, переменные
-  - Математика, сравнение, логика
-  - Ввод/вывод (Print, Input)
-- [x] Плагинная архитектура генераторов
-- [x] Предпросмотр кода в панели
-- [x] 60+ unit-тестов
+### Инфраструктура качества
+- C++ CI: `.github/workflows/cpp-build.yml`
+- Extension CI: `.github/workflows/vscode-extension-ci.yml`
+- Проверка форматирования C++: `.github/workflows/code-format.yml`
 
-### UX (v0.4)
-- [x] Undo/Redo
-- [x] Copy/Paste
-- [x] Keyboard shortcuts
-- [x] Контекстное меню
-- [x] Автолейаут
+## Цели до v1.0
 
-### Пакеты узлов (v0.5)
-- [x] JSON Schema для пакетов
-- [x] PackageLoader + PackageRegistry
-- [x] TemplateNodeGenerator
-- [x] UI панель PackageManagerPanel
-- [x] 74 теста
-
-### Пользовательские функции (v0.6)
-- [x] FunctionListPanel (UI)
-- [x] Типы BlueprintFunction, FunctionParameter
-- [x] Кодогенерация: FunctionEntry, FunctionReturn, CallUserFunction
-- [x] Генерация сигнатуры с типами C++
-- [x] Транслитерация русских имён
-- [x] 48 тестов
-
-## Технические метрики
-
-| Метрика | Значение |
-|---------|----------|
-| C++ строк кода | ~2500 |
-| TypeScript строк | ~12000 |
-| Тестов C++ | 15+ |
-| Тестов TS | 480+ |
-| Тестовых файлов | 21 |
-
-## Текущая версия
-
-**v0.6** — Пользовательские функции (завершён)
-
-## Следующие шаги (v1.0)
-
-- [ ] Стабильный API
-- [ ] 80%+ code coverage
-- [ ] Документация для пользователей
-- [ ] Marketplace публикация
-- [ ] CI/CD pipeline
+- [ ] Стабильный публичный API
+- [ ] Прозрачные метрики покрытия
+- [ ] Консистентная пользовательская документация
+- [ ] Публикация в VS Code Marketplace
 
 ## Ссылки
 
-- [ROADMAP.md](../ROADMAP.md) — план версий
-- [BUILD_STATUS.md](../BUILD_STATUS.md) — статус сборки
-- [AI_AGENTS_GUIDE.md](../AI_AGENTS_GUIDE.md) — руководство для ИИ
+- [ROADMAP.md](../ROADMAP.md) — вехи и этапы
+- [BUILD_STATUS.md](../BUILD_STATUS.md) — состояние сборки и CI
+- [AI_AGENTS_GUIDE.md](../AI_AGENTS_GUIDE.md) — практическое руководство для ИИ
+- [README.md](../README.md) — продуктовый обзор

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './ErrorBoundary';
 import {
@@ -32,7 +32,9 @@ import {
 } from './theme';
 import {
   parseExtensionMessage,
+  parseThemeMessage,
   webviewToExtensionMessageSchema,
+  type GraphMutationPayload,
   type ThemeMessage,
   type TranslationDirection,
   type WebviewToExtensionMessage
@@ -42,6 +44,9 @@ import HelpPanel from './HelpPanel';
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape';
 const EDITOR_MODE_KEY = 'multicode.editorMode';
+
+type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
+type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
 
 const getInitialEditorMode = (): EditorMode => {
   try {
@@ -64,6 +69,64 @@ type PersistedState = { graph?: GraphState; locale?: GraphDisplayLanguage; layou
 
 const layoutStorageKey = 'multicode.layout';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isEditorMode = (value: string): value is EditorMode =>
+  value === 'blueprint' || value === 'cytoscape';
+
+const isGraphDisplayLanguage = (value: unknown): value is GraphDisplayLanguage =>
+  value === 'ru' || value === 'en';
+
+const isTranslationDirection = (value: string): value is TranslationDirection =>
+  value === 'ru-en' || value === 'en-ru';
+
+const isCodegenOutputProfile = (value: string): value is CodegenOutputProfile =>
+  value === 'clean' || value === 'learn' || value === 'debug' || value === 'recovery';
+
+const isGraphNodeType = (value: string): value is GraphNodeType =>
+  value === 'Start' ||
+  value === 'Function' ||
+  value === 'End' ||
+  value === 'Variable' ||
+  value === 'Custom';
+
+const isLayoutRankDir = (value: unknown): value is LayoutSettings['rankDir'] =>
+  value === 'LR' || value === 'RL' || value === 'TB' || value === 'BT';
+
+const parsePartialLayoutSettings = (value: unknown): Partial<LayoutSettings> => {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const parsed: Partial<LayoutSettings> = {};
+  if (value.algorithm === 'dagre' || value.algorithm === 'klay') {
+    parsed.algorithm = value.algorithm;
+  }
+  if (isLayoutRankDir(value.rankDir)) {
+    parsed.rankDir = value.rankDir;
+  }
+  if (typeof value.nodeSep === 'number') {
+    parsed.nodeSep = value.nodeSep;
+  }
+  if (typeof value.edgeSep === 'number') {
+    parsed.edgeSep = value.edgeSep;
+  }
+  if (typeof value.spacing === 'number') {
+    parsed.spacing = value.spacing;
+  }
+
+  return parsed;
+};
+
+const normalizeThemeMessage = (value: unknown): ThemeMessage => {
+  const parsed = parseThemeMessage(value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  return { preference: 'auto', hostTheme: 'dark' };
+};
+
 declare const initialGraphState: GraphState | undefined;
 declare const initialTheme: ThemeMessage | undefined;
 const vscode = acquireVsCodeApi<PersistedState>();
@@ -74,8 +137,8 @@ const readLayoutFromLocalStorage = (): LayoutSettings | undefined => {
     if (!cached) {
       return undefined;
     }
-    const parsed = JSON.parse(cached) as Partial<LayoutSettings>;
-    return normalizeLayoutSettings(parsed);
+    const parsed = JSON.parse(cached);
+    return normalizeLayoutSettings(parsePartialLayoutSettings(parsed));
   } catch (error) {
     console.warn('Не удалось загрузить настройки лэйаута из localStorage', error);
     return undefined;
@@ -89,13 +152,15 @@ const bootGraph: GraphState = persistedGraph ?? initialGraphState ?? createDefau
 const bootLayout: LayoutSettings = persistedLayout
   ? normalizeLayoutSettings(persistedLayout)
   : readLayoutFromLocalStorage() ?? normalizeLayoutSettings();
+const persistedLocale = isGraphDisplayLanguage(persistedState?.locale)
+  ? persistedState.locale
+  : undefined;
 const bootLocale: GraphDisplayLanguage =
-  (persistedState?.locale as GraphDisplayLanguage | undefined) ??
+  persistedLocale ??
   bootGraph.displayLanguage ??
   'ru';
 const useGraphStore: GraphStoreHook = createGraphStore(bootGraph, bootLayout);
-const initialThemeMessage: ThemeMessage =
-  initialTheme ?? ({ preference: 'auto', hostTheme: 'dark' } as ThemeMessage);
+const initialThemeMessage: ThemeMessage = normalizeThemeMessage(initialTheme);
 
 const applyUiTheme = (tokens: ThemeTokens, effective: EffectiveTheme): void => {
   const style = document.documentElement.style;
@@ -130,12 +195,28 @@ const applyUiTheme = (tokens: ThemeTokens, effective: EffectiveTheme): void => {
 const formatIssues = (issues: Array<{ message: string }> = []): string =>
   issues.map((issue) => issue.message).join('; ');
 
+const GRAPH_CHANGED_DEBOUNCE_MS = 120;
+
+const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload => ({
+  nodes: graphState.nodes,
+  edges: graphState.edges,
+  name: graphState.name,
+  language: graphState.language,
+  displayLanguage: graphState.displayLanguage,
+  variables: graphState.variables,
+  functions: graphState.functions,
+});
+
 const sendToExtension = (message: WebviewToExtensionMessage): void => {
+  console.log('[WEBVIEW DEBUG] sendToExtension called with:', message);
   const parsed = webviewToExtensionMessageSchema.safeParse(message);
   if (!parsed.success) {
     console.error(`Невозможно отправить сообщение в расширение: ${formatIssues(parsed.error.issues)}`);
+    console.error('[WEBVIEW DEBUG] Message that failed validation:', message);
     return;
   }
+
+  console.log('[WEBVIEW DEBUG] Message validated and posting to extension:', parsed.data);
   vscode.postMessage(parsed.data);
 };
 
@@ -149,6 +230,8 @@ const Toolbar: React.FC<{
   onLocaleChange: (locale: GraphDisplayLanguage) => void;
   translate: (key: TranslationKey, fallback: string, replacements?: Record<string, string>) => string;
   onCalculate: () => void;
+  onTranslate: () => void;
+  translationPending: boolean;
   onCopyGraphId: () => void;
   editorMode: EditorMode;
   onEditorModeChange: (mode: EditorMode) => void;
@@ -156,14 +239,53 @@ const Toolbar: React.FC<{
   onShowCodePreviewChange: (show: boolean) => void;
   onShowHotkeys: () => void;
   onShowHelp: () => void;
-}> = ({ locale, onLocaleChange, translate, onCalculate, onCopyGraphId, editorMode, onEditorModeChange, showCodePreview, onShowCodePreviewChange, onShowHotkeys, onShowHelp }) => {
+  boundFileName: string | null;
+  boundFilePath: string | null;
+  codegenProfile: CodegenOutputProfile;
+  onCodegenProfileChange: (profile: CodegenOutputProfile) => void;
+}> = ({
+  locale,
+  onLocaleChange,
+  translate,
+  onCalculate,
+  onTranslate,
+  translationPending,
+  onCopyGraphId,
+  editorMode,
+  onEditorModeChange,
+  showCodePreview,
+  onShowCodePreviewChange,
+  onShowHotkeys,
+  onShowHelp,
+  boundFileName,
+  boundFilePath,
+  codegenProfile,
+  onCodegenProfileChange,
+}) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
+  // Для "▶ Запустить" стандарт фиксирован на C++23 (strict).
+  const cppStandard: CppStandard = 'cpp23';
 
-  const send = (type: 'requestNewGraph' | 'requestSave' | 'requestLoad' | 'requestGenerate' | 'requestValidate') => {
+  const flushCurrentGraphState = (): void => {
+    const snapshot = useGraphStore.getState().graph;
+    sendToExtension({
+      type: 'graphChanged',
+      payload: buildGraphMutationPayload(snapshot),
+    });
+  };
+
+  const send = (type: 'requestNewGraph' | 'requestSave' | 'requestLoad' | 'requestGenerate' | 'requestValidate' | 'requestCompileAndRun') => {
     setPending(true);
-    sendToExtension({ type });
-    setTimeout(() => setPending(false), 200);
+    if (type === 'requestGenerate' || type === 'requestValidate' || type === 'requestCompileAndRun') {
+      flushCurrentGraphState();
+    }
+    if (type === 'requestCompileAndRun') {
+      sendToExtension({ type, payload: { standard: cppStandard } });
+    } else {
+      sendToExtension({ type });
+    }
+    setTimeout(() => setPending(false), 2000);
   };
 
   return (
@@ -173,6 +295,16 @@ const Toolbar: React.FC<{
         <div className="toolbar-title">{graph.name}</div>
         <div className="toolbar-subtitle">
           {translate('toolbar.targetPlatform', '{language}', { language: graph.language.toUpperCase() })}
+          {boundFileName && (
+            <span className="toolbar-bound-file" title={boundFilePath ?? ''}>
+              {' · '}📄 {boundFileName}
+            </span>
+          )}
+          {!boundFileName && (
+            <span className="toolbar-bound-file toolbar-bound-file--none">
+              {' · '}{translate('toolbar.noFile', 'файл не привязан')}
+            </span>
+          )}
         </div>
       </div>
       
@@ -181,7 +313,12 @@ const Toolbar: React.FC<{
         <div className="toolbar-group">
           <select
             value={editorMode}
-            onChange={(event) => onEditorModeChange(event.target.value as EditorMode)}
+            onChange={(event) => {
+              const nextMode = event.currentTarget.value;
+              if (isEditorMode(nextMode)) {
+                onEditorModeChange(nextMode);
+              }
+            }}
             title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}
             className="toolbar-select"
           >
@@ -190,7 +327,12 @@ const Toolbar: React.FC<{
           </select>
           <select
             value={locale}
-            onChange={(event) => onLocaleChange(event.target.value as GraphDisplayLanguage)}
+            onChange={(event) => {
+              const nextLocale = event.currentTarget.value;
+              if (isGraphDisplayLanguage(nextLocale)) {
+                onLocaleChange(nextLocale);
+              }
+            }}
             title={translate('toolbar.languageSwitch', 'Язык интерфейса')}
             className="toolbar-select"
           >
@@ -217,6 +359,15 @@ const Toolbar: React.FC<{
           <button onClick={() => send('requestValidate')} disabled={pending} title={translate('tooltip.validateGraph', 'Проверить')}>
             ✅ {translate('toolbar.validateGraph', 'Проверить')}
           </button>
+          <button
+            onClick={onTranslate}
+            disabled={pending || translationPending}
+            title={translate('translation.title', 'Перевод графа')}
+          >
+            🌐 {translationPending
+              ? translate('translation.translating', 'Перевод...')
+              : translate('translation.translate', 'Перевести')}
+          </button>
           <button onClick={onCalculate} disabled={pending} title={translate('tooltip.calculateLayout', 'Рассчитать')}>
             🔄 {translate('toolbar.calculateLayout', 'Лэйаут')}
           </button>
@@ -227,6 +378,30 @@ const Toolbar: React.FC<{
         
         {/* Группа: Код */}
         <div className="toolbar-group">
+          <select
+            title={translate('toolbar.codegenProfile', 'Профиль кода')}
+            className="toolbar-select"
+            value={codegenProfile}
+            onChange={(event) => {
+              const nextProfile = event.currentTarget.value;
+              if (isCodegenOutputProfile(nextProfile)) {
+                onCodegenProfileChange(nextProfile);
+              }
+            }}
+          >
+            <option value="clean">{translate('toolbar.codegenProfile.clean', 'Чистый')}</option>
+            <option value="learn">{translate('toolbar.codegenProfile.learn', 'Учебный')}</option>
+            <option value="debug">{translate('toolbar.codegenProfile.debug', 'Отладка')}</option>
+            <option value="recovery">{translate('toolbar.codegenProfile.recovery', 'Восстановление')}</option>
+          </select>
+          <select
+            title={locale === 'ru' ? 'Стандарт C++: C++23 (фиксировано)' : 'C++ Standard: C++23 (fixed)'}
+            className="toolbar-select"
+            value={cppStandard}
+            disabled
+          >
+            <option value="cpp23">C++23</option>
+          </select>
           <button
             onClick={() => onShowCodePreviewChange(!showCodePreview)}
             disabled={pending}
@@ -237,6 +412,13 @@ const Toolbar: React.FC<{
           </button>
           <button onClick={() => send('requestGenerate')} disabled={pending} title={translate('toolbar.generate', 'Генерировать')}>
             ⚡ {translate('toolbar.generate', 'Генерировать')}
+          </button>
+          <button 
+            onClick={() => send('requestCompileAndRun')} 
+            disabled={pending}
+            title={locale === 'ru' ? 'Скомпилировать и запустить' : 'Compile and Run'}
+          >
+            ▶️ {locale === 'ru' ? 'Запустить' : 'Run'}
           </button>
         </div>
         
@@ -342,9 +524,83 @@ const ValidationPanel: React.FC<{
   validation?: ValidationResult;
   translate: (key: TranslationKey, fallback: string) => string;
 }> = ({ validation, translate }) => {
+  const graph = useGraphStore((state) => state.graph);
+
+  const resolveNodeDisplayName = useCallback(
+    (node: GraphState['nodes'][number]): string => {
+      const directLabel = node.label.trim();
+      if (directLabel.length > 0) {
+        return directLabel;
+      }
+
+      if (!isRecord(node.blueprintNode)) {
+        return node.id;
+      }
+
+      const blueprintNode = node.blueprintNode;
+      const customLabel = typeof blueprintNode.customLabel === 'string' ? blueprintNode.customLabel.trim() : '';
+      if (customLabel.length > 0) {
+        return customLabel;
+      }
+
+      const blueprintLabel = typeof blueprintNode.label === 'string' ? blueprintNode.label.trim() : '';
+      if (blueprintLabel.length > 0) {
+        return blueprintLabel;
+      }
+
+      const properties = isRecord(blueprintNode.properties) ? blueprintNode.properties : undefined;
+      const variableNameRu = typeof properties?.nameRu === 'string' ? properties.nameRu.trim() : '';
+      const variableNameEn = typeof properties?.name === 'string' ? properties.name.trim() : '';
+      const variableName = variableNameRu || variableNameEn;
+      const nodeType = typeof blueprintNode.type === 'string' ? blueprintNode.type : node.type;
+
+      if (variableName.length > 0) {
+        if (nodeType === 'GetVariable') {
+          return `${graph.displayLanguage === 'ru' ? 'Получить' : 'Get'}: ${variableName}`;
+        }
+        if (nodeType === 'SetVariable') {
+          return `${graph.displayLanguage === 'ru' ? 'Установить' : 'Set'}: ${variableName}`;
+        }
+        return variableName;
+      }
+
+      return nodeType || node.id;
+    },
+    [graph.displayLanguage]
+  );
+
   if (!validation) {
     return null;
   }
+
+  const nodeLabelById = new Map(
+    graph.nodes.map((node) => [node.id, resolveNodeDisplayName(node)])
+  );
+  const edgeLabelById = new Map(
+    graph.edges.map((edge) => {
+      const sourceLabel = nodeLabelById.get(edge.source) ?? edge.source;
+      const targetLabel = nodeLabelById.get(edge.target) ?? edge.target;
+      return [edge.id, `${sourceLabel} -> ${targetLabel}`];
+    })
+  );
+
+  const humanizeValidationMessage = (message: string): string => {
+    let normalized = message;
+
+    nodeLabelById.forEach((label, id) => {
+      if (label !== id) {
+        normalized = normalized.split(id).join(label);
+      }
+    });
+
+    edgeLabelById.forEach((label, id) => {
+      if (label !== id) {
+        normalized = normalized.split(id).join(label);
+      }
+    });
+
+    return normalized;
+  };
 
   const issues: ValidationIssue[] = validation.issues?.length
     ? validation.issues
@@ -374,19 +630,33 @@ const ValidationPanel: React.FC<{
         <ul className="validation-list">
           {issues.map((item, index) => {
             const targets: string[] = [];
+            const technicalTargets: string[] = [];
             if (item.nodes?.length) {
-              targets.push(`${translate('overview.nodes', 'Узлы')}: ${item.nodes.join(', ')}`);
+              const readableNodes = item.nodes.map(
+                (nodeId, nodeIndex) =>
+                  nodeLabelById.get(nodeId) ??
+                  `${translate('overview.nodes', 'Узлы')} ${nodeIndex + 1}`
+              );
+              targets.push(`${translate('overview.nodes', 'Узлы')}: ${readableNodes.join(', ')}`);
+              technicalTargets.push(`${translate('overview.nodes', 'Узлы')} ID: ${item.nodes.join(', ')}`);
             }
             if (item.edges?.length) {
-              targets.push(`${translate('overview.edges', 'Связи')}: ${item.edges.join(', ')}`);
+              const readableEdges = item.edges.map(
+                (edgeId, edgeIndex) =>
+                  edgeLabelById.get(edgeId) ??
+                  `${translate('overview.edges', 'Связи')} ${edgeIndex + 1}`
+              );
+              targets.push(`${translate('overview.edges', 'Связи')}: ${readableEdges.join(', ')}`);
+              technicalTargets.push(`${translate('overview.edges', 'Связи')} ID: ${item.edges.join(', ')}`);
             }
             const details = targets.length ? ` (${targets.join(' · ')})` : '';
             return (
               <li
                 key={`${item.message}-${index}`}
                 className={item.severity === 'error' ? 'text-error' : 'text-warn'}
+                title={technicalTargets.join(' · ')}
               >
-                {item.message}
+                {humanizeValidationMessage(item.message)}
                 {details}
               </li>
             );
@@ -419,7 +689,7 @@ const ToastContainer: React.FC<{
 );
 
 const nodeTypeOptions: GraphNodeType[] = ['Start', 'Function', 'End', 'Variable', 'Custom'];
-const translationDirections: Array<{ value: 'ru-en' | 'en-ru'; label: string }> = [
+const translationDirections: Array<{ value: TranslationDirection; label: string }> = [
   { value: 'ru-en', label: 'RU → EN' },
   { value: 'en-ru', label: 'EN → RU' }
 ];
@@ -517,7 +787,15 @@ const NodeActions: React.FC<NodeActionsProps> = ({
         </label>
         <label>
           <div className="panel-label">{getTranslation(locale, 'form.nodeType', {}, 'Тип')}</div>
-          <select value={type} onChange={(event) => setType(event.target.value as GraphNodeType)}>
+          <select
+            value={type}
+            onChange={(event) => {
+              const nextType = event.currentTarget.value;
+              if (isGraphNodeType(nextType)) {
+                setType(nextType);
+              }
+            }}
+          >
             {nodeTypeOptions.map((option) => (
               <option key={option} value={option}>
                 {getTranslation(locale, `nodeType.${option}` as TranslationKey, {}, option)}
@@ -562,9 +840,9 @@ const NodeActions: React.FC<NodeActionsProps> = ({
 };
 
 interface TranslationActionsProps {
-  direction: 'ru-en' | 'en-ru';
+  direction: TranslationDirection;
   pending: boolean;
-  onDirectionChange: (direction: 'ru-en' | 'en-ru') => void;
+  onDirectionChange: (direction: TranslationDirection) => void;
   onTranslate: () => void;
   translate: (key: TranslationKey, fallback: string) => string;
 }
@@ -583,7 +861,12 @@ const TranslationActions: React.FC<TranslationActionsProps> = ({
         <div className="panel-label">{translate('translation.direction', 'Направление')}</div>
         <select
           value={direction}
-          onChange={(event) => onDirectionChange(event.target.value as 'ru-en' | 'en-ru')}
+          onChange={(event) => {
+            const nextDirection = event.currentTarget.value;
+            if (isTranslationDirection(nextDirection)) {
+              onDirectionChange(nextDirection);
+            }
+          }}
         >
           {translationDirections.map((option) => (
             <option key={option.value} value={option.value}>
@@ -613,7 +896,12 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
           <div className="panel-label">{translate('layout.algorithm', 'Алгоритм')}</div>
           <select
             value={layout.algorithm}
-            onChange={(event) => setLayout({ algorithm: event.target.value as LayoutSettings['algorithm'] })}
+            onChange={(event) => {
+              const nextAlgorithm = event.currentTarget.value;
+              if (nextAlgorithm === 'dagre' || nextAlgorithm === 'klay') {
+                setLayout({ algorithm: nextAlgorithm });
+              }
+            }}
           >
             <option value="dagre">{translate('layout.algorithm.dagre', 'Dagre')}</option>
             <option value="klay">{translate('layout.algorithm.klay', 'Klay')}</option>
@@ -623,7 +911,12 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
           <div className="panel-label">{translate('layout.rankDir', 'Направление рангов')}</div>
           <select
             value={layout.rankDir}
-            onChange={(event) => setLayout({ rankDir: event.target.value as LayoutSettings['rankDir'] })}
+            onChange={(event) => {
+              const nextRankDir = event.currentTarget.value;
+              if (isLayoutRankDir(nextRankDir)) {
+                setLayout({ rankDir: nextRankDir });
+              }
+            }}
           >
             <option value="LR">{translate('layout.rank.lr', 'Слева направо')}</option>
             <option value="RL">{translate('layout.rank.rl', 'Справа налево')}</option>
@@ -688,6 +981,7 @@ const App: React.FC = () => {
   
   // Code preview state
   const [showCodePreview, setShowCodePreview] = useState(false);
+  const [codegenProfile, setCodegenProfile] = useState<CodegenOutputProfile>('clean');
   
   // Hotkeys panel state
   const [showHotkeys, setShowHotkeys] = useState(false);
@@ -699,6 +993,15 @@ const App: React.FC = () => {
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
     migrateToBlueprintFormat(graph)
   );
+
+  // Привязанный файл для генерации кода
+  const [boundFile, setBoundFile] = useState<{ fileName: string | null; filePath: string | null }>({
+    fileName: null,
+    filePath: null,
+  });
+  const graphChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingGraphMutationRef = useRef<GraphMutationPayload | null>(null);
+  const lastUiTraceSignatureRef = useRef<string | null>(null);
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
@@ -714,6 +1017,41 @@ const App: React.FC = () => {
     setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 3200);
   };
+
+  const flushPendingGraphMutation = useCallback((): void => {
+    const payload = pendingGraphMutationRef.current;
+    if (!payload) {
+      return;
+    }
+    pendingGraphMutationRef.current = null;
+    sendToExtension({
+      type: 'graphChanged',
+      payload,
+    });
+  }, []);
+
+  const enqueueGraphMutation = useCallback((graphState: GraphState): void => {
+    pendingGraphMutationRef.current = buildGraphMutationPayload(graphState);
+    if (graphChangedTimerRef.current !== null) {
+      return;
+    }
+
+    graphChangedTimerRef.current = setTimeout(() => {
+      graphChangedTimerRef.current = null;
+      flushPendingGraphMutation();
+    }, GRAPH_CHANGED_DEBOUNCE_MS);
+  }, [flushPendingGraphMutation]);
+
+  const sendWebviewTrace = useCallback((category: string, message: string, data?: unknown): void => {
+    sendToExtension({
+      type: 'reportWebviewTrace',
+      payload: {
+        category,
+        message,
+        data,
+      },
+    });
+  }, []);
 
   const handleLocaleChange = (nextLocale: GraphDisplayLanguage): void => {
     setLocale(nextLocale);
@@ -739,10 +1077,12 @@ const App: React.FC = () => {
       // H или ? для открытия панели горячих клавиш
       if ((e.key === 'h' || e.key === 'H' || e.key === '?') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Не открывать если фокус в input/textarea
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        const target = e.target;
+        if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+          return;
+        }
         e.preventDefault();
-        setShowHotkeys(prev => !prev);
+        setShowHotkeys((prev) => !prev);
       }
       // Escape для закрытия панелей
       if (e.key === 'Escape') {
@@ -755,20 +1095,63 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showHotkeys, showHelp]);
 
-  // Синхронизация blueprintGraph при изменении graph
   useEffect(() => {
-    console.log('[MultiCode] Syncing blueprintGraph from graph:', {
-      graphId: graph?.id,
-      graphName: graph?.name,
-      nodesCount: graph?.nodes?.length ?? 0,
-      edgesCount: graph?.edges?.length ?? 0,
-    });
+    const handleWebviewError = (event: ErrorEvent): void => {
+      sendWebviewTrace('webview:error', event.message, {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        stack: event.error instanceof Error ? event.error.stack : undefined,
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
+      const reason = event.reason instanceof Error
+        ? { message: event.reason.message, stack: event.reason.stack }
+        : event.reason;
+      sendWebviewTrace('webview:unhandled-rejection', 'Unhandled promise rejection', reason);
+    };
+
+    const handleUiTrace = (event: Event): void => {
+      const customEvent = event as CustomEvent<unknown>;
+      if (!isRecord(customEvent.detail)) {
+        return;
+      }
+
+      const detail = customEvent.detail;
+      const category = typeof detail.category === 'string' ? detail.category : 'webview:ui';
+      const message = typeof detail.message === 'string' ? detail.message : 'ui-trace';
+      const data = detail.data;
+      const signature = JSON.stringify({ category, message, data });
+      if (lastUiTraceSignatureRef.current === signature) {
+        return;
+      }
+      lastUiTraceSignatureRef.current = signature;
+      sendWebviewTrace(category, message, data);
+    };
+
+    window.addEventListener('error', handleWebviewError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('multicode:ui-trace', handleUiTrace as EventListener);
+
+    return () => {
+      window.removeEventListener('error', handleWebviewError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('multicode:ui-trace', handleUiTrace as EventListener);
+    };
+  }, [sendWebviewTrace]);
+
+  // Синхронизация blueprintGraph при изменении graph
+  // Обновляем blueprintGraph ТОЛЬКО при remote-изменениях (загрузка, новый граф).
+  // Локальные изменения уже обновляют blueprintGraph напрямую через handleBlueprintGraphChange,
+  // поэтому повторная миграция из graph перезатрёт актуальные данные (race condition).
+  useEffect(() => {
+    const currentOrigin = useGraphStore.getState().lastChangeOrigin;
+    if (currentOrigin !== 'remote') {
+      return;
+    }
     try {
       const migrated = migrateToBlueprintFormat(graph);
-      console.log('[MultiCode] Migration successful:', {
-        nodesCount: migrated?.nodes?.length ?? 0,
-        edgesCount: migrated?.edges?.length ?? 0,
-      });
       setBlueprintGraph(migrated);
     } catch (error) {
       console.error('[MultiCode] Migration failed:', error);
@@ -776,11 +1159,8 @@ const App: React.FC = () => {
   }, [graph]);
 
   // Обработчик изменений из BlueprintEditor
-  const handleBlueprintGraphChange = (newBlueprintGraph: BlueprintGraphState): void => {
-    console.log('[MultiCode] Blueprint graph changed:', {
-      nodesCount: newBlueprintGraph?.nodes?.length ?? 0,
-      edgesCount: newBlueprintGraph?.edges?.length ?? 0,
-    });
+  // Мемоизирован для стабильности зависимых callback-ов (handleVariablesChange и др.)
+  const handleBlueprintGraphChange = useCallback((newBlueprintGraph: BlueprintGraphState): void => {
     setBlueprintGraph(newBlueprintGraph);
     // Конвертируем обратно в GraphState для сохранения совместимости
     try {
@@ -789,7 +1169,7 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('[MultiCode] migrateFromBlueprintFormat failed:', error);
     }
-  };
+  }, [setGraph]);
 
   useEffect(() => {
     localeRef.current = graph.displayLanguage;
@@ -802,17 +1182,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handler = (event: MessageEvent<unknown>): void => {
-      if (event.source !== window) {
-        console.warn('Игнорируем сообщение из неизвестного окна', event);
-        return;
-      }
-
+      // В VS Code webview сообщения приходят от parent window или от самого window
+      // Не блокируем сообщения, просто проверяем origin
       const origin = event.origin ?? '';
       const isTrustedOrigin =
-        origin === '' || origin.startsWith('vscode-file://') || origin.startsWith('vscode-webview://');
+        origin === '' || 
+        origin.startsWith('vscode-file://') || 
+        origin.startsWith('vscode-webview://') ||
+        origin.startsWith('vscode-resource://');
 
       if (!isTrustedOrigin) {
-        console.warn('Игнорируем сообщение с неподдерживаемым origin', origin, event);
+        console.warn('[MultiCode] Игнорируем сообщение с недоверенным origin:', origin);
         return;
       }
 
@@ -870,6 +1250,15 @@ const App: React.FC = () => {
             console.info(message.payload.message);
           }
           break;
+        case 'boundFileChanged':
+          setBoundFile({
+            fileName: message.payload.fileName,
+            filePath: message.payload.filePath,
+          });
+          break;
+        case 'codegenProfileChanged':
+          setCodegenProfile(message.payload.profile);
+          break;
         default:
           break;
       }
@@ -886,21 +1275,19 @@ const App: React.FC = () => {
       vscode.setState({ graph: graphState, locale: localeRef.current, layout });
       if (origin === 'local') {
         setValidation(undefined);
-        sendToExtension({
-          type: 'graphChanged',
-          payload: {
-            nodes: graphState.nodes,
-            edges: graphState.edges,
-            name: graphState.name,
-            language: graphState.language,
-            displayLanguage: graphState.displayLanguage
-          }
-        });
+        enqueueGraphMutation(graphState);
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      unsubscribe();
+      if (graphChangedTimerRef.current !== null) {
+        clearTimeout(graphChangedTimerRef.current);
+        graphChangedTimerRef.current = null;
+      }
+      flushPendingGraphMutation();
+    };
+  }, [enqueueGraphMutation, flushPendingGraphMutation]);
 
   useEffect(() => {
     const persistLayout = (layout: LayoutSettings): void => {
@@ -937,6 +1324,11 @@ const App: React.FC = () => {
     pushToast('success', translate('toolbar.copyId.ok', 'ID скопирован'));
   };
 
+  const handleCodegenProfileChange = (profile: CodegenOutputProfile): void => {
+    setCodegenProfile(profile);
+    sendToExtension({ type: 'setCodegenProfile', payload: { profile } });
+  };
+
   useEffect(() => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
   }, [graph.displayLanguage]);
@@ -944,6 +1336,8 @@ const App: React.FC = () => {
   const handleCalculateLayout = (): void => {
     layoutRunnerRef.current();
   };
+
+  const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape' || showCodePreview;
 
   // Render the appropriate editor based on mode
   const renderEditor = () => {
@@ -979,6 +1373,8 @@ const App: React.FC = () => {
         onLocaleChange={handleLocaleChange}
         translate={translate}
         onCalculate={handleCalculateLayout}
+        onTranslate={handleTranslate}
+        translationPending={translationPending}
         onCopyGraphId={handleCopyGraphId}
         editorMode={editorMode}
         onEditorModeChange={handleEditorModeChange}
@@ -986,6 +1382,10 @@ const App: React.FC = () => {
         onShowCodePreviewChange={setShowCodePreview}
         onShowHotkeys={() => setShowHotkeys(true)}
         onShowHelp={() => setShowHelp(true)}
+        boundFileName={boundFile.fileName}
+        boundFilePath={boundFile.filePath}
+        codegenProfile={codegenProfile}
+        onCodegenProfileChange={handleCodegenProfileChange}
       />
       
       {/* Панель горячих клавиш */}
@@ -1003,13 +1403,13 @@ const App: React.FC = () => {
         />
       )}
       
-      <div className="workspace">
+      <div className={`workspace${showSidePanel ? ' with-sidebar' : ''}`}>
         <div className="canvas-wrapper">
           {renderEditor()}
         </div>
         
         {/* Side panels */}
-        {(editorMode === 'cytoscape' || showCodePreview) && (
+        {showSidePanel && (
           <div className="side-panel">
             {/* Enhanced Code Preview for blueprint editor */}
             {editorMode === 'blueprint' && showCodePreview && (
@@ -1024,27 +1424,27 @@ const App: React.FC = () => {
               />
             )}
             
-            {/* Classic panels for cytoscape editor */}
-            {editorMode === 'cytoscape' && (
-              <>
-                <TranslationActions
-                  direction={translationDirection}
-                  pending={translationPending}
-                  onDirectionChange={setTranslationDirection}
-                  onTranslate={handleTranslate}
-                  translate={translate}
-                />
-                <LayoutSettingsPanel translate={translate} />
+            {/* Общие панели для Blueprint и Classic */}
+            <>
+              <TranslationActions
+                direction={translationDirection}
+                pending={translationPending}
+                onDirectionChange={setTranslationDirection}
+                onTranslate={handleTranslate}
+                translate={translate}
+              />
+              <LayoutSettingsPanel translate={translate} />
+              {editorMode === 'cytoscape' && (
                 <NodeActions
                   onAddNode={handleAddNode}
                   onConnectNodes={handleConnectNodes}
                   lastNodeAddedToken={lastNodeAddedToken}
                   lastConnectionToken={lastConnectionToken}
                 />
-                <GraphFacts translate={translate} />
-                <ValidationPanel validation={validation} translate={translate} />
-              </>
-            )}
+              )}
+              <GraphFacts translate={translate} />
+              <ValidationPanel validation={validation} translate={translate} />
+            </>
           </div>
         )}
       </div>

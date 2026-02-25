@@ -1,0 +1,27 @@
+#!/bin/sh
+# Автоматическая защита от ошибок агентов
+# Этот хук блокирует коммит если:
+# 1. ESLint находит ошибки или warnings
+# 2. TypeScript не компилируется
+# 3. Unit-тесты падают
+
+echo "🔍 Pre-commit checks..."
+
+# Lint staged files
+npx lint-staged
+
+# TypeScript type check (без эмиссии)
+echo "📝 TypeScript type check..."
+npx tsc --noEmit || {
+  echo "❌ TypeScript errors found! Fix them before commit."
+  exit 1
+}
+
+# Unit tests
+echo "🧪 Running unit tests..."
+npm run test:unit -- --run || {
+  echo "❌ Tests failed! Fix them before commit."
+  exit 1
+}
+
+echo "✅ All checks passed!"

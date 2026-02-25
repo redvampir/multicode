@@ -16,7 +16,7 @@ describe('portTypes', () => {
     it('должен содержать цвета для всех типов', () => {
       const types: PortDataType[] = [
         'execution', 'bool', 'int32', 'int64', 'float', 'double',
-        'string', 'vector', 'object', 'array', 'any'
+        'string', 'vector', 'pointer', 'class', 'array', 'any'
       ];
       
       for (const type of types) {
@@ -36,7 +36,7 @@ describe('portTypes', () => {
     it('должен содержать иконки для всех типов', () => {
       const types: PortDataType[] = [
         'execution', 'bool', 'int32', 'int64', 'float', 'double',
-        'string', 'vector', 'object', 'array', 'any'
+        'string', 'vector', 'pointer', 'class', 'array', 'any'
       ];
       
       for (const type of types) {
@@ -61,7 +61,7 @@ describe('portTypes', () => {
         expect(areTypesCompatible('any', 'int32')).toBe(true);
         expect(areTypesCompatible('any', 'string')).toBe(true);
         expect(areTypesCompatible('any', 'bool')).toBe(true);
-        expect(areTypesCompatible('any', 'object')).toBe(true);
+        expect(areTypesCompatible('any', 'pointer')).toBe(true);
         
         expect(areTypesCompatible('int32', 'any')).toBe(true);
         expect(areTypesCompatible('string', 'any')).toBe(true);
@@ -111,7 +111,8 @@ describe('portTypes', () => {
         expect(areTypesCompatible('int32', 'string')).toBe(true);
         expect(areTypesCompatible('float', 'string')).toBe(true);
         expect(areTypesCompatible('bool', 'string')).toBe(true);
-        expect(areTypesCompatible('object', 'string')).toBe(true);
+        expect(areTypesCompatible('pointer', 'string')).toBe(true);
+        expect(areTypesCompatible('class', 'string')).toBe(true);
         expect(areTypesCompatible('array', 'string')).toBe(true);
         expect(areTypesCompatible('vector', 'string')).toBe(true);
       });
@@ -119,15 +120,17 @@ describe('portTypes', () => {
       it('string НЕ конвертируется в другие типы неявно', () => {
         expect(areTypesCompatible('string', 'int32')).toBe(false);
         expect(areTypesCompatible('string', 'bool')).toBe(false);
-        expect(areTypesCompatible('string', 'object')).toBe(false);
+        expect(areTypesCompatible('string', 'pointer')).toBe(false);
       });
     });
     
     describe('несовместимые типы', () => {
-      it('object и array несовместимы с числами', () => {
-        expect(areTypesCompatible('object', 'int32')).toBe(false);
+      it('pointer, class и array несовместимы с числами', () => {
+        expect(areTypesCompatible('pointer', 'int32')).toBe(false);
+        expect(areTypesCompatible('class', 'int32')).toBe(false);
         expect(areTypesCompatible('array', 'float')).toBe(false);
-        expect(areTypesCompatible('int32', 'object')).toBe(false);
+        expect(areTypesCompatible('int32', 'pointer')).toBe(false);
+        expect(areTypesCompatible('int32', 'class')).toBe(false);
       });
       
       it('vector несовместим с числами', () => {
@@ -147,7 +150,8 @@ describe('portTypes', () => {
       expect(getTypeDisplayName('double')).toBe('Double');
       expect(getTypeDisplayName('string')).toBe('String');
       expect(getTypeDisplayName('vector')).toBe('Vector');
-      expect(getTypeDisplayName('object')).toBe('Object');
+      expect(getTypeDisplayName('pointer')).toBe('Pointer');
+      expect(getTypeDisplayName('class')).toBe('Class');
       expect(getTypeDisplayName('array')).toBe('Array');
       expect(getTypeDisplayName('any')).toBe('Wildcard');
     });

@@ -4,6 +4,12 @@
  */
 
 import { PortDataType, PortDefinition } from './portTypes';
+import {
+  canDirectlyConnectDataPorts,
+  findTypeConversionRule,
+  findTypeConversionRuleById,
+  formatTypeConversionLabel,
+} from './typeConversions';
 
 export type GraphLanguage = 'cpp' | 'rust' | 'asm';
 export type GraphDisplayLanguage = 'ru' | 'en';
@@ -43,7 +49,11 @@ export type BlueprintNodeType =
   | 'Variable'
   | 'GetVariable'
   | 'SetVariable'
+  | 'TypeConversion'
   // Math
+  | 'ConstNumber'
+  | 'ConstString'
+  | 'ConstBool'
   | 'Add'
   | 'Subtract'
   | 'Multiply'
@@ -124,18 +134,121 @@ export interface BlueprintEdge {
 
 /** Категория переменной */
 export type VariableCategory = 'default' | 'input' | 'output' | 'local';
+/** Тип элемента для vector-переменных */
+export type VectorElementType = 'int32' | 'int64' | 'float' | 'double' | 'bool' | 'string';
+export type PointerMode = 'shared' | 'unique' | 'weak' | 'raw' | 'reference' | 'const_reference';
+export type PointerPointeeDataType = Exclude<PortDataType, 'execution' | 'any' | 'pointer'>;
+
+export interface PointerMeta {
+  mode: PointerMode;
+  pointeeDataType: PointerPointeeDataType;
+  pointeeVectorElementType?: VectorElementType;
+  targetVariableId?: string;
+}
+
+export const POINTER_MODES: PointerMode[] = [
+  'shared',
+  'unique',
+  'weak',
+  'raw',
+  'reference',
+  'const_reference',
+];
+
+const POINTER_POINTEE_DATA_TYPES: PointerPointeeDataType[] = [
+  'bool',
+  'int32',
+  'int64',
+  'float',
+  'double',
+  'string',
+  'vector',
+  'class',
+  'array',
+];
+
+export const isPointerMode = (value: unknown): value is PointerMode =>
+  typeof value === 'string' && POINTER_MODES.includes(value as PointerMode);
+
+export const isPointerPointeeDataType = (value: unknown): value is PointerPointeeDataType =>
+  typeof value === 'string' && POINTER_POINTEE_DATA_TYPES.includes(value as PointerPointeeDataType);
+
+export const isVectorElementType = (value: unknown): value is VectorElementType =>
+  value === 'int32' ||
+  value === 'int64' ||
+  value === 'float' ||
+  value === 'double' ||
+  value === 'bool' ||
+  value === 'string';
+
+export const normalizePointerMeta = (value: unknown): PointerMeta => {
+  const source = typeof value === 'object' && value !== null
+    ? (value as Partial<PointerMeta>)
+    : {};
+
+  const mode: PointerMode = isPointerMode(source.mode) ? source.mode : 'shared';
+  const pointeeDataType: PointerPointeeDataType = isPointerPointeeDataType(source.pointeeDataType)
+    ? source.pointeeDataType
+    : 'double';
+  const pointeeVectorElementType = pointeeDataType === 'vector' && isVectorElementType(source.pointeeVectorElementType)
+    ? source.pointeeVectorElementType
+    : undefined;
+  const targetVariableId = typeof source.targetVariableId === 'string' && source.targetVariableId.trim().length > 0
+    ? source.targetVariableId.trim()
+    : undefined;
+
+  return {
+    mode,
+    pointeeDataType,
+    pointeeVectorElementType,
+    targetVariableId,
+  };
+};
+
+export interface TypeConversionMeta {
+  vectorElementType?: VectorElementType;
+  arrayRank?: number;
+  pointerMode?: PointerMode;
+}
+
+export interface TypeConversionProperties extends Record<string, unknown> {
+  conversionId?: string;
+  fromType?: PortDataType;
+  toType?: PortDataType;
+  autoInserted?: boolean;
+  meta?: TypeConversionMeta;
+  name?: string;
+  nameRu?: string;
+}
+
+export type BlueprintVariableScalarValue = string | number | boolean;
+export type BlueprintVariableVectorValue = BlueprintVariableScalarValue[];
+export type BlueprintVariableArrayValue = Array<
+  BlueprintVariableScalarValue | BlueprintVariableVectorValue | BlueprintVariableArrayValue
+>;
+export type BlueprintVariableDefaultValue =
+  | BlueprintVariableScalarValue
+  | null
+  | BlueprintVariableVectorValue
+  | BlueprintVariableArrayValue;
 
 /** Переменная Blueprint графа */
 export interface BlueprintVariable {
   id: string;
-  /** Имя переменной (для кодогенерации) */
+  /** Имя переменной (для UI / EN отображения) */
   name: string;
   /** Отображаемое имя (RU) */
   nameRu: string;
+  /** Имя переменной в сгенерированном коде (C++ identifier) */
+  codeName?: string;
   /** Тип данных */
   dataType: PortDataType;
-  /** Значение по умолчанию (для vector - массив [X, Y, Z] или строка "X,Y,Z") */
-  defaultValue?: string | number | boolean | null | number[];
+  /** Метаданные для pointer/reference переменной */
+  pointerMeta?: PointerMeta;
+  /** Тип элемента для vector<T> (по умолчанию: double) */
+  vectorElementType?: VectorElementType;
+  /** Значение по умолчанию (для vector - массив значений JSON) */
+  defaultValue?: BlueprintVariableDefaultValue;
   /** Категория переменной */
   category: VariableCategory;
   /** Описание */
@@ -144,6 +257,8 @@ export interface BlueprintVariable {
   isPublic?: boolean;
   /** Является ли массивом */
   isArray?: boolean;
+  /** Ранг массива (0 = скаляр, 1 = T[], 2 = T[][], ...) */
+  arrayRank?: number;
   /** Является ли приватной */
   isPrivate?: boolean;
   /** Пользовательский цвет */
@@ -158,15 +273,32 @@ export function createVariable(
   dataType: PortDataType = 'int32',
   options?: Partial<Omit<BlueprintVariable, 'id' | 'name' | 'dataType'>>
 ): BlueprintVariable {
+  const resolvedArrayRank =
+    typeof options?.arrayRank === 'number' && Number.isFinite(options.arrayRank)
+      ? Math.max(0, Math.trunc(options.arrayRank))
+      : options?.isArray
+        ? 1
+        : 0;
+
   return {
     id: `var_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     name,
     nameRu: options?.nameRu || name,
+    codeName: options?.codeName,
     dataType,
+    pointerMeta:
+      dataType === 'pointer'
+        ? normalizePointerMeta(options?.pointerMeta)
+        : options?.pointerMeta,
+    vectorElementType:
+      dataType === 'vector'
+        ? options?.vectorElementType ?? 'double'
+        : options?.vectorElementType,
     defaultValue: options?.defaultValue ?? getDefaultValueForType(dataType),
     category: options?.category || 'default',
     description: options?.description,
-    isArray: options?.isArray,
+    isArray: resolvedArrayRank > 0,
+    arrayRank: resolvedArrayRank,
     isPrivate: options?.isPrivate,
     color: options?.color,
     createdAt: new Date().toISOString(),
@@ -174,7 +306,7 @@ export function createVariable(
 }
 
 /** Получить значение по умолчанию для типа */
-function getDefaultValueForType(dataType: PortDataType): string | number | boolean | null | number[] {
+function getDefaultValueForType(dataType: PortDataType): BlueprintVariableDefaultValue {
   switch (dataType) {
     case 'bool': return false;
     case 'int32':
@@ -182,7 +314,7 @@ function getDefaultValueForType(dataType: PortDataType): string | number | boole
     case 'float':
     case 'double': return 0.0;
     case 'string': return '';
-    case 'vector': return [0, 0, 0]; // Массив для вектора
+    case 'vector': return [];
     default: return null;
   }
 }
@@ -197,7 +329,7 @@ export const VARIABLE_TYPE_COLORS: Record<PortDataType, string> = {
   float: '#8BC34A',      // 🎨 Светло-зелёный — дробное 32-бит
   double: '#689F38',     // 🎨 Зелёный — дробное 64-бит
   string: '#E91E63',     // 🎨 Розовый/Пурпурный — строка
-  vector: '#FFC107',     // 🎨 Жёлтый — вектор (X, Y, Z)
+  vector: '#FFC107',     // 🎨 Жёлтый — vector<T>
   pointer: '#2196F3',    // 🎨 Синий — умный указатель (std::shared_ptr)
   class: '#3F51B5',      // 🎨 Индиго — класс/экземпляр по значению
   array: '#FF9800',      // 🎨 Оранжевый — массив
@@ -355,11 +487,16 @@ const isNodePort = (value: unknown): value is NodePort => {
     return false;
   }
 
+  if (value.nameRu !== undefined && typeof value.nameRu !== 'string') {
+    return false;
+  }
+
   if (!isPortDataType(value.dataType) || !isPortDirection(value.direction)) {
     return false;
   }
 
-  if (!isFiniteNumber(value.index)) {
+  // index необязателен — может отсутствовать после десериализации/загрузки
+  if (value.index !== undefined && !isFiniteNumber(value.index)) {
     return false;
   }
 
@@ -443,15 +580,186 @@ export const isEmbeddedBlueprintEdge = (value: unknown): value is BlueprintEdge 
   return true;
 };
 
+const normalizeMigratedVariables = (variables: unknown[] | undefined): BlueprintVariable[] => {
+  if (!Array.isArray(variables)) {
+    return [];
+  }
+
+  return variables
+    .filter((value): value is Record<string, unknown> => isRecord(value))
+    .map((rawVariable) => {
+      const variable = rawVariable as unknown as BlueprintVariable;
+      if (variable.dataType !== 'pointer') {
+        return variable;
+      }
+
+      return {
+        ...variable,
+        pointerMeta: normalizePointerMeta(variable.pointerMeta),
+      };
+    });
+};
+
+const toNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const getFirstDataPortType = (ports: NodePort[]): PortDataType | null => {
+  for (const port of ports) {
+    if (!isPortDataType(port.dataType) || port.dataType === 'execution') {
+      continue;
+    }
+    return port.dataType;
+  }
+  return null;
+};
+
+const normalizeTypeConversionMeta = (value: unknown): TypeConversionMeta => {
+  const source = isRecord(value) ? value : {};
+
+  const vectorElementType = isVectorElementType(source.vectorElementType)
+    ? source.vectorElementType
+    : undefined;
+
+  const arrayRank = typeof source.arrayRank === 'number' && Number.isFinite(source.arrayRank)
+    ? Math.max(0, Math.trunc(source.arrayRank))
+    : undefined;
+
+  const pointerMode = isPointerMode(source.pointerMode)
+    ? source.pointerMode
+    : undefined;
+
+  return {
+    ...(vectorElementType ? { vectorElementType } : {}),
+    ...(arrayRank !== undefined ? { arrayRank } : {}),
+    ...(pointerMode ? { pointerMode } : {}),
+  };
+};
+
+const normalizeTypeConversionNode = (
+  node: BlueprintNode,
+  displayLanguage: GraphDisplayLanguage
+): BlueprintNode => {
+  if (node.type !== 'TypeConversion') {
+    return node;
+  }
+
+  const rawProperties = isRecord(node.properties)
+    ? (node.properties as TypeConversionProperties)
+    : {};
+
+  const sourceType = isPortDataType(rawProperties.fromType)
+    ? rawProperties.fromType
+    : getFirstDataPortType(node.inputs) ?? 'any';
+
+  const targetType = isPortDataType(rawProperties.toType)
+    ? rawProperties.toType
+    : getFirstDataPortType(node.outputs) ?? 'any';
+
+  const conversionIdRaw = toNonEmptyString(rawProperties.conversionId);
+  const rule =
+    (conversionIdRaw ? findTypeConversionRuleById(conversionIdRaw) : null) ??
+    findTypeConversionRule(sourceType, targetType);
+
+  const displayLabel = rule
+    ? formatTypeConversionLabel(rule, displayLanguage)
+    : displayLanguage === 'ru'
+      ? `Преобразовать: ${sourceType} → ${targetType}`
+      : `Convert: ${sourceType} -> ${targetType}`;
+
+  const nameRu = rule?.labelRu ?? toNonEmptyString(rawProperties.nameRu) ?? displayLabel;
+  const nameEn = rule?.labelEn ?? toNonEmptyString(rawProperties.name) ?? displayLabel;
+
+  const normalizedProperties: TypeConversionProperties = {
+    ...rawProperties,
+    conversionId: rule?.id ?? conversionIdRaw ?? undefined,
+    fromType: sourceType,
+    toType: targetType,
+    autoInserted: rawProperties.autoInserted === true,
+    meta: normalizeTypeConversionMeta(rawProperties.meta),
+    name: nameEn,
+    nameRu,
+  };
+
+  const inputPortId = node.inputs[0]?.id ?? `${node.id}-value-in`;
+  const outputPortId = node.outputs[0]?.id ?? `${node.id}-value-out`;
+
+  const normalizedInputs: NodePort[] = [
+    {
+      ...(node.inputs[0] ?? {
+        id: inputPortId,
+        direction: 'input' as const,
+      }),
+      id: inputPortId,
+      name: displayLanguage === 'ru' ? 'Вход' : 'In',
+      dataType: sourceType,
+      direction: 'input',
+      index: 0,
+      connected: node.inputs[0]?.connected ?? false,
+    },
+  ];
+
+  const normalizedOutputs: NodePort[] = [
+    {
+      ...(node.outputs[0] ?? {
+        id: outputPortId,
+        direction: 'output' as const,
+      }),
+      id: outputPortId,
+      name: displayLanguage === 'ru' ? 'Выход' : 'Out',
+      dataType: targetType,
+      direction: 'output',
+      index: 0,
+      connected: node.outputs[0]?.connected ?? false,
+    },
+  ];
+
+  return {
+    ...node,
+    label: displayLabel,
+    customLabel: displayLabel,
+    inputs: normalizedInputs,
+    outputs: normalizedOutputs,
+    properties: normalizedProperties,
+  };
+};
+
+interface TypeConversionMigrationResult {
+  nodes: BlueprintNode[];
+  edges: BlueprintEdge[];
+  insertedCount: number;
+}
+
 const buildBlueprintNodeFromLegacy = (node: GraphNode): BlueprintNode => {
   const mappedType = mapOldNodeType(node.type ?? 'Custom');
+  // Пытаемся извлечь properties из частично валидного blueprintNode
+  const partialBlueprint = isRecord(node.blueprintNode) ? node.blueprintNode : undefined;
+  const properties = partialBlueprint && isRecord(partialBlueprint.properties)
+    ? partialBlueprint.properties as Record<string, unknown>
+    : undefined;
+  // Восстанавливаем оригинальный тип из blueprintNode если возможно
+  const originalType = partialBlueprint && isBlueprintNodeTypeValue(partialBlueprint.type)
+    ? partialBlueprint.type as BlueprintNodeType
+    : mappedType;
+  // Восстановить порты из blueprintNode если возможно (даже если index отсутствует)
+  const inputs = partialBlueprint && Array.isArray(partialBlueprint.inputs)
+    ? (partialBlueprint.inputs as NodePort[]).map((p, i) => ({ ...p, index: p.index ?? i }))
+    : getDefaultInputs(originalType);
+  const outputs = partialBlueprint && Array.isArray(partialBlueprint.outputs)
+    ? (partialBlueprint.outputs as NodePort[]).map((p, i) => ({ ...p, index: p.index ?? i }))
+    : getDefaultOutputs(originalType);
   return {
     id: node.id ?? `node-${Math.random().toString(36).slice(2)}`,
-    label: node.label ?? 'Unnamed',
-    type: mappedType,
+    label: (partialBlueprint?.label as string) ?? node.label ?? 'Unnamed',
+    type: originalType,
     position: node.position ?? { x: 0, y: 0 },
-    inputs: getDefaultInputs(mappedType),
-    outputs: getDefaultOutputs(mappedType),
+    inputs,
+    outputs,
+    ...(properties ? { properties } : {}),
   };
 };
 
@@ -579,25 +887,195 @@ const buildBlueprintEdgeFromLegacy = (
   };
 };
 
+const createUniqueId = (baseId: string, usedIds: Set<string>): string => {
+  if (!usedIds.has(baseId)) {
+    usedIds.add(baseId);
+    return baseId;
+  }
+
+  let index = 1;
+  let candidate = `${baseId}-${index}`;
+  while (usedIds.has(candidate)) {
+    index += 1;
+    candidate = `${baseId}-${index}`;
+  }
+
+  usedIds.add(candidate);
+  return candidate;
+};
+
+const migrateIncompatibleDataEdges = (
+  nodes: BlueprintNode[],
+  edges: BlueprintEdge[],
+  displayLanguage: GraphDisplayLanguage
+): TypeConversionMigrationResult => {
+  const nextNodes = [...nodes];
+  const nextEdges: BlueprintEdge[] = [];
+  const nodeById = new Map(nextNodes.map((node) => [node.id, node]));
+
+  const usedNodeIds = new Set(nextNodes.map((node) => node.id));
+  const usedEdgeIds = new Set(edges.map((edge) => edge.id));
+
+  let insertedCount = 0;
+
+  for (const edge of edges) {
+    if (edge.kind !== 'data') {
+      nextEdges.push(edge);
+      continue;
+    }
+
+    const sourceNode = nodeById.get(edge.sourceNode);
+    const targetNode = nodeById.get(edge.targetNode);
+
+    if (!sourceNode || !targetNode) {
+      nextEdges.push(edge);
+      continue;
+    }
+
+    if (sourceNode.type === 'TypeConversion' || targetNode.type === 'TypeConversion') {
+      nextEdges.push(edge);
+      continue;
+    }
+
+    const sourceType = getPortDataType(sourceNode, 'output', edge.sourcePort);
+    const targetType = getPortDataType(targetNode, 'input', edge.targetPort);
+
+    if (
+      !sourceType ||
+      !targetType ||
+      sourceType === 'execution' ||
+      targetType === 'execution'
+    ) {
+      nextEdges.push(edge);
+      continue;
+    }
+
+    if (canDirectlyConnectDataPorts(sourceType, targetType)) {
+      const resolvedDataType: PortDataType =
+        isPortDataType(edge.dataType) && edge.dataType !== 'execution'
+          ? edge.dataType
+          : sourceType === 'any'
+            ? targetType
+            : sourceType;
+      nextEdges.push({
+        ...edge,
+        kind: 'data',
+        dataType: resolvedDataType,
+      });
+      continue;
+    }
+
+    const conversionRule = findTypeConversionRule(sourceType, targetType);
+    if (!conversionRule) {
+      nextEdges.push({
+        ...edge,
+        kind: 'data',
+        dataType: edge.dataType ?? sourceType,
+      });
+      continue;
+    }
+
+    insertedCount += 1;
+
+    const conversionNodeId = createUniqueId(`node-conversion-auto-${edge.id}`, usedNodeIds);
+    const conversionLabel = formatTypeConversionLabel(conversionRule, displayLanguage);
+
+    const conversionNode: BlueprintNode = {
+      id: conversionNodeId,
+      label: conversionLabel,
+      customLabel: conversionLabel,
+      type: 'TypeConversion',
+      position: {
+        x: (sourceNode.position.x + targetNode.position.x) / 2,
+        y: (sourceNode.position.y + targetNode.position.y) / 2 - 40,
+      },
+      inputs: [
+        {
+          id: `${conversionNodeId}-value-in`,
+          name: displayLanguage === 'ru' ? 'Вход' : 'In',
+          dataType: conversionRule.sourceType,
+          direction: 'input',
+          index: 0,
+          connected: true,
+        },
+      ],
+      outputs: [
+        {
+          id: `${conversionNodeId}-value-out`,
+          name: displayLanguage === 'ru' ? 'Выход' : 'Out',
+          dataType: conversionRule.targetType,
+          direction: 'output',
+          index: 0,
+          connected: true,
+        },
+      ],
+      properties: {
+        conversionId: conversionRule.id,
+        fromType: conversionRule.sourceType,
+        toType: conversionRule.targetType,
+        autoInserted: true,
+        meta: {},
+        name: conversionRule.labelEn,
+        nameRu: conversionRule.labelRu,
+      } satisfies TypeConversionProperties,
+    };
+
+    const normalizedConversionNode = normalizeTypeConversionNode(conversionNode, displayLanguage);
+    nextNodes.push(normalizedConversionNode);
+    nodeById.set(normalizedConversionNode.id, normalizedConversionNode);
+
+    const toConversionEdgeId = createUniqueId(`${edge.id}__to_conversion`, usedEdgeIds);
+    const fromConversionEdgeId = createUniqueId(`${edge.id}__from_conversion`, usedEdgeIds);
+
+    nextEdges.push({
+      id: toConversionEdgeId,
+      sourceNode: edge.sourceNode,
+      sourcePort: edge.sourcePort,
+      targetNode: normalizedConversionNode.id,
+      targetPort: normalizedConversionNode.inputs[0].id,
+      kind: 'data',
+      dataType: conversionRule.sourceType,
+    });
+
+    nextEdges.push({
+      id: fromConversionEdgeId,
+      sourceNode: normalizedConversionNode.id,
+      sourcePort: normalizedConversionNode.outputs[0].id,
+      targetNode: edge.targetNode,
+      targetPort: edge.targetPort,
+      kind: 'data',
+      dataType: conversionRule.targetType,
+    });
+  }
+
+  return {
+    nodes: nextNodes,
+    edges: dedupeBlueprintEdges(nextEdges),
+    insertedCount,
+  };
+};
+
 /** Преобразовать старый формат в Blueprint формат */
 export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphState {
   // Защита от undefined/null
   const safeNodes = oldState?.nodes ?? [];
   const safeEdges = oldState?.edges ?? [];
+  const displayLanguage: GraphDisplayLanguage = oldState.displayLanguage ?? 'ru';
   
   const nodes: BlueprintNode[] = safeNodes
     .filter(node => node && typeof node === 'object')
     .map(node => {
       if (isEmbeddedBlueprintNode(node.blueprintNode)) {
         const embeddedNode = node.blueprintNode;
-        return {
+        const mergedNode: BlueprintNode = {
           ...embeddedNode,
           id: node.id ?? embeddedNode.id,
           label: embeddedNode.label ?? node.label ?? '',
           position: node.position ?? embeddedNode.position,
         };
+        return normalizeTypeConversionNode(mergedNode, displayLanguage);
       }
-      return buildBlueprintNodeFromLegacy(node);
+      return normalizeTypeConversionNode(buildBlueprintNodeFromLegacy(node), displayLanguage);
     });
 
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
@@ -621,17 +1099,21 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
       })
   );
 
+  const migrationResult = migrateIncompatibleDataEdges(nodes, edges, displayLanguage);
+  const hasInsertedConversions = migrationResult.insertedCount > 0;
+  const dirty = oldState.dirty === true || hasInsertedConversions;
+
   return {
     id: oldState.id,
     name: oldState.name,
     language: oldState.language,
-    displayLanguage: oldState.displayLanguage,
-    nodes,
-    edges,
-    updatedAt: oldState.updatedAt,
-    dirty: oldState.dirty,
+    displayLanguage,
+    nodes: migrationResult.nodes,
+    edges: migrationResult.edges,
+    updatedAt: hasInsertedConversions ? new Date().toISOString() : oldState.updatedAt,
+    dirty,
     // Восстанавливаем переменные и функции
-    variables: (oldState.variables as BlueprintVariable[] | undefined) ?? [],
+    variables: normalizeMigratedVariables(oldState.variables as unknown[] | undefined),
     functions: (oldState.functions as BlueprintFunction[] | undefined) ?? [],
   };
 }
@@ -702,11 +1184,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#7C4DFF',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'condition', name: 'Condition', dataType: 'bool', direction: 'input' }
+      { id: 'condition', name: 'Condition', nameRu: 'Условие', dataType: 'bool', direction: 'input' }
     ],
     outputs: [
-      { id: 'true', name: 'True', dataType: 'execution', direction: 'output' },
-      { id: 'false', name: 'False', dataType: 'execution', direction: 'output' }
+      { id: 'true', name: 'True', nameRu: 'Истина', dataType: 'execution', direction: 'output' },
+      { id: 'false', name: 'False', nameRu: 'Ложь', dataType: 'execution', direction: 'output' }
     ],
   },
   ForLoop: {
@@ -916,12 +1398,12 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     dynamicPorts: true,
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'selection', name: 'Selection', dataType: 'int32', direction: 'input', defaultValue: 0 }
+      { id: 'selection', name: 'Selection', nameRu: 'Значение', dataType: 'int32', direction: 'input', defaultValue: 0 }
     ],
     outputs: [
-      { id: 'case-0', name: 'Case 0', dataType: 'execution', direction: 'output' },
-      { id: 'case-1', name: 'Case 1', dataType: 'execution', direction: 'output' },
-      { id: 'default', name: 'Default', dataType: 'execution', direction: 'output' }
+      { id: 'case-0', name: 'Case 0', nameRu: 'Случай 0', dataType: 'execution', direction: 'output', defaultValue: 0 },
+      { id: 'case-1', name: 'Case 1', nameRu: 'Случай 1', dataType: 'execution', direction: 'output', defaultValue: 1 },
+      { id: 'default', name: 'Default', nameRu: 'По умолчанию', dataType: 'execution', direction: 'output' }
     ],
   },
   Break: {
@@ -1066,7 +1548,7 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#4CAF50',
     inputs: [],
     outputs: [
-      { id: 'value', name: 'Value', dataType: 'any', direction: 'output' }
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
   GetVariable: {
@@ -1097,8 +1579,64 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'value-out', name: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
+  TypeConversion: {
+    type: 'TypeConversion',
+    label: 'Type Conversion',
+    labelRu: 'Преобразование типа',
+    icon: 'variable',
+    category: 'other',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value-in', name: 'In', nameRu: 'Вход', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value-out', name: 'Out', nameRu: 'Выход', dataType: 'any', direction: 'output' }
+    ],
+  },
   
   // === Math ===
+  ConstNumber: {
+    type: 'ConstNumber',
+    label: 'Number',
+    labelRu: 'Число',
+    icon: 'math',
+    category: 'math',
+    description: 'Numeric constant',
+    descriptionRu: 'Числовая константа',
+    headerColor: '#4CAF50',
+    inputs: [],
+    outputs: [
+      { id: 'result', name: 'Value', nameRu: 'Значение', dataType: 'double', direction: 'output', defaultValue: 0 }
+    ],
+  },
+  ConstString: {
+    type: 'ConstString',
+    label: 'String',
+    labelRu: 'Строка',
+    icon: 'math',
+    category: 'math',
+    description: 'String constant',
+    descriptionRu: 'Строковая константа',
+    headerColor: '#4CAF50',
+    inputs: [],
+    outputs: [
+      { id: 'result', name: 'Value', nameRu: 'Значение', dataType: 'string', direction: 'output', defaultValue: '' }
+    ],
+  },
+  ConstBool: {
+    type: 'ConstBool',
+    label: 'Boolean',
+    labelRu: 'Логическое',
+    icon: 'math',
+    category: 'math',
+    description: 'Boolean constant',
+    descriptionRu: 'Логическая константа',
+    headerColor: '#4CAF50',
+    inputs: [],
+    outputs: [
+      { id: 'result', name: 'Value', nameRu: 'Значение', dataType: 'bool', direction: 'output', defaultValue: false }
+    ],
+  },
   Add: {
     type: 'Add',
     label: 'Add',
@@ -1107,11 +1645,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'float', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
     ],
   },
   Subtract: {
@@ -1122,11 +1660,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'float', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
     ],
   },
   Multiply: {
@@ -1137,11 +1675,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input', defaultValue: 0 }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'float', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
     ],
   },
   Divide: {
@@ -1152,11 +1690,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input', defaultValue: 1 }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input', defaultValue: 0 },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input', defaultValue: 1 }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'float', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
     ],
   },
   Modulo: {
@@ -1166,11 +1704,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'math',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'int32', direction: 'input', defaultValue: 0 },
-      { id: 'b', name: 'B', dataType: 'int32', direction: 'input', defaultValue: 1 }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'int32', direction: 'input', defaultValue: 0 },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'int32', direction: 'input', defaultValue: 1 }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'int32', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'int32', direction: 'output' }
     ],
   },
   
@@ -1183,11 +1721,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'any', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'any', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'any', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'any', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   NotEqual: {
@@ -1198,11 +1736,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'any', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'any', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'any', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'any', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   Greater: {
@@ -1212,11 +1750,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   Less: {
@@ -1226,11 +1764,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   GreaterEqual: {
@@ -1240,11 +1778,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   LessEqual: {
@@ -1254,11 +1792,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'comparison',
     headerColor: '#4CAF50',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'float', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'float', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'float', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'float', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   
@@ -1271,11 +1809,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'logic',
     headerColor: '#E53935',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'bool', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'bool', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'bool', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'bool', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   Or: {
@@ -1286,11 +1824,11 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     category: 'logic',
     headerColor: '#E53935',
     inputs: [
-      { id: 'a', name: 'A', dataType: 'bool', direction: 'input' },
-      { id: 'b', name: 'B', dataType: 'bool', direction: 'input' }
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'bool', direction: 'input' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'bool', direction: 'input' }
     ],
     outputs: [
-      { id: 'result', name: 'Result', dataType: 'bool', direction: 'output' }
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
     ],
   },
   Not: {
@@ -1311,14 +1849,16 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
   // === I/O ===
   Print: {
     type: 'Print',
-    label: 'Print String',
-    labelRu: 'Вывод строки',
+    label: 'Print',
+    labelRu: 'Вывод',
     icon: 'io',
     category: 'io',
+    description: 'Print value to console',
+    descriptionRu: 'Вывести значение в консоль',
     headerColor: '#00BCD4',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'string', name: 'In String', dataType: 'string', direction: 'input', defaultValue: '' }
+      { id: 'string', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input', defaultValue: '' }
     ],
     outputs: [
       { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' }
@@ -1330,14 +1870,16 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     labelRu: 'Ввод',
     icon: 'io',
     category: 'io',
+    description: 'Read text from console',
+    descriptionRu: 'Считать текст из консоли',
     headerColor: '#00BCD4',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'prompt', name: 'Prompt', dataType: 'string', direction: 'input', defaultValue: '' }
+      { id: 'prompt', name: 'Prompt', nameRu: 'Приглашение', dataType: 'string', direction: 'input', defaultValue: '' }
     ],
     outputs: [
       { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
-      { id: 'value', name: 'Value', dataType: 'string', direction: 'output' }
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'string', direction: 'output' }
     ],
   },
   
@@ -1398,34 +1940,43 @@ export const NODE_CATEGORIES: { id: NodeTypeDefinition['category']; label: strin
   { id: 'other', label: 'Other', labelRu: 'Прочее' },
 ];
 
+/** Создать новый узел по переданному определению (built-in или package) */
+export function createNodeFromDefinition(
+  definition: NodeTypeDefinition,
+  position: { x: number; y: number },
+  id?: string
+): BlueprintNode {
+  const nodeId = id ?? `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  return {
+    id: nodeId,
+    // label задаётся пустым: runtime выберет локализованное название из definition
+    label: '',
+    type: definition.type,
+    position,
+    inputs: definition.inputs.map((port, index) => ({
+      ...port,
+      id: `${nodeId}-${port.id}`,
+      index,
+      connected: false,
+    })),
+    outputs: definition.outputs.map((port, index) => ({
+      ...port,
+      id: `${nodeId}-${port.id}`,
+      index,
+      connected: false,
+    })),
+  };
+}
+
 /** Создать новый узел по типу */
 export function createNode(
   type: BlueprintNodeType,
   position: { x: number; y: number },
   id?: string
 ): BlueprintNode {
-  const def = NODE_TYPE_DEFINITIONS[type];
-  const nodeId = id ?? `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
-  return {
-    id: nodeId,
-    // ❌ НЕ устанавливаем label здесь — BlueprintNode сам выберет label/labelRu по displayLanguage
-    label: '', // Пустая строка → BlueprintNode использует локализацию из NODE_TYPE_DEFINITIONS
-    type,
-    position,
-    inputs: def.inputs.map((p, i) => ({
-      ...p,
-      id: `${nodeId}-${p.id}`,
-      index: i,
-      connected: false,
-    })),
-    outputs: def.outputs.map((p, i) => ({
-      ...p,
-      id: `${nodeId}-${p.id}`,
-      index: i,
-      connected: false,
-    })),
-  };
+  const definition = NODE_TYPE_DEFINITIONS[type];
+  return createNodeFromDefinition(definition, position, id);
 }
 
 /** Создать связь между портами */
@@ -1722,14 +2273,15 @@ export function removeFunctionParameter(
 /** Создать узел вызова пользовательской функции */
 export function createCallUserFunctionNode(
   func: BlueprintFunction,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  nodeId?: string
 ): BlueprintNode {
-  const nodeId = generateId('call');
+  const resolvedNodeId = nodeId ?? generateId('call');
   
   // Собираем входные порты (exec + input params)
   const inputs: NodePort[] = [
     {
-      id: `${nodeId}-exec-in`,
+      id: `${resolvedNodeId}-exec-in`,
       name: '',
       dataType: 'execution',
       direction: 'input',
@@ -1739,7 +2291,7 @@ export function createCallUserFunctionNode(
     ...func.parameters
       .filter(p => p.direction === 'input')
       .map((p, i) => ({
-        id: `${nodeId}-${p.id}`,
+        id: `${resolvedNodeId}-${p.id}`,
         name: p.nameRu || p.name,
         dataType: p.dataType,
         direction: 'input' as const,
@@ -1752,7 +2304,7 @@ export function createCallUserFunctionNode(
   // Собираем выходные порты (exec + output params)
   const outputs: NodePort[] = [
     {
-      id: `${nodeId}-exec-out`,
+      id: `${resolvedNodeId}-exec-out`,
       name: '',
       dataType: 'execution',
       direction: 'output',
@@ -1762,7 +2314,7 @@ export function createCallUserFunctionNode(
     ...func.parameters
       .filter(p => p.direction === 'output')
       .map((p, i) => ({
-        id: `${nodeId}-${p.id}`,
+        id: `${resolvedNodeId}-${p.id}`,
         name: p.nameRu || p.name,
         dataType: p.dataType,
         direction: 'output' as const,
@@ -1772,7 +2324,7 @@ export function createCallUserFunctionNode(
   ];
   
   return {
-    id: nodeId,
+    id: resolvedNodeId,
     label: func.nameRu || func.name,
     type: 'CallUserFunction',
     position,
@@ -1793,18 +2345,17 @@ export function updateCallNodesForFunction(
   const updatedNodes = graphState.nodes.map(node => {
     if (node.type === 'CallUserFunction' && node.properties?.functionId === func.id) {
       // Пересоздаём узел с обновлённой сигнатурой
-      const newNode = createCallUserFunctionNode(func, node.position);
-      newNode.id = node.id; // Сохраняем тот же ID
+      const newNode = createCallUserFunctionNode(func, node.position, node.id);
       // Сохраняем подключения где возможно
       newNode.inputs.forEach(newPort => {
-        const oldPort = node.inputs.find(p => p.name === newPort.name);
+        const oldPort = node.inputs.find(p => p.id === newPort.id);
         if (oldPort) {
           newPort.connected = oldPort.connected;
           newPort.value = oldPort.value;
         }
       });
       newNode.outputs.forEach(newPort => {
-        const oldPort = node.outputs.find(p => p.name === newPort.name);
+        const oldPort = node.outputs.find(p => p.id === newPort.id);
         if (oldPort) {
           newPort.connected = oldPort.connected;
         }

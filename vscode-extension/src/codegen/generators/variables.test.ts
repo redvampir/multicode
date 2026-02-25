@@ -9,6 +9,7 @@ import {
   VariableNodeGenerator,
   GetVariableNodeGenerator,
   SetVariableNodeGenerator,
+  TypeConversionNodeGenerator,
   createVariableGenerators,
 } from './variables';
 import type { BlueprintNode } from '../../shared/blueprintTypes';
@@ -136,6 +137,106 @@ describe('VariableNodeGenerator', () => {
     expect(result.lines[0]).toContain('std::string');
   });
 
+  it('should use vectorElementType from graph variable', () => {
+    const node = createMockNode('Variable', '', {
+      properties: {
+        variableId: 'var-vec',
+        dataType: 'vector',
+      },
+      outputs: [
+        { id: 'exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'value', name: 'Value', dataType: 'vector', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-vec',
+        name: 'points',
+        nameRu: 'точки',
+        dataType: 'vector',
+        vectorElementType: 'float',
+        defaultValue: [0, 1, 2],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toContain('std::vector<float>');
+  });
+
+  it('should generate std::vector<T> declaration when variable is marked as array', () => {
+    const node = createMockNode('Variable', '', {
+      properties: {
+        variableId: 'var-array',
+        dataType: 'int32',
+        isArray: true,
+      },
+      outputs: [
+        { id: 'exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'value', name: 'Value', dataType: 'array', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-array',
+        name: 'values',
+        nameRu: 'значения',
+        codeName: 'values',
+        dataType: 'int32',
+        isArray: true,
+        defaultValue: [1, 2, 3],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toContain('std::vector<int> values = {1, 2, 3};');
+  });
+
+  it('should generate pointer declaration using pointerMeta mode', () => {
+    const node = createMockNode('Variable', '', {
+      properties: {
+        variableId: 'ptr-shared',
+        dataType: 'pointer',
+      },
+      outputs: [
+        { id: 'exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'value', name: 'Value', dataType: 'pointer', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'ptr-shared',
+        name: 'sharedCounter',
+        nameRu: 'sharedCounter',
+        codeName: 'shared_counter',
+        dataType: 'pointer',
+        category: 'default',
+        defaultValue: 10,
+        pointerMeta: {
+          mode: 'shared',
+          pointeeDataType: 'int32',
+        },
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toContain('std::shared_ptr<int>');
+    expect(result.lines[0]).toContain('std::make_shared<int>(10)');
+  });
+
   it('should return variable name in getOutputExpression', () => {
     const node = createMockNode('Variable', 'counter');
     const helpers = createMockHelpers({
@@ -201,6 +302,33 @@ describe('GetVariableNodeGenerator', () => {
     const expr = generator.getOutputExpression(node, 'value', context, helpers);
 
     expect(expr).toBe('unknownvar');
+  });
+
+  it('should resolve variable by variableId when node label is empty', () => {
+    const node = createMockNode('GetVariable', '', {
+      properties: { variableId: 'var_health' },
+    });
+    const helpers = createMockHelpers({
+      getVariable: vi
+        .fn()
+        .mockImplementation((idOrName: string) =>
+          idOrName === 'var_health' ? { codeName: 'health', cppType: 'int' } : null
+        ),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var_health',
+        name: 'health',
+        nameRu: 'здоровье',
+        dataType: 'int32',
+        category: 'default',
+      },
+    ];
+
+    const expr = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expr).toBe('health');
   });
 });
 
@@ -280,6 +408,706 @@ describe('SetVariableNodeGenerator', () => {
 
     expect(expr).toBe('myvalue');
   });
+
+  it('should generate assignment with variableId when label is empty', () => {
+    const node = createMockNode('SetVariable', '', {
+      properties: { variableId: 'var_score' },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('42'),
+      getVariable: vi
+        .fn()
+        .mockImplementation((idOrName: string) =>
+          idOrName === 'var_score' ? { codeName: 'score', cppType: 'int' } : null
+        ),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var_score',
+        name: 'score',
+        nameRu: 'очки',
+        dataType: 'int32',
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    score = 42;');
+  });
+
+  it('should prefer graph variable codeName over display names', () => {
+    const node = createMockNode('SetVariable', '', {
+      properties: { variableId: 'var_total' },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('7'),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var_total',
+        name: 'итог',
+        nameRu: 'Итог',
+        codeName: 'total_value',
+        dataType: 'int32',
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    int total_value = 7;');
+  });
+
+  it('should apply explicit cast for numeric mismatch on incoming data edge', () => {
+    const setNode = createMockNode('SetVariable', 'counter', {
+      id: 'set-target',
+      properties: {
+        variableId: 'var-target',
+        dataType: 'int32',
+      },
+      inputs: [
+        { id: 'set-target-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-target-value-in', name: 'Значение', dataType: 'int32', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-target-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-target-value-out', name: 'Значение', dataType: 'int32', direction: 'output', index: 1 },
+      ],
+    });
+    const sourceNode = createMockNode('Add', 'sum', {
+      id: 'add-source',
+      inputs: [
+        { id: 'add-source-a', name: 'A', dataType: 'float', direction: 'input', index: 0 },
+        { id: 'add-source-b', name: 'B', dataType: 'float', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'add-source-result', name: 'Result', dataType: 'double', direction: 'output', index: 0 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('(a + b)'),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'counter', cppType: 'int' }),
+    });
+    const context = createMockContext();
+    context.graph.nodes = [sourceNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-cast',
+        sourceNode: 'add-source',
+        sourcePort: 'add-source-result',
+        targetNode: 'set-target',
+        targetPort: 'set-target-value-in',
+        kind: 'data',
+        dataType: 'double',
+      },
+    ];
+
+    const result = generator.generate(setNode, context, helpers);
+
+    expect(result.lines).toContain('    counter = static_cast<int>((a + b));');
+  });
+
+  it('should wrap numeric expression with std::to_string when assigning to string', () => {
+    const setNode = createMockNode('SetVariable', 'podacha', {
+      id: 'set-string',
+      properties: {
+        variableId: 'var-podacha',
+        dataType: 'string',
+      },
+      inputs: [
+        { id: 'set-string-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-string-value-in', name: 'Значение', dataType: 'string', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-string-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-string-value-out', name: 'Значение', dataType: 'string', direction: 'output', index: 1 },
+      ],
+    });
+    const sourceNode = createMockNode('GetVariable', 'counter', {
+      id: 'get-int',
+      outputs: [
+        { id: 'get-int-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'get-int-value-out', name: 'Значение', dataType: 'int32', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('42'),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'podacha', cppType: 'std::string' }),
+    });
+    const context = createMockContext();
+    context.graph.nodes = [sourceNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-to-string',
+        sourceNode: 'get-int',
+        sourcePort: 'get-int-value-out',
+        targetNode: 'set-string',
+        targetPort: 'set-string-value-in',
+        kind: 'data',
+        dataType: 'int32',
+      },
+    ];
+
+    const result = generator.generate(setNode, context, helpers);
+
+    expect(result.lines).toContain('    podacha = std::to_string(42);');
+  });
+
+  it('should wrap std::stoi when assigning string to int32', () => {
+    const setNode = createMockNode('SetVariable', 'counter', {
+      id: 'set-int',
+      properties: {
+        variableId: 'var-counter',
+        dataType: 'int32',
+      },
+      inputs: [
+        { id: 'set-int-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-int-value-in', name: 'Значение', dataType: 'int32', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-int-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-int-value-out', name: 'Значение', dataType: 'int32', direction: 'output', index: 1 },
+      ],
+    });
+    const sourceNode = createMockNode('GetVariable', 'text', {
+      id: 'get-string',
+      outputs: [
+        { id: 'get-string-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'get-string-value-out', name: 'Значение', dataType: 'string', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('"123"'),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'counter', cppType: 'int' }),
+    });
+    const context = createMockContext();
+    context.graph.nodes = [sourceNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-from-string',
+        sourceNode: 'get-string',
+        sourcePort: 'get-string-value-out',
+        targetNode: 'set-int',
+        targetPort: 'set-int-value-in',
+        kind: 'data',
+        dataType: 'string',
+      },
+    ];
+
+    const result = generator.generate(setNode, context, helpers);
+
+    expect(result.lines).toContain('    counter = std::stoi("123");');
+  });
+
+  it('should infer pointee type for pointer deref and apply string conversion', () => {
+    const setNode = createMockNode('SetVariable', 'podacha', {
+      id: 'set-string',
+      properties: {
+        variableId: 'var-podacha',
+        dataType: 'string',
+      },
+      inputs: [
+        { id: 'set-string-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-string-value-in', name: 'Значение', dataType: 'string', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-string-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-string-value-out', name: 'Значение', dataType: 'string', direction: 'output', index: 1 },
+      ],
+    });
+    const sourceNode = createMockNode('GetVariable', '', {
+      id: 'get-pointer',
+      properties: { variableId: 'var-test-ptr' },
+      outputs: [
+        { id: 'get-pointer-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'get-pointer-value-out', name: 'Значение', dataType: 'pointer', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('*test'),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'podacha', cppType: 'std::string' }),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-podacha',
+        name: 'podacha',
+        nameRu: 'подача',
+        dataType: 'string',
+        category: 'default',
+      },
+      {
+        id: 'var-source',
+        name: 'x',
+        nameRu: 'х',
+        dataType: 'int32',
+        category: 'default',
+      },
+      {
+        id: 'var-test-ptr',
+        name: 'test',
+        nameRu: 'тест',
+        dataType: 'pointer',
+        category: 'default',
+        pointerMeta: {
+          mode: 'unique',
+          pointeeDataType: 'int32',
+          targetVariableId: 'var-source',
+        },
+      },
+    ];
+    context.graph.nodes = [sourceNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-ptr-to-string',
+        sourceNode: 'get-pointer',
+        sourcePort: 'get-pointer-value-out',
+        targetNode: 'set-string',
+        targetPort: 'set-string-value-in',
+        kind: 'data',
+        dataType: 'pointer',
+      },
+    ];
+
+    const result = generator.generate(setNode, context, helpers);
+
+    expect(result.lines).toContain('    podacha = std::to_string(*test);');
+  });
+
+  it('should not apply explicit cast when source and target data types are equal', () => {
+    const setNode = createMockNode('SetVariable', 'counter', {
+      id: 'set-target',
+      properties: {
+        variableId: 'var-target',
+        dataType: 'int32',
+      },
+      inputs: [
+        { id: 'set-target-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-target-value-in', name: 'Значение', dataType: 'int32', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-target-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-target-value-out', name: 'Значение', dataType: 'int32', direction: 'output', index: 1 },
+      ],
+    });
+    const sourceNode = createMockNode('GetVariable', 'source', {
+      id: 'get-source',
+      outputs: [
+        { id: 'get-source-value-out', name: 'Value', dataType: 'int32', direction: 'output', index: 0 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('source_value'),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'counter', cppType: 'int' }),
+    });
+    const context = createMockContext();
+    context.graph.nodes = [sourceNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-no-cast',
+        sourceNode: 'get-source',
+        sourcePort: 'get-source-value-out',
+        targetNode: 'set-target',
+        targetPort: 'set-target-value-in',
+        kind: 'data',
+        dataType: 'int32',
+      },
+    ];
+
+    const result = generator.generate(setNode, context, helpers);
+
+    expect(result.lines).toContain('    counter = source_value;');
+  });
+
+  it('should generate vector<string> assignment literal for SetVariable override', () => {
+    const node = createMockNode('SetVariable', '', {
+      id: 'set-tags',
+      properties: {
+        variableId: 'var-tags',
+        dataType: 'vector',
+        vectorElementType: 'string',
+        inputValue: ['alpha', 'line "quoted"'],
+        inputValueIsOverride: true,
+      },
+      inputs: [
+        { id: 'set-tags-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-tags-value-in', name: 'Значение', dataType: 'vector', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-tags-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-tags-value-out', name: 'Значение', dataType: 'vector', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue(null),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'tags', cppType: 'std::vector<std::string>' }),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-tags',
+        name: 'tags',
+        nameRu: 'теги',
+        codeName: 'tags',
+        dataType: 'vector',
+        vectorElementType: 'string',
+        defaultValue: [],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    tags = {"alpha", "line \\"quoted\\""};');
+  });
+
+  it('should fallback to empty vector literal for invalid vector override', () => {
+    const node = createMockNode('SetVariable', '', {
+      id: 'set-tags-invalid',
+      properties: {
+        variableId: 'var-tags',
+        dataType: 'vector',
+        vectorElementType: 'string',
+        inputValue: ['ok', { bad: true }],
+        inputValueIsOverride: true,
+      },
+      inputs: [
+        { id: 'set-tags-invalid-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-tags-invalid-value-in', name: 'Значение', dataType: 'vector', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-tags-invalid-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-tags-invalid-value-out', name: 'Значение', dataType: 'vector', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue(null),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'tags', cppType: 'std::vector<std::string>' }),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-tags',
+        name: 'tags',
+        nameRu: 'теги',
+        codeName: 'tags',
+        dataType: 'vector',
+        vectorElementType: 'string',
+        defaultValue: [],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    tags = {};');
+  });
+
+  it('should generate nested array literal for vector<T>[] assignment', () => {
+    const node = createMockNode('SetVariable', '', {
+      id: 'set-matrix',
+      properties: {
+        variableId: 'var-matrix',
+        dataType: 'vector',
+        isArray: true,
+        arrayRank: 1,
+        vectorElementType: 'int32',
+        inputValue: [[1, 2], [3, 4]],
+        inputValueIsOverride: true,
+      },
+      inputs: [
+        { id: 'set-matrix-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-matrix-value-in', name: 'Значение', dataType: 'array', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-matrix-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-matrix-value-out', name: 'Значение', dataType: 'array', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue(null),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'matrix', cppType: 'std::vector<std::vector<int>>' }),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-matrix',
+        name: 'matrix',
+        nameRu: 'матрица',
+        codeName: 'matrix',
+        dataType: 'vector',
+        isArray: true,
+        arrayRank: 1,
+        vectorElementType: 'int32',
+        defaultValue: [[0, 0]],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    matrix = {{1, 2}, {3, 4}};');
+  });
+
+  it('should generate nested array literal for scalar arrayRank=2 assignment', () => {
+    const node = createMockNode('SetVariable', '', {
+      id: 'set-grid',
+      properties: {
+        variableId: 'var-grid',
+        dataType: 'int32',
+        arrayRank: 2,
+        inputValue: [[1, 2], [3, 4]],
+        inputValueIsOverride: true,
+      },
+      inputs: [
+        { id: 'set-grid-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-grid-value-in', name: 'Значение', dataType: 'array', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-grid-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-grid-value-out', name: 'Значение', dataType: 'array', direction: 'output', index: 1 },
+      ],
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue(null),
+      isVariableDeclared: vi.fn().mockReturnValue(true),
+      getVariable: vi.fn().mockReturnValue({ codeName: 'grid', cppType: 'std::vector<std::vector<int>>' }),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'var-grid',
+        name: 'grid',
+        nameRu: 'сетка',
+        codeName: 'grid',
+        dataType: 'int32',
+        arrayRank: 2,
+        defaultValue: [[0]],
+        category: 'default',
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toContain('    grid = {{1, 2}, {3, 4}};');
+  });
+
+  it('should report error for SetVariable on const_reference pointer', () => {
+    const node = createMockNode('SetVariable', '', {
+      id: 'set-const-ref',
+      properties: {
+        variableId: 'ptr-const-ref',
+        dataType: 'pointer',
+      },
+    });
+    const helpers = createMockHelpers({
+      addError: vi.fn(),
+    });
+    const context = createMockContext();
+    context.graph.variables = [
+      {
+        id: 'ptr-const-ref',
+        name: 'constRef',
+        nameRu: 'constRef',
+        codeName: 'const_ref',
+        dataType: 'pointer',
+        category: 'default',
+        pointerMeta: {
+          mode: 'const_reference',
+          pointeeDataType: 'int32',
+          targetVariableId: 'var-value',
+        },
+      },
+      {
+        id: 'var-value',
+        name: 'value',
+        nameRu: 'value',
+        dataType: 'int32',
+        category: 'default',
+        defaultValue: 1,
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================
+// TypeConversionNodeGenerator Tests
+// ============================================
+
+describe('TypeConversionNodeGenerator', () => {
+  const generator = new TypeConversionNodeGenerator();
+
+  it('should support TypeConversion node type', () => {
+    expect(generator.nodeTypes).toContain('TypeConversion');
+  });
+
+  it('should generate noop (pure node)', () => {
+    const result = generator.generate();
+    expect(result.lines).toHaveLength(0);
+    expect(result.followExecutionFlow).toBe(true);
+  });
+
+  it('should generate std::to_string for int32 -> string', () => {
+    const node = createMockNode('TypeConversion', '', {
+      id: 'convert-int-string',
+      inputs: [
+        { id: 'convert-int-string-value-in', name: 'In', dataType: 'int32', direction: 'input', index: 0 },
+      ],
+      outputs: [
+        { id: 'convert-int-string-value-out', name: 'Out', dataType: 'string', direction: 'output', index: 0 },
+      ],
+      properties: {
+        conversionId: 'int32_to_string',
+        fromType: 'int32',
+        toType: 'string',
+      },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('counter'),
+    });
+    const context = createMockContext();
+
+    const expr = generator.getOutputExpression(node, 'value-out', context, helpers);
+
+    expect(expr).toBe('std::to_string(counter)');
+  });
+
+  it('should generate static_cast<int> for float -> int32', () => {
+    const node = createMockNode('TypeConversion', '', {
+      id: 'convert-float-int',
+      inputs: [
+        { id: 'convert-float-int-value-in', name: 'In', dataType: 'float', direction: 'input', index: 0 },
+      ],
+      outputs: [
+        { id: 'convert-float-int-value-out', name: 'Out', dataType: 'int32', direction: 'output', index: 0 },
+      ],
+      properties: {
+        conversionId: 'float_to_int32',
+        fromType: 'float',
+        toType: 'int32',
+      },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('valueExpr'),
+    });
+    const context = createMockContext();
+
+    const expr = generator.getOutputExpression(node, 'value-out', context, helpers);
+
+    expect(expr).toBe('static_cast<int>(valueExpr)');
+  });
+
+  it('should generate helper call for string -> bool and register helper', () => {
+    const node = createMockNode('TypeConversion', '', {
+      id: 'convert-string-bool',
+      inputs: [
+        { id: 'convert-string-bool-value-in', name: 'In', dataType: 'string', direction: 'input', index: 0 },
+      ],
+      outputs: [
+        { id: 'convert-string-bool-value-out', name: 'Out', dataType: 'bool', direction: 'output', index: 0 },
+      ],
+      properties: {
+        conversionId: 'string_to_bool',
+        fromType: 'string',
+        toType: 'bool',
+      },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+    const context = createMockContext();
+    context.requiredHelpers = new Set();
+
+    const expr = generator.getOutputExpression(node, 'value-out', context, helpers);
+
+    expect(expr).toBe('multicode_parse_bool_strict(rawValue)');
+    expect(context.requiredHelpers.has('parse_bool_strict')).toBe(true);
+  });
+
+  it('should resolve helper template for string -> vector using target variable metadata', () => {
+    const conversionNode = createMockNode('TypeConversion', '', {
+      id: 'convert-string-vector',
+      inputs: [
+        { id: 'convert-string-vector-value-in', name: 'In', dataType: 'string', direction: 'input', index: 0 },
+      ],
+      outputs: [
+        { id: 'convert-string-vector-value-out', name: 'Out', dataType: 'vector', direction: 'output', index: 0 },
+      ],
+      properties: {
+        conversionId: 'string_to_vector',
+        fromType: 'string',
+        toType: 'vector',
+        meta: {
+          vectorElementType: 'int32',
+        },
+      },
+    });
+    const setNode = createMockNode('SetVariable', '', {
+      id: 'set-vector',
+      inputs: [
+        { id: 'set-vector-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'set-vector-value-in', name: 'Значение', dataType: 'vector', direction: 'input', index: 1 },
+      ],
+      outputs: [
+        { id: 'set-vector-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'set-vector-value-out', name: 'Значение', dataType: 'vector', direction: 'output', index: 1 },
+      ],
+      properties: {
+        variableId: 'var-values',
+        dataType: 'vector',
+      },
+    });
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawVector'),
+    });
+    const context = createMockContext();
+    context.requiredHelpers = new Set();
+    context.graph.nodes = [conversionNode, setNode];
+    context.graph.edges = [
+      {
+        id: 'edge-convert-to-set',
+        sourceNode: 'convert-string-vector',
+        sourcePort: 'convert-string-vector-value-out',
+        targetNode: 'set-vector',
+        targetPort: 'set-vector-value-in',
+        kind: 'data',
+        dataType: 'vector',
+      },
+    ];
+    context.graph.variables = [
+      {
+        id: 'var-values',
+        name: 'values',
+        nameRu: 'значения',
+        codeName: 'values',
+        dataType: 'vector',
+        vectorElementType: 'int32',
+        defaultValue: [],
+        category: 'default',
+      },
+    ];
+
+    const expr = generator.getOutputExpression(conversionNode, 'value-out', context, helpers);
+
+    expect(expr).toBe('multicode_parse_vector_strict<int>(rawVector)');
+    expect(context.requiredHelpers.has('parse_vector_strict')).toBe(true);
+  });
 });
 
 // ============================================
@@ -290,9 +1118,10 @@ describe('createVariableGenerators', () => {
   it('should return array with all variable generators', () => {
     const generators = createVariableGenerators();
 
-    expect(generators).toHaveLength(3);
+    expect(generators).toHaveLength(4);
     expect(generators[0]).toBeInstanceOf(VariableNodeGenerator);
     expect(generators[1]).toBeInstanceOf(GetVariableNodeGenerator);
     expect(generators[2]).toBeInstanceOf(SetVariableNodeGenerator);
+    expect(generators[3]).toBeInstanceOf(TypeConversionNodeGenerator);
   });
 });

@@ -7,6 +7,7 @@
 
 import type { BlueprintGraphState, BlueprintNode, BlueprintNodeType, BlueprintFunction } from '../shared/blueprintTypes';
 import type { GraphLanguage } from '../shared/blueprintTypes';
+import type { TypeConversionHelperId } from '../shared/typeConversions';
 
 /** Ошибка генерации кода */
 export interface CodeGenError {
@@ -54,6 +55,8 @@ export enum CodeGenWarningCode {
   UNUSED_NODE = 'UNUSED_NODE',
   /** Переменная не инициализирована */
   UNINITIALIZED_VARIABLE = 'UNINITIALIZED_VARIABLE',
+  /** Переменная из switch(init; expr) не используется */
+  UNUSED_SWITCH_INIT = 'UNUSED_SWITCH_INIT',
   /** Пустая ветка условия */
   EMPTY_BRANCH = 'EMPTY_BRANCH',
   /** Бесконечный цикл (условие всегда true) */
@@ -128,6 +131,8 @@ export interface CodeGenContext {
   indentLevel: number;
   /** Объявленные переменные */
   declaredVariables: Map<string, VariableInfo>;
+  /** Инициализаторы объявленных переменных (alias -> expr) */
+  declaredVariableInitializers?: Map<string, string>;
   /** Обработанные узлы (для предотвращения повторов) */
   processedNodes: Set<string>;
   /** Ошибки */
@@ -142,6 +147,10 @@ export interface CodeGenContext {
   currentFunction?: BlueprintFunction;
   /** Все функции графа */
   functions?: BlueprintFunction[];
+  /** Количество выполненных Set-записей по переменным (для подавления дублирующих first Set) */
+  variableWriteCounts?: Map<string, number>;
+  /** Набор helper-функций, которые нужно сгенерировать в C++ прологе */
+  requiredHelpers?: Set<TypeConversionHelperId>;
 }
 
 /** Информация о переменной */
@@ -233,15 +242,28 @@ export function toValidIdentifier(text: string): string {
 }
 
 /** Получить C++ тип для PortDataType */
-export function getCppType(dataType: string): string {
+export function getCppType(dataType: string, vectorElementType?: string): string {
+  const vectorElementTypeMap: Record<string, string> = {
+    bool: 'bool',
+    int32: 'int',
+    int64: 'long long',
+    float: 'float',
+    double: 'double',
+    string: 'std::string',
+  };
+  const resolvedVectorElementType = vectorElementTypeMap[vectorElementType ?? '']
+    ?? vectorElementTypeMap.double;
   const typeMap: Record<string, string> = {
     'execution': 'void',
     'bool': 'bool',
     'int32': 'int',
+    'int64': 'long long',
     'float': 'double',
+    'double': 'double',
     'string': 'std::string',
-    'vector': 'std::vector<double>',
-    'object': 'void*',
+    'vector': `std::vector<${resolvedVectorElementType}>`,
+    'pointer': 'std::shared_ptr<void>',  // Умный указатель
+    'class': 'auto',                      // Класс по значению (требуется typeName)
     'array': 'std::vector<int>',
     'any': 'auto',
   };
@@ -249,14 +271,50 @@ export function getCppType(dataType: string): string {
   return typeMap[dataType] ?? 'auto';
 }
 
+/** Нормализовать ранг массива (legacy boolean поддерживается как rank=1) */
+export function normalizeArrayRank(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = Math.trunc(value);
+    return normalized > 0 ? normalized : 0;
+  }
+  return value === true ? 1 : 0;
+}
+
+/** Получить C++ тип для переменной с учётом ранга массива */
+export function getCppVariableType(
+  dataType: string,
+  vectorElementType?: string,
+  arrayRank: number | boolean = 0
+): string {
+  const baseType = getCppType(dataType, vectorElementType);
+  const normalizedArrayRank = normalizeArrayRank(arrayRank);
+  if (normalizedArrayRank === 0) {
+    return baseType;
+  }
+
+  if (dataType === 'execution') {
+    return baseType;
+  }
+
+  let wrappedType = baseType;
+  for (let depth = 0; depth < normalizedArrayRank; depth += 1) {
+    wrappedType = `std::vector<${wrappedType}>`;
+  }
+  return wrappedType;
+}
+
 /** Получить значение по умолчанию для типа */
 export function getDefaultValue(dataType: string): string {
   const defaults: Record<string, string> = {
     'bool': 'false',
     'int32': '0',
+    'int64': '0LL',
     'float': '0.0',
+    'double': '0.0',
     'string': '""',
     'vector': '{}',
+    'pointer': 'nullptr',  // Умный указатель по умолчанию nullptr
+    'class': '{}',         // Класс - default constructor
     'array': '{}',
   };
   

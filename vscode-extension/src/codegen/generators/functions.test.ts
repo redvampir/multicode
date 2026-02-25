@@ -169,7 +169,8 @@ describe('Утилиты functions.ts', () => {
 
     it('преобразует специальные типы', () => {
       expect(portTypeToCpp('execution')).toBe('void');
-      expect(portTypeToCpp('object')).toBe('void*');
+      expect(portTypeToCpp('pointer')).toBe('std::shared_ptr<void>');
+      expect(portTypeToCpp('class')).toBe('auto');
       expect(portTypeToCpp('any')).toBe('auto');
     });
   });
@@ -211,7 +212,8 @@ describe('Утилиты functions.ts', () => {
     it('возвращает значения для других типов', () => {
       expect(getDefaultValue('bool')).toBe('false');
       expect(getDefaultValue('string')).toBe('""');
-      expect(getDefaultValue('object')).toBe('nullptr');
+      expect(getDefaultValue('pointer')).toBe('nullptr');
+      expect(getDefaultValue('class')).toBe('{}');
     });
 
     it('возвращает {} для контейнеров', () => {

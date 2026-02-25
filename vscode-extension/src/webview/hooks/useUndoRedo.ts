@@ -7,7 +7,7 @@
  * - Автоматически сжимает быстрые последовательные изменения (debounce)
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ============================================
 // Типы
@@ -225,6 +225,13 @@ export function useUndoRedo<T>(
     }
     pushToUndoStack(current);
   }, [current, pushToUndoStack]);
+
+  useEffect(() => () => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+  }, []);
 
   // Формируем состояние
   const state: UndoRedoState<T> = {

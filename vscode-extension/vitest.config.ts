@@ -8,6 +8,13 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     // Решает проблему зависания тестов при использовании jsdom
     pool: 'forks',
+    // Стабильный non-interactive прогон в одном воркере
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
+    fileParallelism: false,
     teardownTimeout: 5000,
     // Изолирует тесты и предотвращает зависание
     isolate: true,

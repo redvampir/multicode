@@ -195,13 +195,13 @@
     },
     {
       "type": "Print",
-      "label": "Print String",
-      "labelRu": "Вывод строки",
+      "label": "Print",
+      "labelRu": "Вывод",
       "category": "io",
       "headerColor": "#00BCD4",
       "inputs": [
         { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "string", "name": "In String", "nameRu": "Строка", "dataType": "string", "defaultValue": "" }
+        { "id": "string", "name": "Value", "nameRu": "Значение", "dataType": "any", "defaultValue": "" }
       ],
       "outputs": [
         { "id": "exec-out", "name": "", "dataType": "execution" }
@@ -260,7 +260,7 @@
           "default": "int",
           "enum": [
             { "value": "int", "label": "Integer", "labelRu": "Целое" },
-            { "value": "float", "label": "Float", "labelRu": "Вещественное" },
+            { "value": "float", "label": "Float", "labelRu": "Дробное" },
             { "value": "string", "label": "String", "labelRu": "Строка" },
             { "value": "bool", "label": "Boolean", "labelRu": "Логическое" }
           ]

@@ -1,5 +1,12 @@
 import type { GraphEdge, GraphEdgeKind, GraphNode, GraphState } from './graphState';
 import type { ValidationIssue, ValidationResult } from './messages';
+import type { BlueprintVariable, VectorElementType } from './blueprintTypes';
+import { normalizePointerMeta } from './blueprintTypes';
+import type { PortDataType } from './portTypes';
+import {
+  canDirectlyConnectDataPorts,
+  findTypeConversionRule,
+} from './typeConversions';
 
 export type { ValidationIssue, ValidationResult } from './messages';
 
@@ -16,8 +23,18 @@ type EmbeddedEdge = {
 };
 
 type EmbeddedPort = {
+  id?: unknown;
   dataType?: unknown;
 };
+
+interface NormalizedGraphVariable {
+  id: string;
+  name: string;
+  nameRu: string;
+  dataType: string;
+  vectorElementType?: VectorElementType;
+  pointerMeta?: ReturnType<typeof normalizePointerMeta>;
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -75,14 +92,24 @@ const hasExecutionPorts = (node: GraphNode): boolean => {
 };
 
 const isExecutionRelevantNode = (node: GraphNode): boolean => {
-  if (node.type === 'Start' || node.type === 'End' || node.type === 'Function') {
+  if (node.type === 'Start' || node.type === 'End') {
     return true;
   }
+
+  if (node.type === 'Function') {
+    return true;
+  }
+
   if (node.type === 'Variable') {
-    // Для Blueprint-переменных учитываем реальные execution-порты.
     return hasExecutionPorts(node);
   }
-  return true;
+
+  if (node.type === 'Custom') {
+    const hasEmbedded = toEmbeddedNode(node.blueprintNode) !== null;
+    return hasEmbedded ? hasExecutionPorts(node) : true;
+  }
+
+  return hasExecutionPorts(node);
 };
 
 const isGetSetVariableLink = (source: GraphNode, target: GraphNode): boolean => {
@@ -91,6 +118,74 @@ const isGetSetVariableLink = (source: GraphNode, target: GraphNode): boolean => 
   return sourceType === 'GetVariable' && targetType === 'SetVariable';
 };
 
+const isLikelyGetSetByHandles = (edge: GraphEdge): boolean => {
+  const embedded = toEmbeddedEdge(edge.blueprintEdge);
+  if (!embedded) {
+    return false;
+  }
+
+  const sourceHandle = typeof embedded.sourcePort === 'string' ? embedded.sourcePort : '';
+  const targetHandle = typeof embedded.targetPort === 'string' ? embedded.targetPort : '';
+  return sourceHandle.includes('value-out') && targetHandle.includes('value-in');
+};
+
+const isLikelyGetSetByLabels = (source: GraphNode, target: GraphNode): boolean => {
+  const sourceLabel = source.label.toLowerCase();
+  const targetLabel = target.label.toLowerCase();
+
+  const sourceLooksLikeGet =
+    sourceLabel.includes('get') || sourceLabel.includes('получ');
+  const targetLooksLikeSet =
+    targetLabel.includes('set') || targetLabel.includes('установ');
+
+  return sourceLooksLikeGet && targetLooksLikeSet;
+};
+
+const hasNamedPort = (ports: EmbeddedPort[] | unknown, fragment: string): boolean => {
+  if (!Array.isArray(ports)) {
+    return false;
+  }
+
+  return ports.some((port) => {
+    if (!isRecord(port)) {
+      return false;
+    }
+    const id = typeof port.id === 'string' ? port.id : '';
+    return id.includes(fragment);
+  });
+};
+
+const isLikelyGetSetByPortShape = (source: GraphNode, target: GraphNode): boolean => {
+  const sourceEmbedded = toEmbeddedNode(source.blueprintNode);
+  const targetEmbedded = toEmbeddedNode(target.blueprintNode);
+  if (!sourceEmbedded || !targetEmbedded) {
+    return false;
+  }
+
+  const sourceOutputs = Array.isArray(sourceEmbedded.outputs) ? sourceEmbedded.outputs : [];
+  const sourceInputs = Array.isArray(sourceEmbedded.inputs) ? sourceEmbedded.inputs : [];
+  const targetOutputs = Array.isArray(targetEmbedded.outputs) ? targetEmbedded.outputs : [];
+  const targetInputs = Array.isArray(targetEmbedded.inputs) ? targetEmbedded.inputs : [];
+
+  const sourceHasValueOut = hasNamedPort(sourceOutputs, 'value-out');
+  const sourceHasExecPort = hasNamedPort(sourceInputs, 'exec-') || hasNamedPort(sourceOutputs, 'exec-');
+  const targetHasValueIn = hasNamedPort(targetInputs, 'value-in');
+  const targetHasExecIn = hasNamedPort(targetInputs, 'exec-in');
+  const targetHasExecOut = hasNamedPort(targetOutputs, 'exec-out');
+
+  return sourceHasValueOut && !sourceHasExecPort && targetHasValueIn && targetHasExecIn && targetHasExecOut;
+};
+
+const isValidVariableDataTransfer = (
+  edge: GraphEdge,
+  source: GraphNode,
+  target: GraphNode
+): boolean =>
+  isGetSetVariableLink(source, target) ||
+  isLikelyGetSetByHandles(edge) ||
+  isLikelyGetSetByLabels(source, target) ||
+  isLikelyGetSetByPortShape(source, target);
+
 const getEdgeHandleSignature = (edge: GraphEdge): { sourceHandle: string; targetHandle: string } => {
   const embedded = toEmbeddedEdge(edge.blueprintEdge);
   const sourceHandle =
@@ -98,6 +193,203 @@ const getEdgeHandleSignature = (edge: GraphEdge): { sourceHandle: string; target
   const targetHandle =
     embedded && typeof embedded.targetPort === 'string' ? embedded.targetPort : '';
   return { sourceHandle, targetHandle };
+};
+
+const PORT_DATA_TYPES = new Set([
+  'execution',
+  'bool',
+  'int32',
+  'int64',
+  'float',
+  'double',
+  'string',
+  'vector',
+  'pointer',
+  'class',
+  'array',
+  'any',
+]);
+
+const VECTOR_ELEMENT_TYPES = new Set(['int32', 'int64', 'float', 'double', 'bool', 'string']);
+
+const isPortDataType = (value: unknown): value is PortDataType =>
+  typeof value === 'string' && PORT_DATA_TYPES.has(value);
+
+const matchHandleToPortId = (portId: string, handle: string): boolean => {
+  if (portId === handle) {
+    return true;
+  }
+
+  if (handle.endsWith(`-${portId}`) || portId.endsWith(`-${handle}`)) {
+    return true;
+  }
+
+  const tail = handle.split('-').slice(-2).join('-');
+  return tail === portId;
+};
+
+const getEmbeddedPortDataType = (
+  node: GraphNode,
+  direction: 'input' | 'output',
+  handle: string
+): PortDataType | null => {
+  const embedded = toEmbeddedNode(node.blueprintNode);
+  if (!embedded) {
+    return null;
+  }
+
+  const ports = direction === 'input'
+    ? toEmbeddedPorts(embedded.inputs)
+    : toEmbeddedPorts(embedded.outputs);
+
+  if (!ports.length) {
+    return null;
+  }
+
+  const normalizedHandle = handle.trim();
+  const matchedPort = normalizedHandle.length > 0
+    ? ports.find((port) => typeof port.id === 'string' && matchHandleToPortId(port.id, normalizedHandle))
+    : null;
+
+  if (matchedPort && isPortDataType(matchedPort.dataType)) {
+    return matchedPort.dataType;
+  }
+
+  if (ports.length === 1 && isPortDataType(ports[0].dataType)) {
+    return ports[0].dataType;
+  }
+
+  return null;
+};
+
+const resolveDataEdgeTypes = (
+  edge: GraphEdge,
+  source: GraphNode,
+  target: GraphNode
+): { sourceType: PortDataType; targetType: PortDataType } | null => {
+  const { sourceHandle, targetHandle } = getEdgeHandleSignature(edge);
+  if (!sourceHandle || !targetHandle) {
+    return null;
+  }
+
+  const sourceType = getEmbeddedPortDataType(source, 'output', sourceHandle);
+  const targetType = getEmbeddedPortDataType(target, 'input', targetHandle);
+  if (!sourceType || !targetType) {
+    return null;
+  }
+
+  return { sourceType, targetType };
+};
+
+const normalizeGraphVariables = (state: GraphState): NormalizedGraphVariable[] => {
+  const variables = Array.isArray(state.variables) ? state.variables : [];
+
+  return variables
+    .filter((raw): raw is Record<string, unknown> => isRecord(raw))
+    .map((raw, index) => {
+      const id = typeof raw.id === 'string' && raw.id.trim().length > 0
+        ? raw.id
+        : `legacy_pointer_${index + 1}`;
+      const name = typeof raw.name === 'string' ? raw.name : '';
+      const nameRu = typeof raw.nameRu === 'string' ? raw.nameRu : name;
+      const dataType = typeof raw.dataType === 'string' && PORT_DATA_TYPES.has(raw.dataType)
+        ? raw.dataType
+        : 'any';
+      const vectorElementType =
+        typeof raw.vectorElementType === 'string' && VECTOR_ELEMENT_TYPES.has(raw.vectorElementType)
+          ? (raw.vectorElementType as VectorElementType)
+          : undefined;
+      const variable = raw as unknown as BlueprintVariable;
+
+      return {
+        id,
+        name,
+        nameRu,
+        dataType,
+        vectorElementType,
+        pointerMeta: dataType === 'pointer' ? normalizePointerMeta(variable.pointerMeta) : undefined,
+      };
+    });
+};
+
+const readableVariableName = (variable: NormalizedGraphVariable): string =>
+  variable.nameRu || variable.name || variable.id;
+
+const resolveComparableTargetType = (
+  variable: NormalizedGraphVariable
+): { dataType: string | null; vectorElementType?: VectorElementType; pointerMode?: string } => {
+  if (variable.dataType === 'pointer') {
+    const pointerMeta = variable.pointerMeta ?? normalizePointerMeta(undefined);
+    return {
+      dataType: pointerMeta.pointeeDataType,
+      vectorElementType: pointerMeta.pointeeVectorElementType,
+      pointerMode: pointerMeta.mode,
+    };
+  }
+
+  if (variable.dataType === 'execution' || variable.dataType === 'any') {
+    return { dataType: null };
+  }
+
+  return {
+    dataType: variable.dataType,
+    vectorElementType: variable.vectorElementType,
+  };
+};
+
+const findReferenceCycles = (variables: NormalizedGraphVariable[]): string[][] => {
+  const pointerById = new Map(
+    variables
+      .filter((variable) => variable.dataType === 'pointer')
+      .map((variable) => [variable.id, variable])
+  );
+
+  const adjacency = new Map<string, string[]>();
+  pointerById.forEach((variable) => {
+    const mode = variable.pointerMeta?.mode;
+    const target = variable.pointerMeta?.targetVariableId;
+    if ((mode === 'reference' || mode === 'const_reference') && typeof target === 'string') {
+      adjacency.set(variable.id, [target]);
+    }
+  });
+
+  const visited = new Set<string>();
+  const stack = new Set<string>();
+  const path: string[] = [];
+  const cycles: string[][] = [];
+
+  const dfs = (nodeId: string): void => {
+    if (stack.has(nodeId)) {
+      const cycleStart = path.indexOf(nodeId);
+      if (cycleStart >= 0) {
+        const cycle = path.slice(cycleStart);
+        if (cycle.length > 1) {
+          cycles.push([...cycle, nodeId]);
+        }
+      }
+      return;
+    }
+    if (visited.has(nodeId)) {
+      return;
+    }
+
+    visited.add(nodeId);
+    stack.add(nodeId);
+    path.push(nodeId);
+
+    const next = adjacency.get(nodeId) ?? [];
+    for (const target of next) {
+      if (pointerById.has(target)) {
+        dfs(target);
+      }
+    }
+
+    path.pop();
+    stack.delete(nodeId);
+  };
+
+  pointerById.forEach((_value, nodeId) => dfs(nodeId));
+  return cycles;
 };
 
 export const validateGraphState = (state: GraphState): ValidationResult => {
@@ -277,8 +569,23 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
     if (!source || !target) {
       return;
     }
+
+    const edgeTypes = resolveDataEdgeTypes(edge, source, target);
+    if (edgeTypes) {
+      const { sourceType, targetType } = edgeTypes;
+      const isDirectCompatible = canDirectlyConnectDataPorts(sourceType, targetType);
+      const hasConversionRule = findTypeConversionRule(sourceType, targetType) !== null;
+      if (!isDirectCompatible && !hasConversionRule) {
+        pushIssue(
+          'error',
+          `Incompatible data edge ${edge.source} -> ${edge.target}: ${sourceType} -> ${targetType}.`,
+          { edges: [edge.id], nodes: [source.id, target.id] }
+        );
+      }
+    }
+
     if (source.type === 'Variable' && target.type === 'Variable') {
-      if (isGetSetVariableLink(source, target)) {
+      if (isValidVariableDataTransfer(edge, source, target)) {
         return;
       }
       pushIssue(
@@ -288,6 +595,92 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
       );
     }
   });
+
+  const graphVariables = normalizeGraphVariables(state);
+  const variableById = new Map(graphVariables.map((variable) => [variable.id, variable]));
+
+  for (const variable of graphVariables) {
+    if (variable.dataType !== 'pointer') {
+      continue;
+    }
+
+    const pointerMeta = variable.pointerMeta ?? normalizePointerMeta(undefined);
+    const variableName = readableVariableName(variable);
+    const requiresTarget =
+      pointerMeta.mode === 'reference' ||
+      pointerMeta.mode === 'const_reference' ||
+      pointerMeta.mode === 'weak';
+
+    if (requiresTarget && !pointerMeta.targetVariableId) {
+      pushIssue(
+        'error',
+        `Pointer variable "${variableName}" (${variable.id}) requires target for mode ${pointerMeta.mode}.`
+      );
+      continue;
+    }
+
+    if (!pointerMeta.targetVariableId) {
+      continue;
+    }
+
+    const target = variableById.get(pointerMeta.targetVariableId);
+    if (!target) {
+      pushIssue(
+        'error',
+        `Pointer variable "${variableName}" (${variable.id}) has unknown target ${pointerMeta.targetVariableId}.`
+      );
+      continue;
+    }
+
+    if (target.id === variable.id) {
+      pushIssue(
+        'warning',
+        `Pointer variable "${variableName}" (${variable.id}) references itself.`,
+        { nodes: [variable.id] }
+      );
+    }
+
+    const targetShape = resolveComparableTargetType(target);
+    if (!targetShape.dataType || targetShape.dataType !== pointerMeta.pointeeDataType) {
+      pushIssue(
+        'error',
+        `Pointer variable "${variableName}" (${variable.id}) has incompatible target type.`,
+        { nodes: [variable.id, target.id] }
+      );
+      continue;
+    }
+
+    if (pointerMeta.pointeeDataType === 'vector') {
+      const left = pointerMeta.pointeeVectorElementType ?? 'double';
+      const right = targetShape.vectorElementType ?? 'double';
+      if (left !== right) {
+        pushIssue(
+          'error',
+          `Pointer variable "${variableName}" (${variable.id}) has incompatible target vector element type.`,
+          { nodes: [variable.id, target.id] }
+        );
+      }
+    }
+
+    if (pointerMeta.mode === 'weak') {
+      if (target.dataType !== 'pointer' || targetShape.pointerMode !== 'shared') {
+        pushIssue(
+          'error',
+          `Weak pointer "${variableName}" (${variable.id}) must target shared pointer variable.`,
+          { nodes: [variable.id, target.id] }
+        );
+      }
+    }
+  }
+
+  const referenceCycles = findReferenceCycles(graphVariables);
+  for (const cycle of referenceCycles) {
+    pushIssue(
+      'warning',
+      `Reference cycle detected: ${cycle.join(' -> ')}`,
+      { nodes: cycle }
+    );
+  }
 
   return {
     ok: errors.length === 0,

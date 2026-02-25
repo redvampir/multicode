@@ -4,7 +4,7 @@
  * Start, End, Return, Branch, ForLoop, WhileLoop, Sequence
  */
 
-import type { BlueprintNode, BlueprintNodeType } from '../../shared/blueprintTypes';
+import type { BlueprintNode, BlueprintNodeType, NodePort } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
 import { CodeGenWarningCode } from '../types';
 import {
@@ -12,6 +12,278 @@ import {
   GeneratorHelpers,
   NodeGenerationResult,
 } from './base';
+
+const buildExecutionAdjacency = (context: CodeGenContext): Map<string, string[]> => {
+  const adjacency = new Map<string, string[]>();
+
+  for (const edge of context.graph.edges) {
+    if (edge.kind !== 'execution') {
+      continue;
+    }
+
+    const outgoing = adjacency.get(edge.sourceNode);
+    if (outgoing) {
+      outgoing.push(edge.targetNode);
+    } else {
+      adjacency.set(edge.sourceNode, [edge.targetNode]);
+    }
+  }
+
+  return adjacency;
+};
+
+const collectExecutionDistances = (
+  startNodeId: string,
+  adjacency: Map<string, string[]>,
+  excludedNodeIds: Set<string>
+): Map<string, number> => {
+  const distances = new Map<string, number>();
+  const queue: Array<{ nodeId: string; distance: number }> = [{ nodeId: startNodeId, distance: 0 }];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      break;
+    }
+
+    const { nodeId, distance } = current;
+    if (visited.has(nodeId) || excludedNodeIds.has(nodeId)) {
+      continue;
+    }
+
+    visited.add(nodeId);
+    distances.set(nodeId, distance);
+
+    const next = adjacency.get(nodeId);
+    if (!next) {
+      continue;
+    }
+
+    for (const targetNodeId of next) {
+      if (!visited.has(targetNodeId)) {
+        queue.push({ nodeId: targetNodeId, distance: distance + 1 });
+      }
+    }
+  }
+
+  return distances;
+};
+
+const findExecutionMergeNodeId = (
+  context: CodeGenContext,
+  startNodeIds: string[],
+  excludedNodeIds: Set<string>
+): string | null => {
+  if (startNodeIds.length < 2) {
+    return null;
+  }
+
+  const uniqueStartIds = Array.from(new Set(startNodeIds));
+  if (uniqueStartIds.length < 2) {
+    return null;
+  }
+
+  const adjacency = buildExecutionAdjacency(context);
+  const distances = uniqueStartIds.map((startId) =>
+    collectExecutionDistances(startId, adjacency, excludedNodeIds)
+  );
+  if (distances.length < 2) {
+    return null;
+  }
+
+  const [firstMap, ...restMaps] = distances;
+  const candidates: string[] = [];
+  for (const candidateId of firstMap.keys()) {
+    if (excludedNodeIds.has(candidateId)) {
+      continue;
+    }
+    if (restMaps.every((distanceMap) => distanceMap.has(candidateId))) {
+      candidates.push(candidateId);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  let bestCandidate: string | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestSum = Number.POSITIVE_INFINITY;
+
+  for (const candidateId of candidates) {
+    const distancesForCandidate = distances.map((map) => map.get(candidateId) ?? Number.POSITIVE_INFINITY);
+    const maxDistance = Math.max(...distancesForCandidate);
+    const sumDistance = distancesForCandidate.reduce((sum, value) => sum + value, 0);
+
+    if (
+      maxDistance < bestScore ||
+      (maxDistance === bestScore && sumDistance < bestSum)
+    ) {
+      bestCandidate = candidateId;
+      bestScore = maxDistance;
+      bestSum = sumDistance;
+    }
+  }
+
+  return bestCandidate;
+};
+
+const extractSwitchCaseValueFromPortId = (portId: string): number | null => {
+  const match = portId.match(/case-(\d+)(?:$|[-_])/i);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const resolveSwitchCaseValue = (port: BlueprintNode['outputs'][number]): number => {
+  if (typeof port.defaultValue === 'number' && Number.isFinite(port.defaultValue)) {
+    return Math.max(0, Math.trunc(port.defaultValue));
+  }
+  return extractSwitchCaseValueFromPortId(port.id) ?? 0;
+};
+
+const isSwitchCasePort = (port: BlueprintNode['outputs'][number]): boolean =>
+  port.direction === 'output' &&
+  port.dataType === 'execution' &&
+  extractSwitchCaseValueFromPortId(port.id) !== null;
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+
+const resolveSwitchInitExpression = (node: BlueprintNode): string | null => {
+  const properties = asRecord(node.properties);
+  if (!properties || properties.switchInitEnabled !== true) {
+    return null;
+  }
+
+  const rawInit = properties.switchInit;
+  if (typeof rawInit !== 'string') {
+    return null;
+  }
+
+  const trimmed = rawInit.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sanitized = trimmed.endsWith(';')
+    ? trimmed.slice(0, -1).trimEnd()
+    : trimmed;
+  return sanitized.length > 0 ? sanitized : null;
+};
+
+const extractDeclaredIdentifierFromSwitchInit = (switchInitExpr: string): string | null => {
+  const trimmed = switchInitExpr.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const delimiterCandidates = [trimmed.indexOf('='), trimmed.indexOf('{'), trimmed.indexOf(',')]
+    .filter((index) => index >= 0);
+  const delimiterIndex = delimiterCandidates.length > 0
+    ? Math.min(...delimiterCandidates)
+    : trimmed.length;
+  const declarationPrefix = trimmed.slice(0, delimiterIndex).trim();
+  if (!declarationPrefix) {
+    return null;
+  }
+  // init-выражения вида `foo()`/`obj.method()` не считаем декларацией переменной.
+  if (declarationPrefix.includes('(') || declarationPrefix.includes('.') || declarationPrefix.includes('->')) {
+    return null;
+  }
+
+  const tokens = declarationPrefix.match(/[A-Za-z_]\w*/g);
+  if (!tokens || tokens.length < 2) {
+    return null;
+  }
+
+  const declaredIdentifier = tokens[tokens.length - 1];
+  const normalizedPrefix = declarationPrefix.replace(/\s*[*&]+\s*/g, ' ').trim();
+  if (!normalizedPrefix.endsWith(declaredIdentifier)) {
+    return null;
+  }
+
+  return declaredIdentifier;
+};
+
+const escapeRegexLiteral = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const containsIdentifier = (source: string, identifier: string): boolean => {
+  if (!source || !identifier) {
+    return false;
+  }
+  const identifierRegex = new RegExp(`\\b${escapeRegexLiteral(identifier)}\\b`);
+  return identifierRegex.test(source);
+};
+
+const matchPortId = (left: string, right: string): boolean => {
+  if (left === right) {
+    return true;
+  }
+
+  const normalizedLeft = left.toLowerCase();
+  const normalizedRight = right.toLowerCase();
+
+  return (
+    normalizedLeft.endsWith(`-${normalizedRight}`) ||
+    normalizedRight.endsWith(`-${normalizedLeft}`) ||
+    normalizedLeft.endsWith(`_${normalizedRight}`) ||
+    normalizedRight.endsWith(`_${normalizedLeft}`)
+  );
+};
+
+const resolveSwitchSelectionInputPort = (node: BlueprintNode): NodePort | null => {
+  const dataInputs = node.inputs.filter(
+    (port) => port.direction === 'input' && port.dataType !== 'execution'
+  );
+  if (dataInputs.length === 0) {
+    return null;
+  }
+
+  // Поддержка legacy-имен портов.
+  const preferredIds = ['selection', 'value', 'condition'];
+  for (const preferredId of preferredIds) {
+    const candidate = dataInputs.find((port) => matchPortId(port.id, preferredId));
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return dataInputs[0] ?? null;
+};
+
+const hasIncomingEdgeToPort = (
+  node: BlueprintNode,
+  context: CodeGenContext,
+  portId: string
+): boolean =>
+  context.graph.edges.some(
+    (edge) => edge.targetNode === node.id && matchPortId(edge.targetPort, portId)
+  );
+
+const resolveSwitchSelectionExpression = (
+  node: BlueprintNode,
+  helpers: GeneratorHelpers
+): string => {
+  const legacyCandidates = ['selection', 'value', 'condition'];
+  const dynamicDataInputIds = node.inputs
+    .filter((port) => port.direction === 'input' && port.dataType !== 'execution')
+    .map((port) => port.id);
+  const candidates = Array.from(new Set([...legacyCandidates, ...dynamicDataInputIds]));
+
+  for (const candidate of candidates) {
+    const expression = helpers.getInputExpression(node, candidate);
+    if (expression !== null) {
+      return expression;
+    }
+  }
+
+  return '0';
+};
 
 /**
  * Start — точка входа в граф
@@ -33,7 +305,7 @@ export class EndNodeGenerator extends BaseNodeGenerator {
   
   generate(
     node: BlueprintNode,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
     const ind = helpers.indent();
@@ -58,11 +330,33 @@ export class BranchNodeGenerator extends BaseNodeGenerator {
   
   generate(
     node: BlueprintNode,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
     const ind = helpers.indent();
     const lines: string[] = [];
+    const trueNode = helpers.getExecutionTarget(node, 'true');
+    const falseNode = helpers.getExecutionTarget(node, 'false');
+
+    const mergeNodeId = trueNode && falseNode
+      ? findExecutionMergeNodeId(
+          context,
+          [trueNode.id, falseNode.id],
+          new Set<string>([node.id])
+        )
+      : null;
+    const mergeNode = mergeNodeId
+      ? context.graph.nodes.find((candidate) => candidate.id === mergeNodeId) ?? null
+      : null;
+
+    const shouldMaskMergeNode =
+      mergeNodeId !== null &&
+      mergeNode !== null &&
+      !context.processedNodes.has(mergeNodeId);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.add(mergeNodeId);
+    }
     
     // Получить условие
     const conditionExpr = helpers.getInputExpression(node, 'condition') ?? 'true';
@@ -71,18 +365,19 @@ export class BranchNodeGenerator extends BaseNodeGenerator {
     
     // True ветка
     helpers.pushIndent();
-    const trueNode = helpers.getExecutionTarget(node, 'true');
     if (trueNode) {
       const trueLines = helpers.generateFromNode(trueNode);
       lines.push(...trueLines);
     } else {
-      lines.push(helpers.indent() + '// Пустая ветка');
+      const emptyBranchComment = context.graph.displayLanguage === 'en'
+        ? 'Empty branch'
+        : 'Пустая ветка';
+      lines.push(`${helpers.indent()}// ${emptyBranchComment}`);
       helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "True" пуста');
     }
     helpers.popIndent();
     
     // False ветка
-    const falseNode = helpers.getExecutionTarget(node, 'false');
     if (falseNode) {
       lines.push(`${ind}} else {`);
       helpers.pushIndent();
@@ -92,6 +387,15 @@ export class BranchNodeGenerator extends BaseNodeGenerator {
     }
     
     lines.push(`${ind}}`);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.delete(mergeNodeId);
+    }
+
+    if (mergeNode) {
+      const mergeLines = helpers.generateFromNode(mergeNode);
+      lines.push(...mergeLines);
+    }
     
     return this.customExecution(lines);
   }
@@ -357,53 +661,195 @@ export class SwitchNodeGenerator extends BaseNodeGenerator {
   
   generate(
     node: BlueprintNode,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
     const ind = helpers.indent();
     const lines: string[] = [];
     
-    const selectionExpr = helpers.getInputExpression(node, 'selection') ?? '0';
+    const switchInitExpr = resolveSwitchInitExpression(node);
+    const switchInitIdentifier = switchInitExpr
+      ? extractDeclaredIdentifierFromSwitchInit(switchInitExpr)
+      : null;
+    let selectionExpr = resolveSwitchSelectionExpression(node, helpers);
+
+    // Если включён `switch(init; expr)` и пользователь не подключил вход выбора,
+    // по умолчанию переключаемся по объявленной переменной из init (например `k`),
+    // иначе получаем "switch (int k{2}; 0)" из defaultValue.
+    if (switchInitExpr && switchInitIdentifier) {
+      const selectionPort = resolveSwitchSelectionInputPort(node);
+      const hasExplicitSelectionValue = selectionPort?.value !== undefined;
+      const hasSelectionEdge = selectionPort
+        ? hasIncomingEdgeToPort(node, context, selectionPort.id)
+        : false;
+
+      if (!hasExplicitSelectionValue && !hasSelectionEdge) {
+        selectionExpr = switchInitIdentifier;
+      }
+    }
+
+    const switchInitUsedInSelection = switchInitIdentifier
+      ? containsIdentifier(selectionExpr, switchInitIdentifier)
+      : false;
+    let switchInitUsedInBranches = false;
     
-    lines.push(`${ind}switch (${selectionExpr}) {`);
+    lines.push(`${ind}switch (${switchInitExpr ? `${switchInitExpr}; ${selectionExpr}` : selectionExpr}) {`);
     
-    // Найти все case-N выходы
-    const casePorts = node.outputs.filter(p => p.id.includes('case-'));
-    casePorts.sort((a, b) => {
-      const aNum = parseInt(a.id.split('-').pop() ?? '0');
-      const bNum = parseInt(b.id.split('-').pop() ?? '0');
-      return aNum - bNum;
-    });
+    // Найти case-выходы и их значения (из port.defaultValue или суффикса id)
+    const casePorts = node.outputs
+      .filter((port) => isSwitchCasePort(port))
+      .map((port) => ({
+        port,
+        caseValue: resolveSwitchCaseValue(port),
+      }))
+      .sort((a, b) => {
+        if (a.caseValue !== b.caseValue) {
+          return a.caseValue - b.caseValue;
+        }
+        return a.port.id.localeCompare(b.port.id);
+      });
+
+    const uniqueCaseEntries: Array<{ portId: string; caseValue: number; targetNode: BlueprintNode | null }> = [];
+    const usedCaseValues = new Set<number>();
+    for (const { port, caseValue } of casePorts) {
+      if (usedCaseValues.has(caseValue)) {
+        helpers.addWarning(
+          node.id,
+          CodeGenWarningCode.EMPTY_BRANCH,
+          `Дублирующийся case ${caseValue} в Switch "${node.label}". Ветка пропущена.`
+        );
+        continue;
+      }
+
+      usedCaseValues.add(caseValue);
+      uniqueCaseEntries.push({
+        portId: port.id,
+        caseValue,
+        targetNode: helpers.getExecutionTarget(node, port.id),
+      });
+    }
+
+    const groupedCaseMap = new Map<
+      string,
+      { targetNode: BlueprintNode | null; caseValues: number[]; firstCaseValue: number }
+    >();
+    for (const entry of uniqueCaseEntries) {
+      const key = entry.targetNode ? `target:${entry.targetNode.id}` : `port:${entry.portId}`;
+      const existing = groupedCaseMap.get(key);
+      if (!existing) {
+        groupedCaseMap.set(key, {
+          targetNode: entry.targetNode,
+          caseValues: [entry.caseValue],
+          firstCaseValue: entry.caseValue,
+        });
+        continue;
+      }
+
+      existing.caseValues.push(entry.caseValue);
+      if (entry.caseValue < existing.firstCaseValue) {
+        existing.firstCaseValue = entry.caseValue;
+      }
+    }
+    const groupedCases = Array.from(groupedCaseMap.values()).sort(
+      (a, b) => a.firstCaseValue - b.firstCaseValue
+    );
+
+    const caseTargets = groupedCases
+      .map((group) => group.targetNode)
+      .filter((target): target is BlueprintNode => Boolean(target));
+    const defaultNode = helpers.getExecutionTarget(node, 'default');
+    const branchTargetById = new Map<string, BlueprintNode>();
+    for (const target of caseTargets) {
+      branchTargetById.set(target.id, target);
+    }
+    if (defaultNode) {
+      branchTargetById.set(defaultNode.id, defaultNode);
+    }
+    const branchTargets = Array.from(branchTargetById.values());
+    const mergeNodeId = branchTargets.length > 1
+      ? findExecutionMergeNodeId(
+          context,
+          branchTargets.map((target) => target.id),
+          new Set<string>([node.id])
+        )
+      : null;
+    const mergeNode = mergeNodeId
+      ? context.graph.nodes.find((candidate) => candidate.id === mergeNodeId) ?? null
+      : null;
+    const shouldMaskMergeNode =
+      mergeNodeId !== null &&
+      mergeNode !== null &&
+      !context.processedNodes.has(mergeNodeId);
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.add(mergeNodeId);
+    }
     
-    for (const port of casePorts) {
-      const caseNum = port.id.split('-').pop() ?? '0';
-      const portSuffix = `case-${caseNum}`;
-      const targetNode = helpers.getExecutionTarget(node, portSuffix);
-      
-      lines.push(`${ind}case ${caseNum}:`);
+    for (const groupedCase of groupedCases) {
+      for (const caseValue of groupedCase.caseValues.sort((a, b) => a - b)) {
+        lines.push(`${ind}case ${caseValue}:`);
+      }
+
       helpers.pushIndent();
-      
-      if (targetNode) {
-        const targetLines = helpers.generateFromNode(targetNode);
+      lines.push(`${helpers.indent()}{`);
+      helpers.pushIndent();
+
+      if (groupedCase.targetNode) {
+        const targetLines = helpers.generateFromNode(groupedCase.targetNode);
+        if (switchInitIdentifier && !switchInitUsedInBranches) {
+          switchInitUsedInBranches = targetLines.some((line) =>
+            containsIdentifier(line, switchInitIdentifier)
+          );
+        }
         lines.push(...targetLines);
       }
       lines.push(`${helpers.indent()}break;`);
-      
+
+      helpers.popIndent();
+      lines.push(`${helpers.indent()}}`);
       helpers.popIndent();
     }
     
     // Default ветка
-    const defaultNode = helpers.getExecutionTarget(node, 'default');
     lines.push(`${ind}default:`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}{`);
     helpers.pushIndent();
     if (defaultNode) {
       const defaultLines = helpers.generateFromNode(defaultNode);
+      if (switchInitIdentifier && !switchInitUsedInBranches) {
+        switchInitUsedInBranches = defaultLines.some((line) =>
+          containsIdentifier(line, switchInitIdentifier)
+        );
+      }
       lines.push(...defaultLines);
     }
     lines.push(`${helpers.indent()}break;`);
     helpers.popIndent();
+    lines.push(`${helpers.indent()}}`);
+    helpers.popIndent();
     
     lines.push(`${ind}}`);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.delete(mergeNodeId);
+    }
+
+    if (mergeNode) {
+      const mergeLines = helpers.generateFromNode(mergeNode);
+      lines.push(...mergeLines);
+    }
+
+    if (
+      switchInitIdentifier &&
+      !switchInitUsedInSelection &&
+      !switchInitUsedInBranches
+    ) {
+      helpers.addWarning(
+        node.id,
+        CodeGenWarningCode.UNUSED_SWITCH_INIT,
+        `Переменная "${switchInitIdentifier}" из switch(init; expr) не используется.`
+      );
+    }
     
     return this.customExecution(lines);
   }

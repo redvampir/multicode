@@ -3,7 +3,7 @@
   "name": "multicode-visual-programming",
   "displayName": "МультиКод - Visual Programming",
   "description": "Визуальное программирование для C++ — Blueprint-редактор с генерацией кода и поддержкой русского языка",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "multicode-team",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -95,19 +95,64 @@
         {
           "command": "multicode.openEditor",
           "when": "editorLangId == cpp || editorLangId == rust",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "multicode.newGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation@2"
+        },
+        {
+          "command": "multicode.loadGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation@3"
+        },
+        {
+          "command": "multicode.saveGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation@4"
+        },
+        {
+          "command": "multicode.generateCode",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation@5"
+        },
+        {
+          "command": "multicode.translateGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "navigation@6"
         }
       ],
       "editor/context": [
         {
           "command": "multicode.openEditor",
           "when": "editorLangId == cpp || editorLangId == rust",
-          "group": "multicode"
+          "group": "multicode@1"
+        },
+        {
+          "command": "multicode.newGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode@2"
+        },
+        {
+          "command": "multicode.loadGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode@3"
+        },
+        {
+          "command": "multicode.saveGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode@4"
         },
         {
           "command": "multicode.generateCode",
           "when": "editorLangId == cpp || editorLangId == rust",
-          "group": "multicode"
+          "group": "multicode@5"
+        },
+        {
+          "command": "multicode.translateGraph",
+          "when": "editorLangId == cpp || editorLangId == rust",
+          "group": "multicode@6"
         }
       ]
     },
@@ -153,6 +198,97 @@
           "default": false,
           "description": "Automatically generate code on graph change"
         },
+        "multicode.codegen.verboseLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show detailed [CodeGen] diagnostics in Output channel"
+        },
+        "multicode.codegen.outputProfile": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "learn",
+            "debug",
+            "recovery"
+          ],
+          "default": "clean",
+          "description": "Generated C++ output profile: clean (minimal), learn (readable comments), debug (node markers), recovery (debug + embedded snapshot)"
+        },
+        "multicode.cpp.standard": {
+          "type": "string",
+          "enum": [
+            "cpp14",
+            "cpp17",
+            "cpp20",
+            "cpp23"
+          ],
+          "default": "cpp23",
+          "description": "C++ standard for Compile & Run (Run is always strict C++23)"
+        },
+        "multicode.cpp.toolchain.mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "system",
+            "managed"
+          ],
+          "default": "auto",
+          "description": "Toolchain selection mode for Compile & Run"
+        },
+        "multicode.cpp.toolchain.autoInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically install a managed toolchain if no suitable system C++23 compiler is found"
+        },
+        "multicode.cpp.toolchain.installLocation": {
+          "type": "string",
+          "enum": [
+            "global",
+            "workspace"
+          ],
+          "default": "global",
+          "description": "Where to install the managed toolchain"
+        },
+        "multicode.cpp.toolchain.downloadConsent": {
+          "type": "string",
+          "enum": [
+            "once",
+            "always",
+            "never"
+          ],
+          "default": "once",
+          "description": "Ask for permission to download toolchain binaries"
+        },
+        "multicode.cpp.toolchain.managedVersionChannel": {
+          "type": "string",
+          "enum": [
+            "pinned"
+          ],
+          "default": "pinned",
+          "description": "Managed toolchain version channel"
+        },
+        "multicode.graphBinding.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Связывать исходники с .multicode-файлами через комментарий @multicode:graph"
+        },
+        "multicode.graphBinding.autoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Автосохранять привязанный .multicode при изменениях графа"
+        },
+        "multicode.graphBinding.folder": {
+          "type": "string",
+          "default": ".multicode",
+          "description": "Папка для .multicode (относительно корня workspace). Можно указать абсолютный путь."
+        },
+        "multicode.graphBinding.maxLines": {
+          "type": "number",
+          "default": 10,
+          "minimum": 4,
+          "maximum": 200,
+          "description": "Сколько первых строк исходника сканировать в поиске @multicode:graph"
+        },
         "multicode.translation.engine": {
           "type": "string",
           "enum": [
@@ -191,7 +327,8 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts,tsx",
     "test": "node ./out/test/runTest.js",
-    "test:unit": "vitest",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "format": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "devDependencies": {

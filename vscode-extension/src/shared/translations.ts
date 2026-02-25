@@ -20,6 +20,12 @@ export type TranslationKey =
   | 'toolbar.validateGraph'
   | 'toolbar.calculateLayout'
   | 'toolbar.generateGraph'
+  | 'toolbar.pointersPanel'
+  | 'toolbar.codegenProfile'
+  | 'toolbar.codegenProfile.clean'
+  | 'toolbar.codegenProfile.learn'
+  | 'toolbar.codegenProfile.debug'
+  | 'toolbar.codegenProfile.recovery'
   | 'overview.title'
   | 'overview.nodes'
   | 'overview.edges'
@@ -60,11 +66,13 @@ export type TranslationKey =
   | 'toasts.saved'
   | 'toasts.loaded'
   | 'toasts.generated'
+  | 'toasts.generatedToFile'
   | 'toasts.validationOk'
   | 'toasts.graphReset'
   | 'toasts.nodeAdded'
   | 'toasts.connectionCreated'
   | 'toasts.nodesDeleted'
+  | 'toasts.codegenProfileChanged'
   | 'toast.close'
   | 'toast.generation.success'
   | 'toast.generation.error'
@@ -93,6 +101,9 @@ export type TranslationKey =
   | 'errors.connectionMissing'
   | 'errors.graphSave'
   | 'errors.graphLoad'
+  | 'errors.codeWriteTargetMissing'
+  | 'errors.codeWriteFailed'
+  | 'errors.codegenProfileUpdateFailed'
   | 'palette.title'
   | 'palette.hint'
   | 'palette.close'
@@ -120,7 +131,22 @@ export type TranslationKey =
   | 'tooltip.validateGraph'
   | 'tooltip.generateCode'
   | 'tooltip.calculateLayout'
-  | 'tooltip.copyId';
+  | 'tooltip.copyId'
+  | 'panel.pointers.title'
+  | 'panel.pointers.weakTargetLabel'
+  | 'panel.pointers.weakAutoUpgrade'
+  | 'toolbar.noFile'
+  | 'warnings.graphBindingDuplicateId'
+  | 'warnings.graphBindingIdMismatch'
+  | 'warnings.graphBindingBrokenFileRecovered'
+  | 'warnings.graphBindingRecoveredFromCode'
+  | 'toolchain.downloadPrompt'
+  | 'toolchain.downloading'
+  | 'toolchain.extracting'
+  | 'toolchain.installOk'
+  | 'toolchain.installCancelled'
+  | 'toolchain.installFailed'
+  | 'toolchain.macosCltRequired';
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -139,12 +165,19 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.copyId': 'ID графа в буфер',
     'toolbar.copyId.ok': 'ID графа скопирован',
     'toolbar.copyId.fallback': 'Не удалось записать в буфер',
+    'toolbar.noFile': 'файл не привязан',
     'toolbar.newGraph': 'Новый граф',
     'toolbar.loadGraph': 'Загрузить',
     'toolbar.saveGraph': 'Сохранить',
     'toolbar.validateGraph': 'Проверить',
     'toolbar.calculateLayout': 'Пересчитать',
     'toolbar.generateGraph': 'Генерировать код',
+    'toolbar.pointersPanel': 'Указатели',
+    'toolbar.codegenProfile': 'Профиль кода',
+    'toolbar.codegenProfile.clean': 'Чистый',
+    'toolbar.codegenProfile.learn': 'Учебный',
+    'toolbar.codegenProfile.debug': 'Отладка',
+    'toolbar.codegenProfile.recovery': 'Восстановление',
     'overview.title': 'Сводка графа',
     'overview.nodes': 'Узлы',
     'overview.edges': 'Связи',
@@ -185,11 +218,13 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.saved': 'Граф сохранён',
     'toasts.loaded': 'Граф загружен',
     'toasts.generated': 'Код сгенерирован',
+    'toasts.generatedToFile': 'Код сгенерирован и записан в {file}',
     'toasts.validationOk': 'Ошибок не найдено',
     'toasts.graphReset': 'Граф сброшен',
     'toasts.nodeAdded': 'Узел "{name}" добавлен',
     'toasts.connectionCreated': 'Связь создана',
     'toasts.nodesDeleted': '{count} узлов удалено',
+    'toasts.codegenProfileChanged': 'Профиль генерации: {profile}',
     'toast.close': 'Закрыть уведомление',
     'toast.generation.success': 'Код успешно сгенерирован',
     'toast.generation.error': 'Ошибка генерации кода',
@@ -218,6 +253,9 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.connectionMissing': 'Укажите оба узла для связи',
     'errors.graphSave': 'Не удалось сохранить граф',
     'errors.graphLoad': 'Не удалось загрузить граф',
+    'errors.codeWriteTargetMissing': 'Нет привязанного файла для записи кода',
+    'errors.codeWriteFailed': 'Не удалось записать код в файл: {reason}',
+    'errors.codegenProfileUpdateFailed': 'Не удалось изменить профиль генерации',
     'palette.title': 'Быстрое добавление',
     'palette.hint': '(A / двойной клик)',
     'palette.close': 'Закрыть',
@@ -245,7 +283,28 @@ const translations: Record<Locale, TranslationMap> = {
     'tooltip.validateGraph': 'Проверить граф на ошибки',
     'tooltip.generateCode': 'Сгенерировать код из графа',
     'tooltip.calculateLayout': 'Пересчитать расположение узлов (без пересчёта значений)',
-    'tooltip.copyId': 'Скопировать ID графа в буфер обмена'
+    'tooltip.copyId': 'Скопировать ID графа в буфер обмена',
+    'panel.pointers.title': 'Указатели и ссылки',
+    'panel.pointers.weakTargetLabel': 'Цель (умный указатель)',
+    'panel.pointers.weakAutoUpgrade':
+      'weak_ptr требует shared_ptr. При сохранении указатель "{name}" будет автоматически переведён в shared.',
+    'warnings.graphBindingDuplicateId': 'Обнаружен дубликат ID графа "{id}" в файлах: {files}',
+    'warnings.graphBindingIdMismatch':
+      'Несоответствие графа: в коде id={codeId}, в файле ({file}) id={fileId}. Используется id из кода.',
+    'warnings.graphBindingBrokenFileRecovered':
+      'Файл графа повреждён. Создан новый граф. Резервная копия: {file}',
+    'warnings.graphBindingRecoveredFromCode':
+      'Файл графа не найден. Схема восстановлена из маркеров в коде ({file}) и сохранена в .multicode.',
+
+    'toolchain.downloadPrompt':
+      'MultiCode нужно скачать и установить C++23 компилятор{sizeHint}, чтобы выполнить программу. Скачать сейчас?',
+    'toolchain.downloading': 'Скачивание компилятора...',
+    'toolchain.extracting': 'Распаковка компилятора...',
+    'toolchain.installOk': 'Компилятор установлен.',
+    'toolchain.installCancelled': 'Установка компилятора отменена.',
+    'toolchain.installFailed': 'Не удалось установить компилятор: {reason}',
+    'toolchain.macosCltRequired':
+      'Для компиляции на macOS нужны Xcode Command Line Tools. Сейчас откроется системная установка. После установки попробуйте запустить ещё раз.',
   },
   en: {
     'app.title': 'MultiCode · Visual Graph',
@@ -261,12 +320,19 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.copyId': 'Copy graph ID',
     'toolbar.copyId.ok': 'Graph ID copied',
     'toolbar.copyId.fallback': 'Failed to copy to clipboard',
+    'toolbar.noFile': 'no file bound',
     'toolbar.newGraph': 'New graph',
     'toolbar.loadGraph': 'Load',
     'toolbar.saveGraph': 'Save',
     'toolbar.validateGraph': 'Validate',
     'toolbar.calculateLayout': 'Recalculate',
     'toolbar.generateGraph': 'Generate code',
+    'toolbar.pointersPanel': 'Pointers',
+    'toolbar.codegenProfile': 'Code profile',
+    'toolbar.codegenProfile.clean': 'Clean',
+    'toolbar.codegenProfile.learn': 'Learn',
+    'toolbar.codegenProfile.debug': 'Debug',
+    'toolbar.codegenProfile.recovery': 'Recovery',
     'overview.title': 'Graph overview',
     'overview.nodes': 'Nodes',
     'overview.edges': 'Edges',
@@ -307,11 +373,13 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.saved': 'Graph saved',
     'toasts.loaded': 'Graph loaded',
     'toasts.generated': 'Code generated',
+    'toasts.generatedToFile': 'Code generated and written to {file}',
     'toasts.validationOk': 'No validation errors',
     'toasts.graphReset': 'Graph reset',
     'toasts.nodeAdded': 'Node "{name}" added',
     'toasts.connectionCreated': 'Connection created',
     'toasts.nodesDeleted': '{count} nodes removed',
+    'toasts.codegenProfileChanged': 'Code generation profile: {profile}',
     'toast.close': 'Close notification',
     'toast.generation.success': 'Code generated successfully',
     'toast.generation.error': 'Code generation error',
@@ -340,6 +408,9 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.connectionMissing': 'Select existing nodes',
     'errors.graphSave': 'Failed to save graph',
     'errors.graphLoad': 'Failed to load graph',
+    'errors.codeWriteTargetMissing': 'No bound file to write generated code',
+    'errors.codeWriteFailed': 'Failed to write code to file: {reason}',
+    'errors.codegenProfileUpdateFailed': 'Failed to update code generation profile',
     'palette.title': 'Quick Add',
     'palette.hint': '(A / double-click)',
     'palette.close': 'Close',
@@ -367,7 +438,28 @@ const translations: Record<Locale, TranslationMap> = {
     'tooltip.validateGraph': 'Validate graph',
     'tooltip.generateCode': 'Generate code from graph',
     'tooltip.calculateLayout': 'Recalculate node layout (does not recalculate values)',
-    'tooltip.copyId': 'Copy graph ID to clipboard'
+    'tooltip.copyId': 'Copy graph ID to clipboard',
+    'panel.pointers.title': 'Pointers & References',
+    'panel.pointers.weakTargetLabel': 'Target (smart pointer)',
+    'panel.pointers.weakAutoUpgrade':
+      'weak_ptr requires shared_ptr. On save, pointer "{name}" will be automatically upgraded to shared.',
+    'warnings.graphBindingDuplicateId': 'Duplicate graph ID "{id}" detected in files: {files}',
+    'warnings.graphBindingIdMismatch':
+      'Graph mismatch: source id={codeId}, file ({file}) id={fileId}. Using source id.',
+    'warnings.graphBindingBrokenFileRecovered':
+      'Graph file is corrupted. A new graph was created. Backup: {file}',
+    'warnings.graphBindingRecoveredFromCode':
+      'Graph file is missing. The graph was restored from code markers ({file}) and saved to .multicode.',
+
+    'toolchain.downloadPrompt':
+      'MultiCode needs to download and install a C++23 compiler{sizeHint} to run your program. Download now?',
+    'toolchain.downloading': 'Downloading toolchain...',
+    'toolchain.extracting': 'Extracting toolchain...',
+    'toolchain.installOk': 'Toolchain installed.',
+    'toolchain.installCancelled': 'Toolchain installation cancelled.',
+    'toolchain.installFailed': 'Failed to install toolchain: {reason}',
+    'toolchain.macosCltRequired':
+      'Xcode Command Line Tools are required on macOS. The system installer will open now. After installation, try running again.',
   }
 };
 

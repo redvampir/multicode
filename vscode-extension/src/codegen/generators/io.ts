@@ -57,7 +57,8 @@ export class InputNodeGenerator extends BaseNodeGenerator {
     }
     
     lines.push(`${ind}std::string ${varName};`);
-    lines.push(`${ind}std::cin >> ${varName};`);
+    // getline с std::ws корректно работает после предыдущих formatted-input операций.
+    lines.push(`${ind}std::getline(std::cin >> std::ws, ${varName});`);
     
     // Сохранить как переменную для использования
     helpers.declareVariable(`${node.id}-value`, varName, 'Input Value', 'std::string', node.id);

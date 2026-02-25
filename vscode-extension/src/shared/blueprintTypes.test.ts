@@ -14,6 +14,7 @@ import {
   getActiveGraph,
   setActiveGraph,
   createNode,
+  createNodeFromDefinition,
   createEdge,
   createDefaultBlueprintState,
   migrateToBlueprintFormat,
@@ -587,6 +588,19 @@ describe('blueprintTypes - Node Creation', () => {
         expect(output.id).toContain('print-1');
       });
     });
+
+    it('should create node from explicit definition and preserve localized port labels', () => {
+      const definition = NODE_TYPE_DEFINITIONS.Print;
+      const node = createNodeFromDefinition(definition, { x: 24, y: 48 }, 'node-print-localized');
+
+      expect(node.type).toBe('Print');
+      expect(node.label).toBe('');
+      expect(node.position).toEqual({ x: 24, y: 48 });
+      const stringInput = node.inputs.find((input) => input.id.endsWith('string'));
+      expect(stringInput).toBeDefined();
+      expect(stringInput?.name).toBe('Value');
+      expect(stringInput?.nameRu).toBe('Значение');
+    });
   });
 
   describe('createEdge', () => {
@@ -960,6 +974,156 @@ describe('blueprintTypes - Migration', () => {
     expect(migrated.edges).toHaveLength(1);
     expect(migrated.edges[0].id).toBe('dup-1');
   });
+
+  it('should auto-insert TypeConversion node for legacy incompatible data edge', () => {
+    const oldState: GraphState = {
+      id: 'legacy-conversion-edge',
+      name: 'Legacy Conversion',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        {
+          id: 'get-value',
+          label: 'Get',
+          type: 'Variable',
+          position: { x: 0, y: 120 },
+          blueprintNode: {
+            id: 'get-value',
+            label: 'Get',
+            type: 'GetVariable',
+            position: { x: 0, y: 120 },
+            inputs: [],
+            outputs: [{ id: 'value-out', name: 'Value', dataType: 'int32', direction: 'output', index: 0 }],
+            properties: { variableId: 'var-a', dataType: 'int32' },
+          },
+        },
+        {
+          id: 'set-value',
+          label: 'Set',
+          type: 'Variable',
+          position: { x: 420, y: 120 },
+          blueprintNode: {
+            id: 'set-value',
+            label: 'Set',
+            type: 'SetVariable',
+            position: { x: 420, y: 120 },
+            inputs: [
+              { id: 'exec-in', name: '', dataType: 'execution', direction: 'input', index: 0 },
+              { id: 'value-in', name: 'Value', dataType: 'string', direction: 'input', index: 1 },
+            ],
+            outputs: [
+              { id: 'exec-out', name: '', dataType: 'execution', direction: 'output', index: 0 },
+              { id: 'value-out', name: 'Value', dataType: 'string', direction: 'output', index: 1 },
+            ],
+            properties: { variableId: 'var-b', dataType: 'string' },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'legacy-data-edge',
+          source: 'get-value',
+          target: 'set-value',
+          kind: 'data',
+          blueprintEdge: {
+            id: 'legacy-data-edge',
+            sourceNode: 'get-value',
+            sourcePort: 'value-out',
+            targetNode: 'set-value',
+            targetPort: 'value-in',
+            kind: 'data',
+            dataType: 'int32',
+          },
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+
+    const conversionNodes = migrated.nodes.filter((node) => node.type === 'TypeConversion');
+    expect(conversionNodes).toHaveLength(1);
+    expect(conversionNodes[0].properties).toMatchObject({
+      conversionId: 'int32_to_string',
+      fromType: 'int32',
+      toType: 'string',
+      autoInserted: true,
+    });
+    expect(migrated.edges.filter((edge) => edge.kind === 'data')).toHaveLength(2);
+    expect(migrated.dirty).toBe(true);
+  });
+
+  it('should keep conversion migration idempotent on repeated load', () => {
+    const oldState: GraphState = {
+      id: 'legacy-idempotent',
+      name: 'Legacy Idempotent',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        {
+          id: 'get-value',
+          label: 'Get',
+          type: 'Variable',
+          position: { x: 0, y: 120 },
+          blueprintNode: {
+            id: 'get-value',
+            label: 'Get',
+            type: 'GetVariable',
+            position: { x: 0, y: 120 },
+            inputs: [],
+            outputs: [{ id: 'value-out', name: 'Value', dataType: 'int32', direction: 'output', index: 0 }],
+            properties: { variableId: 'var-a', dataType: 'int32' },
+          },
+        },
+        {
+          id: 'set-value',
+          label: 'Set',
+          type: 'Variable',
+          position: { x: 420, y: 120 },
+          blueprintNode: {
+            id: 'set-value',
+            label: 'Set',
+            type: 'SetVariable',
+            position: { x: 420, y: 120 },
+            inputs: [
+              { id: 'exec-in', name: '', dataType: 'execution', direction: 'input', index: 0 },
+              { id: 'value-in', name: 'Value', dataType: 'string', direction: 'input', index: 1 },
+            ],
+            outputs: [
+              { id: 'exec-out', name: '', dataType: 'execution', direction: 'output', index: 0 },
+              { id: 'value-out', name: 'Value', dataType: 'string', direction: 'output', index: 1 },
+            ],
+            properties: { variableId: 'var-b', dataType: 'string' },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'legacy-data-edge',
+          source: 'get-value',
+          target: 'set-value',
+          kind: 'data',
+          blueprintEdge: {
+            id: 'legacy-data-edge',
+            sourceNode: 'get-value',
+            sourcePort: 'value-out',
+            targetNode: 'set-value',
+            targetPort: 'value-in',
+            kind: 'data',
+            dataType: 'int32',
+          },
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const firstMigration = migrateToBlueprintFormat(oldState);
+    const secondMigration = migrateToBlueprintFormat(migrateFromBlueprintFormat(firstMigration));
+
+    expect(firstMigration.nodes.filter((node) => node.type === 'TypeConversion')).toHaveLength(1);
+    expect(secondMigration.nodes.filter((node) => node.type === 'TypeConversion')).toHaveLength(1);
+    expect(secondMigration.edges.filter((edge) => edge.kind === 'data')).toHaveLength(2);
+  });
 });
 
 describe('blueprintTypes - Node Definitions', () => {
@@ -968,8 +1132,8 @@ describe('blueprintTypes - Node Definitions', () => {
       const expectedTypes = [
         'Start', 'End', 'Branch', 'ForLoop', 'WhileLoop', 'Sequence',
         'Function', 'FunctionCall', 'Event',
-        'Variable', 'GetVariable', 'SetVariable',
-        'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
+        'Variable', 'GetVariable', 'SetVariable', 'TypeConversion',
+        'ConstNumber', 'ConstString', 'ConstBool', 'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
         'Equal', 'NotEqual', 'Greater', 'Less', 'GreaterEqual', 'LessEqual',
         'And', 'Or', 'Not',
         'Print', 'Input',
@@ -994,6 +1158,22 @@ describe('blueprintTypes - Node Definitions', () => {
       Object.values(NODE_TYPE_DEFINITIONS).forEach(def => {
         expect(validCategories).toContain(def.category);
       });
+    });
+
+    it('should provide Russian port labels for calculator-critical nodes', () => {
+      const branchCondition = NODE_TYPE_DEFINITIONS.Branch.inputs.find((port) => port.id === 'condition');
+      const branchTrue = NODE_TYPE_DEFINITIONS.Branch.outputs.find((port) => port.id === 'true');
+      const branchFalse = NODE_TYPE_DEFINITIONS.Branch.outputs.find((port) => port.id === 'false');
+      const switchSelection = NODE_TYPE_DEFINITIONS.Switch.inputs.find((port) => port.id === 'selection');
+      const printValue = NODE_TYPE_DEFINITIONS.Print.inputs.find((port) => port.id === 'string');
+      const constNumberValue = NODE_TYPE_DEFINITIONS.ConstNumber.outputs.find((port) => port.id === 'result');
+
+      expect(branchCondition?.nameRu).toBe('Условие');
+      expect(branchTrue?.nameRu).toBe('Истина');
+      expect(branchFalse?.nameRu).toBe('Ложь');
+      expect(switchSelection?.nameRu).toBe('Значение');
+      expect(printValue?.nameRu).toBe('Значение');
+      expect(constNumberValue?.nameRu).toBe('Значение');
     });
   });
 

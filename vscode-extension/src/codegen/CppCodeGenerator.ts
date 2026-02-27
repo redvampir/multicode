@@ -561,6 +561,30 @@ export class CppCodeGenerator implements ICodeGenerator {
       if (bodyNeedsExceptionInclude) {
         standardIncludes.add('<exception>');
       }
+      const bodyNeedsExpectedInclude = bodyLines.some((line) =>
+        line.includes('std::expected') || line.includes('std::unexpected')
+      );
+      if (bodyNeedsExpectedInclude) {
+        standardIncludes.add('<expected>');
+      }
+      const bodyNeedsOptionalInclude = bodyLines.some((line) =>
+        line.includes('std::optional') || line.includes('std::nullopt')
+      );
+      if (bodyNeedsOptionalInclude) {
+        standardIncludes.add('<optional>');
+      }
+      const bodyNeedsVariantInclude = bodyLines.some((line) =>
+        line.includes('std::variant') || line.includes('std::visit')
+      );
+      if (bodyNeedsVariantInclude) {
+        standardIncludes.add('<variant>');
+      }
+      const bodyNeedsFormatInclude = bodyLines.some((line) =>
+        line.includes('std::format(')
+      );
+      if (bodyNeedsFormatInclude) {
+        standardIncludes.add('<format>');
+      }
       
       // Добавляем includes из шаблонных генераторов
       const templateIncludes = TemplateNodeGenerator.getCollectedIncludes();

@@ -145,6 +145,7 @@ export type TranslationKey =
   | 'warnings.graphBindingIdMismatch'
   | 'warnings.graphBindingBrokenFileRecovered'
   | 'warnings.graphBindingRecoveredFromCode'
+  | 'warnings.cpp23RequiredForModernStd'
   | 'toolchain.downloadPrompt'
   | 'toolchain.downloading'
   | 'toolchain.extracting'
@@ -305,6 +306,8 @@ const translations: Record<Locale, TranslationMap> = {
       'Файл графа повреждён. Создан новый граф. Резервная копия: {file}',
     'warnings.graphBindingRecoveredFromCode':
       'Файл графа не найден. Схема восстановлена из маркеров в коде ({file}) и сохранена в .multicode.',
+    'warnings.cpp23RequiredForModernStd':
+      'Для узлов std::expected/std::optional/std::variant/std::format требуется C++23. Выбранный {standard} будет проигнорирован.',
 
     'toolchain.downloadPrompt':
       'MultiCode нужно скачать и установить C++23 компилятор{sizeHint}, чтобы выполнить программу. Скачать сейчас?',
@@ -465,6 +468,8 @@ const translations: Record<Locale, TranslationMap> = {
       'Graph file is corrupted. A new graph was created. Backup: {file}',
     'warnings.graphBindingRecoveredFromCode':
       'Graph file is missing. The graph was restored from code markers ({file}) and saved to .multicode.',
+    'warnings.cpp23RequiredForModernStd':
+      'Nodes based on std::expected/std::optional/std::variant/std::format require C++23. Selected {standard} will be ignored.',
 
     'toolchain.downloadPrompt':
       'MultiCode needs to download and install a C++23 compiler{sizeHint} to run your program. Download now?',

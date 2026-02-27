@@ -1111,6 +1111,159 @@
       ]
     },
     {
+      "type": "MakeExpected",
+      "label": "Make Expected",
+      "labelRu": "Создать Expected",
+      "category": "array",
+      "description": "Construct std::expected from value/error pair",
+      "descriptionRu": "Создать std::expected из значения или ошибки",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" },
+        { "id": "error", "name": "Error", "nameRu": "Ошибка", "dataType": "any" },
+        { "id": "has-value", "name": "Has Value", "nameRu": "Есть значение", "dataType": "bool", "defaultValue": true }
+      ],
+      "outputs": [
+        { "id": "expected", "name": "Expected", "nameRu": "Expected", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "ExpectedHasValue",
+      "label": "Expected Has Value",
+      "labelRu": "Expected содержит значение",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "expected", "name": "Expected", "nameRu": "Expected", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Has Value", "nameRu": "Есть значение", "dataType": "bool" }
+      ]
+    },
+    {
+      "type": "ExpectedValue",
+      "label": "Expected Value",
+      "labelRu": "Значение из Expected",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "expected", "name": "Expected", "nameRu": "Expected", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "ExpectedError",
+      "label": "Expected Error",
+      "labelRu": "Ошибка из Expected",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "expected", "name": "Expected", "nameRu": "Expected", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "error", "name": "Error", "nameRu": "Ошибка", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "MakeOptional",
+      "label": "Make Optional",
+      "labelRu": "Создать Optional",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" },
+        { "id": "has-value", "name": "Has Value", "nameRu": "Есть значение", "dataType": "bool", "defaultValue": true }
+      ],
+      "outputs": [
+        { "id": "optional", "name": "Optional", "nameRu": "Optional", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "OptionalHasValue",
+      "label": "Optional Has Value",
+      "labelRu": "Optional содержит значение",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "optional", "name": "Optional", "nameRu": "Optional", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Has Value", "nameRu": "Есть значение", "dataType": "bool" }
+      ]
+    },
+    {
+      "type": "OptionalValueOr",
+      "label": "Optional Value Or",
+      "labelRu": "Значение Optional или",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "optional", "name": "Optional", "nameRu": "Optional", "dataType": "any" },
+        { "id": "fallback", "name": "Fallback", "nameRu": "Запасное значение", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "MakeVariant",
+      "label": "Make Variant",
+      "labelRu": "Создать Variant",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "variant", "name": "Variant", "nameRu": "Variant", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "HoldsAlternative",
+      "label": "Holds Alternative",
+      "labelRu": "Variant содержит тип",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "variant", "name": "Variant", "nameRu": "Variant", "dataType": "any" },
+        { "id": "index", "name": "Index", "nameRu": "Индекс типа", "dataType": "int32", "defaultValue": 0 }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+      ]
+    },
+    {
+      "type": "VisitVariant",
+      "label": "Visit Variant",
+      "labelRu": "Посетить Variant",
+      "category": "array",
+      "headerColor": "#FF9800",
+      "inputs": [
+        { "id": "variant", "name": "Variant", "nameRu": "Variant", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+      ]
+    },
+    {
+      "type": "Format",
+      "label": "Format",
+      "labelRu": "Форматировать",
+      "category": "string",
+      "description": "Format string via std::format",
+      "descriptionRu": "Форматирование строки через std::format",
+      "headerColor": "#E91E63",
+      "inputs": [
+        { "id": "format", "name": "Format", "nameRu": "Шаблон", "dataType": "string", "defaultValue": "{}" },
+        { "id": "arg-0", "name": "Arg 0", "nameRu": "Аргумент 0", "dataType": "any" }
+      ],
+      "outputs": [
+        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "string" }
+      ]
+    },
+    {
       "type": "ToInt",
       "label": "To Int",
       "labelRu": "В целое",

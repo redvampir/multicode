@@ -163,6 +163,8 @@ export interface CodeGenContext {
   variableWriteCounts?: Map<string, number>;
   /** Набор helper-функций, которые нужно сгенерировать в C++ прологе */
   requiredHelpers?: Set<TypeConversionHelperId>;
+  /** Список поддерживаемых типов узлов (для fallback-диагностики) */
+  supportedNodeTypes?: BlueprintNodeType[];
 }
 
 /** Информация о переменной */

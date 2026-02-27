@@ -92,8 +92,8 @@ export function areTypesCompatible(from: PortDataType, to: PortDataType): boolea
     return true;
   }
   
-  // Объектные типы совместимы между собой (legacy object + новые pointer/class)
-  const objectLikeTypes: PortDataType[] = ['object', 'pointer', 'class'];
+  // Объектные типы совместимы между собой
+  const objectLikeTypes: PortDataType[] = ['pointer', 'class'];
   if (objectLikeTypes.includes(from) && objectLikeTypes.includes(to)) {
     return true;
   }

@@ -71,36 +71,49 @@ function transliterate(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
-function sanitizeIdentifierPart(value: string, fallback: string): string {
-  const transliterated = transliterate(value)
-    .replace(/[^a-zA-Z0-9_]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
+/**
+ * C++ тип возврата для функции с учётом multiple return
+ */
+function getFunctionReturnType(func: BlueprintFunction): string {
+  const outputParams = func.parameters.filter((parameter) => parameter.direction === 'output');
 
-  if (transliterated.length === 0) {
-    return fallback;
+  if (outputParams.length === 0) {
+    return 'void';
   }
 
-  if (/^\d/.test(transliterated)) {
-    return `${fallback}_${transliterated}`;
+  if (outputParams.length === 1) {
+    return portTypeToCpp(outputParams[0].dataType);
   }
 
-  return transliterated;
+  return getFunctionResultTypeName(func);
 }
 
-function buildCallResultVariableName(
-  node: BlueprintNode,
-  functionName: string,
-  outputName?: string
-): string {
-  const functionToken = sanitizeIdentifierPart(functionName, 'func');
-  const outputToken = sanitizeIdentifierPart(outputName ?? 'result', 'result');
-  const nodeTokenRaw = node.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-  const nodeToken = nodeTokenRaw.slice(Math.max(0, nodeTokenRaw.length - 4));
+/**
+ * Получить имя C++ типа результата для функции с несколькими output
+ */
+function getFunctionResultTypeName(func: BlueprintFunction): string {
+  return `${transliterate(func.name)}Result`;
+}
 
-  return nodeToken.length > 0
-    ? `result_${functionToken}_${outputToken}_${nodeToken}`
-    : `result_${functionToken}_${outputToken}`;
+/**
+ * Сгенерировать объявление именованного типа результата функции
+ */
+function generateFunctionResultTypeDeclaration(func: BlueprintFunction): string | null {
+  const outputParams = func.parameters.filter((parameter) => parameter.direction === 'output');
+  if (outputParams.length <= 1) {
+    return null;
+  }
+
+  const outputTypes = outputParams.map((parameter) => portTypeToCpp(parameter.dataType));
+  const resultTypeName = getFunctionResultTypeName(func);
+  return `using ${resultTypeName} = std::tuple<${outputTypes.join(', ')}>;`;
+}
+
+/**
+ * Сформировать tuple-like выражение в едином стиле для C++ инициализации
+ */
+function buildTupleExpression(values: string[]): string {
+  return `{${values.join(', ')}}`;
 }
 
 // ============================================
@@ -130,6 +143,10 @@ function getFunctionFromNode(
   return context.functions.find(f => f.id === functionId) ?? null;
 }
 
+function getResultVariableName(node: BlueprintNode): string {
+  return `result_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+}
+
 function matchesPortToken(portId: string, token: string): boolean {
   if (!portId || !token) {
     return false;
@@ -142,6 +159,41 @@ function matchesPortToken(portId: string, token: string): boolean {
     token.endsWith(`-${portId}`) ||
     token.endsWith(`_${portId}`)
   );
+}
+
+function getOutputIndexByPort(
+  node: BlueprintNode,
+  func: BlueprintFunction,
+  portId: string
+): number {
+  const outputParams = func.parameters.filter((parameter) => parameter.direction === 'output');
+  const normalizedPortId = portId.split('-').slice(-1)[0] ?? portId;
+
+  const parameterIndex = outputParams.findIndex(
+    (parameter) =>
+      matchesPortToken(portId, parameter.id) ||
+      matchesPortToken(normalizedPortId, parameter.id)
+  );
+  if (parameterIndex >= 0) {
+    return parameterIndex;
+  }
+
+  const nodeOutputPorts = node.outputs
+    .filter((port) => port.dataType !== 'execution')
+    .sort((a, b) => a.index - b.index);
+  return nodeOutputPorts.findIndex(
+    (port) =>
+      matchesPortToken(port.id, portId) ||
+      matchesPortToken(port.id, normalizedPortId) ||
+      matchesPortToken(port.name, normalizedPortId)
+  );
+}
+
+function getOutputVariableName(node: BlueprintNode, outputIndex: number, parameterName?: string): string {
+  const baseName = parameterName ? transliterate(parameterName) : `out${outputIndex + 1}`;
+  const sanitizedBaseName = baseName.length > 0 ? baseName : `out${outputIndex + 1}`;
+  const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6);
+  return `${sanitizedBaseName}_${suffix}`;
 }
 
 function resolveInputParameterByEntryPort(
@@ -393,10 +445,7 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     
     if (hasOutputs) {
       // Генерируем присваивание результата
-      const firstOutputName = func?.parameters.find((parameter) => parameter.direction === 'output')?.name
-        ?? node.outputs.find((port) => port.dataType !== 'execution')?.name
-        ?? 'result';
-      const resultVar = buildCallResultVariableName(node, functionName, firstOutputName);
+      const resultVar = getResultVariableName(node);
       helpers.declareVariable(`${node.id}-result`, resultVar, 'Result', 'auto', node.id);
 
       const lines = [`${ind}auto ${resultVar} = ${call};`];
@@ -439,17 +488,21 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     if (!func) {
       return resultVar;
     }
-    
-    // Fallback
-    const functionName = typeof node.properties?.functionName === 'string'
-      ? node.properties.functionName
-      : 'func';
-    const outputName = node.outputs.find((port) =>
-      port.id === portId ||
-      port.id.endsWith(`-${portId}`) ||
-      port.name === portId
-    )?.name;
-    return buildCallResultVariableName(node, functionName, outputName);
+
+    const outputParams = func.parameters.filter((parameter) => parameter.direction === 'output');
+    if (outputParams.length <= 1) {
+      return resultVar;
+    }
+
+    const outputIndex = getOutputIndexByPort(node, func, portId);
+    const safeOutputIndex = outputIndex >= 0 ? outputIndex : 0;
+    const outputParam = outputParams[safeOutputIndex];
+    const outputVarInfo = helpers.getVariable(`${node.id}-result-${outputParam.id}`);
+    if (outputVarInfo) {
+      return outputVarInfo.codeName;
+    }
+
+    return `std::get<${safeOutputIndex}>(${resultVar})`;
   }
 }
 

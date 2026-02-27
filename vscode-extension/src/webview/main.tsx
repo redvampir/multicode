@@ -1009,6 +1009,14 @@ const App: React.FC = () => {
 
   const effectiveTheme = resolveEffectiveTheme(themeState.preference, themeState.hostTheme);
   const themeTokens = useMemo(() => getThemeTokens(effectiveTheme), [effectiveTheme]);
+  const packageRegistrySnapshotForPreview = useMemo(() => {
+    const packageNodeTypes = Array.from(globalRegistry.getAllNodeDefinitions().keys()) as BlueprintNodeType[];
+    return {
+      getNodeDefinition: (type: string) => globalRegistry.getNodeDefinition(type),
+      packageNodeTypes,
+      registryVersion,
+    };
+  }, [registryVersion]);
 
   const translate = (
     key: TranslationKey,
@@ -1144,6 +1152,13 @@ const App: React.FC = () => {
       window.removeEventListener('multicode:ui-trace', handleUiTrace as EventListener);
     };
   }, [sendWebviewTrace]);
+
+  useEffect(() => {
+    const unsubscribe = globalRegistry.subscribe(() => {
+      setRegistryVersion((version) => version + 1);
+    });
+    return unsubscribe;
+  }, []);
 
   // Синхронизация blueprintGraph при изменении graph
   // Обновляем blueprintGraph ТОЛЬКО при remote-изменениях (загрузка, новый граф).
@@ -1420,7 +1435,7 @@ const App: React.FC = () => {
               <EnhancedCodePreviewPanel
                 graph={blueprintGraph}
                 locale={locale}
-                packageRegistrySnapshot={package_registry_snapshot_for_preview}
+                packageRegistrySnapshot={packageRegistrySnapshotForPreview}
                 onGenerateComplete={(result) => {
                   pushToast('success', result.success 
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')

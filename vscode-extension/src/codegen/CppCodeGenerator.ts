@@ -438,6 +438,7 @@ export class CppCodeGenerator implements ICodeGenerator {
       functions: graph.functions ?? [],
       variableWriteCounts: new Map(),
       requiredHelpers: new Set<TypeConversionHelperId>(),
+      supportedNodeTypes: this.getSupportedNodeTypes(),
     };
     
     // Создать helpers для генераторов
@@ -522,6 +523,32 @@ export class CppCodeGenerator implements ICodeGenerator {
       if (bodyNeedsFutureInclude) {
         standardIncludes.add('<future>');
       }
+      const bodyNeedsThreadInclude = bodyLines.some((line) =>
+        line.includes('std::thread')
+      );
+      if (bodyNeedsThreadInclude) {
+        standardIncludes.add('<thread>');
+      }
+      const bodyNeedsTupleInclude = bodyLines.some((line) =>
+        line.includes('std::tuple') || line.includes('std::get<')
+      );
+      if (bodyNeedsTupleInclude) {
+        standardIncludes.add('<tuple>');
+      }
+      const bodyNeedsRandomInclude = bodyLines.some((line) =>
+        line.includes('std::mt19937') || line.includes('std::uniform_int_distribution')
+      );
+      if (bodyNeedsRandomInclude) {
+        standardIncludes.add('<random>');
+      }
+      const bodyNeedsExceptionInclude = bodyLines.some((line) =>
+        line.includes('std::exception_ptr') ||
+        line.includes('std::current_exception') ||
+        line.includes('std::rethrow_exception')
+      );
+      if (bodyNeedsExceptionInclude) {
+        standardIncludes.add('<exception>');
+      }
       
       // Добавляем includes из шаблонных генераторов
       const templateIncludes = TemplateNodeGenerator.getCollectedIncludes();
@@ -597,6 +624,25 @@ export class CppCodeGenerator implements ICodeGenerator {
       return new Set<TypeConversionHelperId>();
     }
     return context.requiredHelpers;
+  }
+
+  /**
+   * Удаляет дубликаты ошибок (по nodeId+code+message+messageEn), сохраняя порядок.
+   */
+  private postProcessErrors(errors: CodeGenError[]): CodeGenError[] {
+    const seen = new Set<string>();
+    const result: CodeGenError[] = [];
+
+    for (const error of errors) {
+      const key = `${error.nodeId}|${error.code}|${error.message}|${error.messageEn}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(error);
+    }
+
+    return result;
   }
 
   private getRequiredHelperIncludes(context: CodeGenContext): Set<string> {

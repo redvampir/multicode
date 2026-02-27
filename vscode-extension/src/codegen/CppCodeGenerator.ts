@@ -541,6 +541,18 @@ export class CppCodeGenerator implements ICodeGenerator {
       if (bodyNeedsRandomInclude) {
         standardIncludes.add('<random>');
       }
+      const bodyNeedsStringStreamInclude = bodyLines.some((line) =>
+        line.includes('std::stringstream')
+      );
+      if (bodyNeedsStringStreamInclude) {
+        standardIncludes.add('<sstream>');
+      }
+      const bodyNeedsTypeTraitsInclude = bodyLines.some((line) =>
+        line.includes('std::decay_t')
+      );
+      if (bodyNeedsTypeTraitsInclude) {
+        standardIncludes.add('<type_traits>');
+      }
       const bodyNeedsExceptionInclude = bodyLines.some((line) =>
         line.includes('std::exception_ptr') ||
         line.includes('std::current_exception') ||

@@ -264,6 +264,50 @@ describe('FunctionEntryNodeGenerator', () => {
     });
   });
 
+  describe('getOutputExpression', () => {
+    it('возвращает имя входного параметра для data-порта FunctionEntry', () => {
+      const func = createTestFunction({
+        id: 'func-params',
+        parameters: [
+          { id: 'param-1', name: 'Summa_1', nameRu: 'Сумма_1', dataType: 'int32', direction: 'input' },
+          { id: 'param-2', name: 'Summ_2', nameRu: 'Сумма_2', dataType: 'int32', direction: 'input' },
+        ],
+      });
+
+      const node = createFunctionEntryNode(func.id);
+      node.outputs.push(
+        { id: 'entry-1-param-1', name: 'Summa_1', dataType: 'int32', direction: 'output', index: 1 },
+        { id: 'entry-1-param-2', name: 'Summ_2', dataType: 'int32', direction: 'output', index: 2 }
+      );
+
+      const context = createMockContext({ currentFunction: func });
+      const helpers = createMockHelpers(context);
+
+      const firstExpr = generator.getOutputExpression?.(node, 'entry-1-param-1', context, helpers);
+      const secondExpr = generator.getOutputExpression?.(node, 'entry-1-param-2', context, helpers);
+
+      expect(firstExpr).toBe('Summa_1');
+      expect(secondExpr).toBe('Summ_2');
+    });
+
+    it('возвращает 0 для неизвестного data-порта', () => {
+      const func = createTestFunction({
+        id: 'func-params',
+        parameters: [
+          { id: 'param-1', name: 'value', nameRu: 'значение', dataType: 'int32', direction: 'input' },
+        ],
+      });
+
+      const node = createFunctionEntryNode(func.id);
+      const context = createMockContext({ currentFunction: func });
+      const helpers = createMockHelpers(context);
+
+      const expression = generator.getOutputExpression?.(node, 'unknown-port', context, helpers);
+
+      expect(expression).toBe('0');
+    });
+  });
+
   describe('generateFunctionSignature', () => {
     it('генерирует void для функции без параметров', () => {
       const func = createTestFunction({ name: 'doSomething' });

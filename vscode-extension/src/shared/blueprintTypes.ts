@@ -411,6 +411,8 @@ export interface BlueprintFunction {
   description?: string;
   /** Параметры функции (входные и выходные) */
   parameters: FunctionParameter[];
+  /** Локальные переменные функции (не связаны с EventGraph по умолчанию) */
+  variables?: BlueprintVariable[];
   /** Граф функции (узлы и связи) */
   graph: {
     nodes: BlueprintNode[];
@@ -596,6 +598,22 @@ const normalizeMigratedVariables = (variables: unknown[] | undefined): Blueprint
       return {
         ...variable,
         pointerMeta: normalizePointerMeta(variable.pointerMeta),
+      };
+    });
+};
+
+const normalizeMigratedFunctions = (functions: unknown[] | undefined): BlueprintFunction[] => {
+  if (!Array.isArray(functions)) {
+    return [];
+  }
+
+  return functions
+    .filter((value): value is Record<string, unknown> => isRecord(value))
+    .map((rawFunction) => {
+      const func = rawFunction as unknown as BlueprintFunction;
+      return {
+        ...func,
+        variables: normalizeMigratedVariables((func as { variables?: unknown[] }).variables),
       };
     });
 };
@@ -1114,7 +1132,7 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
     dirty,
     // Восстанавливаем переменные и функции
     variables: normalizeMigratedVariables(oldState.variables as unknown[] | undefined),
-    functions: (oldState.functions as BlueprintFunction[] | undefined) ?? [],
+    functions: normalizeMigratedFunctions(oldState.functions as unknown[] | undefined),
   };
 }
 
@@ -1200,13 +1218,13 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#7C4DFF',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'first', name: 'First Index', dataType: 'int32', direction: 'input', defaultValue: 0 },
-      { id: 'last', name: 'Last Index', dataType: 'int32', direction: 'input', defaultValue: 10 }
+      { id: 'first', name: 'Start', nameRu: 'Начало', dataType: 'int32', direction: 'input', defaultValue: 0 },
+      { id: 'last', name: 'Bound', nameRu: 'Граница', dataType: 'int32', direction: 'input', defaultValue: 10 }
     ],
     outputs: [
-      { id: 'loop-body', name: 'Loop Body', dataType: 'execution', direction: 'output' },
-      { id: 'index', name: 'Index', dataType: 'int32', direction: 'output' },
-      { id: 'completed', name: 'Completed', dataType: 'execution', direction: 'output' }
+      { id: 'loop-body', name: 'Loop Body', nameRu: 'Тело', dataType: 'execution', direction: 'output' },
+      { id: 'index', name: 'Index', nameRu: 'Индекс', dataType: 'int32', direction: 'output' },
+      { id: 'completed', name: 'Completed', nameRu: 'Завершено', dataType: 'execution', direction: 'output' }
     ],
   },
   WhileLoop: {
@@ -1237,8 +1255,8 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
     ],
     outputs: [
-      { id: 'then-0', name: 'Then 0', dataType: 'execution', direction: 'output' },
-      { id: 'then-1', name: 'Then 1', dataType: 'execution', direction: 'output' }
+      { id: 'then-0', name: 'Then 0', nameRu: 'Затем 0', dataType: 'execution', direction: 'output' },
+      { id: 'then-1', name: 'Then 1', nameRu: 'Затем 1', dataType: 'execution', direction: 'output' }
     ],
   },
   Parallel: {
@@ -1378,13 +1396,13 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     headerColor: '#7C4DFF',
     inputs: [
       { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
-      { id: 'array', name: 'Array', dataType: 'array', direction: 'input' }
+      { id: 'array', name: 'Container', nameRu: 'Контейнер', dataType: 'array', direction: 'input' }
     ],
     outputs: [
-      { id: 'loop-body', name: 'Loop Body', dataType: 'execution', direction: 'output' },
-      { id: 'element', name: 'Element', dataType: 'any', direction: 'output' },
-      { id: 'index', name: 'Index', dataType: 'int32', direction: 'output' },
-      { id: 'completed', name: 'Completed', dataType: 'execution', direction: 'output' }
+      { id: 'loop-body', name: 'Loop Body', nameRu: 'Тело', dataType: 'execution', direction: 'output' },
+      { id: 'element', name: 'Element', nameRu: 'Элемент', dataType: 'any', direction: 'output' },
+      { id: 'index', name: 'Index', nameRu: 'Индекс', dataType: 'int32', direction: 'output' },
+      { id: 'completed', name: 'Completed', nameRu: 'Завершено', dataType: 'execution', direction: 'output' }
     ],
   },
   Switch: {
@@ -2136,6 +2154,7 @@ export function createUserFunction(
     nameRu,
     description,
     parameters: [],
+    variables: [],
     graph: {
       nodes: [entryNode, returnNode],
       edges: [
@@ -2176,7 +2195,8 @@ export function addFunctionInputParameter(
     const portIndex = entryNode.outputs.length;
     entryNode.outputs.push({
       id: `${entryNode.id}-${paramId}`,
-      name: nameRu || name,
+      name,
+      nameRu: nameRu || name,
       dataType,
       direction: 'output',
       index: portIndex,
@@ -2216,7 +2236,8 @@ export function addFunctionOutputParameter(
     const portIndex = returnNode.inputs.length;
     returnNode.inputs.push({
       id: `${returnNode.id}-${paramId}`,
-      name: nameRu || name,
+      name,
+      nameRu: nameRu || name,
       dataType,
       direction: 'input',
       index: portIndex,
@@ -2292,7 +2313,8 @@ export function createCallUserFunctionNode(
       .filter(p => p.direction === 'input')
       .map((p, i) => ({
         id: `${resolvedNodeId}-${p.id}`,
-        name: p.nameRu || p.name,
+        name: p.name,
+        nameRu: p.nameRu || p.name,
         dataType: p.dataType,
         direction: 'input' as const,
         index: i + 1,
@@ -2315,7 +2337,8 @@ export function createCallUserFunctionNode(
       .filter(p => p.direction === 'output')
       .map((p, i) => ({
         id: `${resolvedNodeId}-${p.id}`,
-        name: p.nameRu || p.name,
+        name: p.name,
+        nameRu: p.nameRu || p.name,
         dataType: p.dataType,
         direction: 'output' as const,
         index: i + 1,

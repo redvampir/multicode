@@ -24,6 +24,7 @@ import type {
   BlueprintNode, 
   BlueprintNodeType,
   BlueprintFunction,
+  BlueprintVariable,
   VectorElementType,
 } from '../shared/blueprintTypes';
 import { NODE_TYPE_DEFINITIONS, normalizePointerMeta } from '../shared/blueprintTypes';
@@ -96,6 +97,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export class CppCodeGenerator implements ICodeGenerator {
   private registry: NodeGeneratorRegistry;
+
+  private resolveFunctionScopedVariables(
+    func: BlueprintFunction
+  ): BlueprintVariable[] {
+    if (!Array.isArray(func.variables)) {
+      return [];
+    }
+
+    return func.variables;
+  }
 
   private decodeStringEscapes(raw: string): string {
     let result = '';
@@ -259,6 +270,59 @@ export class CppCodeGenerator implements ICodeGenerator {
 
     return false;
   }
+
+  private isExecutionEntrySensitiveNode(nodeType: BlueprintNodeType): boolean {
+    return nodeType === 'DoOnce';
+  }
+
+  private ensureProcessedExecutionEntries(context: CodeGenContext): Set<string> {
+    if (!(context.processedExecutionEntries instanceof Set)) {
+      context.processedExecutionEntries = new Set<string>();
+    }
+    return context.processedExecutionEntries;
+  }
+
+  private ensurePendingExecutionEntryPorts(context: CodeGenContext): Map<string, string[]> {
+    if (!(context.pendingExecutionEntryPorts instanceof Map)) {
+      context.pendingExecutionEntryPorts = new Map<string, string[]>();
+    }
+    return context.pendingExecutionEntryPorts;
+  }
+
+  private enqueueExecutionEntryPort(
+    context: CodeGenContext,
+    nodeId: string,
+    targetPort: string
+  ): void {
+    if (!nodeId || !targetPort) {
+      return;
+    }
+
+    const pending = this.ensurePendingExecutionEntryPorts(context);
+    const queue = pending.get(nodeId);
+    if (queue) {
+      queue.push(targetPort);
+    } else {
+      pending.set(nodeId, [targetPort]);
+    }
+  }
+
+  private consumeExecutionEntryPort(
+    context: CodeGenContext,
+    nodeId: string
+  ): string | undefined {
+    const pending = this.ensurePendingExecutionEntryPorts(context);
+    const queue = pending.get(nodeId);
+    if (!queue || queue.length === 0) {
+      return undefined;
+    }
+
+    const port = queue.shift();
+    if (queue.length === 0) {
+      pending.delete(nodeId);
+    }
+    return port;
+  }
   
   constructor(registry?: NodeGeneratorRegistry) {
     this.registry = registry ?? createDefaultRegistry();
@@ -361,6 +425,9 @@ export class CppCodeGenerator implements ICodeGenerator {
       declaredVariables: new Map(),
       declaredVariableInitializers: new Map(),
       processedNodes: new Set(),
+      processedExecutionEntries: new Set(),
+      pendingExecutionEntryPorts: new Map(),
+      currentExecutionEntryPort: undefined,
       errors: [],
       warnings: [],
       sourceMap: [],
@@ -443,6 +510,14 @@ export class CppCodeGenerator implements ICodeGenerator {
       );
       if (hasPointerVariables || bodyNeedsMemoryInclude) {
         standardIncludes.add('<memory>');
+      }
+      const bodyNeedsFutureInclude = bodyLines.some((line) =>
+        line.includes('std::future') ||
+        line.includes('std::async') ||
+        line.includes('std::launch::')
+      );
+      if (bodyNeedsFutureInclude) {
+        standardIncludes.add('<future>');
       }
       
       // Добавляем includes из шаблонных генераторов
@@ -996,75 +1071,94 @@ export class CppCodeGenerator implements ICodeGenerator {
     context: CodeGenContext,
     helpers: GeneratorHelpers
   ): string[] {
-    const lines: string[] = [];
-    
-    // Предотвратить бесконечные циклы
-    if (context.processedNodes.has(node.id)) {
-      return lines;
-    }
-    context.processedNodes.add(node.id);
-    
-    const startLine = context.currentLine;
-    
-    // Получить генератор для этого типа узла
-    const generator = this.registry.get(node.type);
-    if (!generator) {
-      const unsupportedLabel = this.isRussianDisplayLanguage(context)
-        ? `Неподдерживаемый тип: ${node.type}`
-        : `Unsupported node type: ${node.type}`;
-      lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${unsupportedLabel}`);
-      return lines;
-    }
-    
-    // Добавить русский комментарий
-    if (context.options.includeRussianComments) {
-      const commentLabel = this.resolveNodeCommentLabel(node, context);
-      if (commentLabel) {
-        lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${commentLabel}`);
-      }
-    }
-    
-    const markerNodeId = String(node.id).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const markerNodeType = String(node.type).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const previousExecutionEntryPort = context.currentExecutionEntryPort;
+    context.currentExecutionEntryPort = this.consumeExecutionEntryPort(context, node.id);
 
-    // Маркер начала
-    if (context.options.includeSourceMarkers) {
-      lines.push(
-        `${indent(context.indentLevel, context.options.indentSize)}// @multicode:node begin id="${markerNodeId}" type="${markerNodeType}"`
-      );
-    }
-    
-    // Генерировать код через плагин
-    const result = generator.generate(node, context, helpers);
-    lines.push(...result.lines);
-    context.currentLine += result.lines.length;
-    
-    // Маркер конца
-    if (context.options.includeSourceMarkers && result.lines.length > 0) {
-      lines.push(
-        `${indent(context.indentLevel, context.options.indentSize)}// @multicode:node end id="${markerNodeId}"`
-      );
-    }
-    
-    // Добавить в source map
-    if (result.lines.length > 0) {
-      context.sourceMap.push({
-        nodeId: node.id,
-        startLine,
-        endLine: context.currentLine - 1,
-      });
-    }
-    
-    // Следовать по execution flow если нужно
-    if (result.followExecutionFlow && !result.customExecutionHandling) {
-      const nextNode = this.getNextExecutionNode(node, context);
-      if (nextNode) {
-        const nextLines = this.generateFromNode(nextNode, context, helpers);
-        lines.push(...nextLines);
+    try {
+      const lines: string[] = [];
+      const isEntrySensitive = this.isExecutionEntrySensitiveNode(node.type);
+      const entryPortKey = context.currentExecutionEntryPort ?? '__default';
+
+      if (isEntrySensitive) {
+        const processedExecutionEntries = this.ensureProcessedExecutionEntries(context);
+        const entryScopedKey = `${node.id}::${entryPortKey}`;
+        if (processedExecutionEntries.has(entryScopedKey)) {
+          return lines;
+        }
+        processedExecutionEntries.add(entryScopedKey);
+        context.processedNodes.add(node.id);
+      } else {
+        // Предотвратить бесконечные циклы
+        if (context.processedNodes.has(node.id)) {
+          return lines;
+        }
+        context.processedNodes.add(node.id);
       }
+
+      const startLine = context.currentLine;
+
+      // Получить генератор для этого типа узла
+      const generator = this.registry.get(node.type);
+      if (!generator) {
+        const unsupportedLabel = this.isRussianDisplayLanguage(context)
+          ? `Неподдерживаемый тип: ${node.type}`
+          : `Unsupported node type: ${node.type}`;
+        lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${unsupportedLabel}`);
+        return lines;
+      }
+
+      // Добавить русский комментарий
+      if (context.options.includeRussianComments) {
+        const commentLabel = this.resolveNodeCommentLabel(node, context);
+        if (commentLabel) {
+          lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${commentLabel}`);
+        }
+      }
+
+      const markerNodeId = String(node.id).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const markerNodeType = String(node.type).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+      // Маркер начала
+      if (context.options.includeSourceMarkers) {
+        lines.push(
+          `${indent(context.indentLevel, context.options.indentSize)}// @multicode:node begin id="${markerNodeId}" type="${markerNodeType}"`
+        );
+      }
+
+      // Генерировать код через плагин
+      const result = generator.generate(node, context, helpers);
+      lines.push(...result.lines);
+      context.currentLine += result.lines.length;
+
+      // Маркер конца
+      if (context.options.includeSourceMarkers && result.lines.length > 0) {
+        lines.push(
+          `${indent(context.indentLevel, context.options.indentSize)}// @multicode:node end id="${markerNodeId}"`
+        );
+      }
+
+      // Добавить в source map
+      if (result.lines.length > 0) {
+        context.sourceMap.push({
+          nodeId: node.id,
+          startLine,
+          endLine: context.currentLine - 1,
+        });
+      }
+
+      // Следовать по execution flow если нужно
+      if (result.followExecutionFlow && !result.customExecutionHandling) {
+        const nextNode = this.getNextExecutionNode(node, context);
+        if (nextNode) {
+          const nextLines = this.generateFromNode(nextNode, context, helpers);
+          lines.push(...nextLines);
+        }
+      }
+
+      return lines;
+    } finally {
+      context.currentExecutionEntryPort = previousExecutionEntryPort;
     }
-    
-    return lines;
   }
   
   /**
@@ -1113,6 +1207,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     // Находим FunctionEntry в графе функции
     const entryNode = func.graph.nodes.find(n => n.type === 'FunctionEntry');
+    const functionVariables = this.resolveFunctionScopedVariables(func);
     
     if (entryNode) {
       // Создаём временный контекст для графа функции
@@ -1122,8 +1217,12 @@ export class CppCodeGenerator implements ICodeGenerator {
           ...context.graph,
           nodes: func.graph.nodes,
           edges: func.graph.edges,
+          variables: functionVariables,
         },
         processedNodes: new Set<string>(),
+        processedExecutionEntries: new Set<string>(),
+        pendingExecutionEntryPorts: new Map<string, string[]>(),
+        currentExecutionEntryPort: undefined,
         declaredVariables: new Map(),
         declaredVariableInitializers: new Map(),
         currentFunction: func,
@@ -1133,12 +1232,15 @@ export class CppCodeGenerator implements ICodeGenerator {
       
       // Создаём helpers для контекста функции
       const funcHelpers = this.createHelpersForContext(funcContext);
+
+      // Локальные переменные функции объявляются в её теле.
+      lines.push(...this.generateGraphVariableDeclarations(funcContext));
       
       // Отмечаем FunctionEntry как обработанный
       funcContext.processedNodes.add(entryNode.id);
       
       // Находим следующий узел после FunctionEntry
-      const nextNode = this.getNextExecutionNodeInGraph(entryNode, func.graph.nodes, func.graph.edges);
+      const nextNode = this.getNextExecutionNodeInGraph(entryNode, func.graph.nodes, func.graph.edges, funcContext);
       
       if (nextNode) {
         const bodyLines = this.generateFromNodeInContext(nextNode, funcContext, funcHelpers);
@@ -1739,7 +1841,8 @@ export class CppCodeGenerator implements ICodeGenerator {
   private getNextExecutionNodeInGraph(
     node: BlueprintNode,
     nodes: BlueprintNode[],
-    edges: Array<{ sourceNode: string; sourcePort: string; targetNode: string; targetPort: string }>
+    edges: Array<{ sourceNode: string; sourcePort: string; targetNode: string; targetPort: string }>,
+    context?: CodeGenContext
   ): BlueprintNode | null {
     const edge = edges.find(e => 
       e.sourceNode === node.id && 
@@ -1747,6 +1850,10 @@ export class CppCodeGenerator implements ICodeGenerator {
     );
     
     if (!edge) return null;
+
+    if (context) {
+      this.enqueueExecutionEntryPort(context, edge.targetNode, edge.targetPort);
+    }
     
     return nodes.find(n => n.id === edge.targetNode) ?? null;
   }
@@ -1759,57 +1866,76 @@ export class CppCodeGenerator implements ICodeGenerator {
     context: CodeGenContext,
     helpers: GeneratorHelpers
   ): string[] {
-    const lines: string[] = [];
-    
-    if (context.processedNodes.has(node.id)) {
-      return lines;
-    }
-    context.processedNodes.add(node.id);
-    
-    const startLine = context.currentLine;
-    
-    const generator = this.registry.get(node.type);
-    if (!generator) {
-      const unsupportedLabel = this.isRussianDisplayLanguage(context)
-        ? `Неподдерживаемый тип: ${node.type}`
-        : `Unsupported node type: ${node.type}`;
-      lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${unsupportedLabel}`);
-      return lines;
-    }
-    
-    // Добавить русский комментарий
-    if (context.options.includeRussianComments) {
-      const commentLabel = this.resolveNodeCommentLabel(node, context);
-      if (commentLabel) {
-        lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${commentLabel}`);
+    const previousExecutionEntryPort = context.currentExecutionEntryPort;
+    context.currentExecutionEntryPort = this.consumeExecutionEntryPort(context, node.id);
+
+    try {
+      const lines: string[] = [];
+      const isEntrySensitive = this.isExecutionEntrySensitiveNode(node.type);
+      const entryPortKey = context.currentExecutionEntryPort ?? '__default';
+
+      if (isEntrySensitive) {
+        const processedExecutionEntries = this.ensureProcessedExecutionEntries(context);
+        const entryScopedKey = `${node.id}::${entryPortKey}`;
+        if (processedExecutionEntries.has(entryScopedKey)) {
+          return lines;
+        }
+        processedExecutionEntries.add(entryScopedKey);
+        context.processedNodes.add(node.id);
+      } else {
+        if (context.processedNodes.has(node.id)) {
+          return lines;
+        }
+        context.processedNodes.add(node.id);
       }
-    }
-    
-    const result = generator.generate(node, context, helpers);
-    lines.push(...result.lines);
-    context.currentLine += result.lines.length;
-    
-    if (result.lines.length > 0) {
-      context.sourceMap.push({
-        nodeId: node.id,
-        startLine,
-        endLine: context.currentLine - 1,
-      });
-    }
-    
-    // Следовать по execution flow
-    if (result.followExecutionFlow && !result.customExecutionHandling) {
-      const funcGraph = context.currentFunction?.graph;
-      if (funcGraph) {
-        const nextNode = this.getNextExecutionNodeInGraph(node, funcGraph.nodes, funcGraph.edges);
-        if (nextNode) {
-          const nextLines = this.generateFromNodeInContext(nextNode, context, helpers);
-          lines.push(...nextLines);
+
+      const startLine = context.currentLine;
+
+      const generator = this.registry.get(node.type);
+      if (!generator) {
+        const unsupportedLabel = this.isRussianDisplayLanguage(context)
+          ? `Неподдерживаемый тип: ${node.type}`
+          : `Unsupported node type: ${node.type}`;
+        lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${unsupportedLabel}`);
+        return lines;
+      }
+
+      // Добавить русский комментарий
+      if (context.options.includeRussianComments) {
+        const commentLabel = this.resolveNodeCommentLabel(node, context);
+        if (commentLabel) {
+          lines.push(`${indent(context.indentLevel, context.options.indentSize)}// ${commentLabel}`);
         }
       }
+
+      const result = generator.generate(node, context, helpers);
+      lines.push(...result.lines);
+      context.currentLine += result.lines.length;
+
+      if (result.lines.length > 0) {
+        context.sourceMap.push({
+          nodeId: node.id,
+          startLine,
+          endLine: context.currentLine - 1,
+        });
+      }
+
+      // Следовать по execution flow
+      if (result.followExecutionFlow && !result.customExecutionHandling) {
+        const funcGraph = context.currentFunction?.graph;
+        if (funcGraph) {
+          const nextNode = this.getNextExecutionNodeInGraph(node, funcGraph.nodes, funcGraph.edges, context);
+          if (nextNode) {
+            const nextLines = this.generateFromNodeInContext(nextNode, context, helpers);
+            lines.push(...nextLines);
+          }
+        }
+      }
+
+      return lines;
+    } finally {
+      context.currentExecutionEntryPort = previousExecutionEntryPort;
     }
-    
-    return lines;
   }
   
   /**
@@ -1839,6 +1965,7 @@ export class CppCodeGenerator implements ICodeGenerator {
         );
         
         if (!edge) return null;
+        this.enqueueExecutionEntryPort(context, edge.targetNode, edge.targetPort);
         return funcGraph.nodes.find(n => n.id === edge.targetNode) ?? null;
       },
       
@@ -2038,6 +2165,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     );
     
     if (!edge) return null;
+    this.enqueueExecutionEntryPort(context, edge.targetNode, edge.targetPort);
     
     return context.graph.nodes.find(n => n.id === edge.targetNode) ?? null;
   }

@@ -12,6 +12,30 @@ import {
   NodeGenerationResult,
 } from './base';
 
+function sanitizeInputNamePart(value: string, fallback: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function buildInputVariableName(node: BlueprintNode): string {
+  const promptPort = node.inputs.find((port) => port.id.endsWith('-prompt') || port.id === 'prompt');
+  const promptLiteral = typeof promptPort?.value === 'string'
+    ? promptPort.value
+    : typeof promptPort?.defaultValue === 'string'
+      ? promptPort.defaultValue
+      : '';
+  const semanticPart = sanitizeInputNamePart(promptLiteral, 'value');
+  const nodeTokenRaw = node.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const nodeToken = nodeTokenRaw.slice(Math.max(0, nodeTokenRaw.length - 4));
+  return nodeToken.length > 0
+    ? `input_${semanticPart}_${nodeToken}`
+    : `input_${semanticPart}`;
+}
+
 /**
  * Print — вывод строки в консоль
  */
@@ -49,7 +73,7 @@ export class InputNodeGenerator extends BaseNodeGenerator {
     const lines: string[] = [];
     
     const promptExpr = helpers.getInputExpression(node, 'prompt');
-    const varName = `input_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+    const varName = buildInputVariableName(node);
     
     // Вывести prompt если есть
     if (promptExpr && promptExpr !== '""') {

@@ -318,7 +318,68 @@ describe('CppCodeGenerator', () => {
       
       expect(result.success).toBe(true);
       expect(result.code).toContain('for (int');
-      expect(result.code).toContain('++)');
+      expect(result.code).toContain('++i_for');
+    });
+
+    it('should generate ForLoop with exclusive bound and custom step', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const forNode = createNode('ForLoop', { x: 200, y: 0 }, 'for');
+      forNode.properties = {
+        forLoopStep: 2,
+        forLoopBoundMode: 'exclusive',
+        forLoopDirection: 'up',
+      };
+
+      const graph = createTestGraph(
+        [startNode, forNode],
+        [createEdge('start', 'start-exec-out', 'for', 'for-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('for (int i_for = 0; i_for < 10; i_for += 2)');
+    });
+
+    it('should generate ForLoop with auto direction', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const forNode = createNode('ForLoop', { x: 200, y: 0 }, 'for');
+      forNode.properties = {
+        forLoopStep: 3,
+        forLoopBoundMode: 'inclusive',
+        forLoopDirection: 'auto',
+      };
+
+      const graph = createTestGraph(
+        [startNode, forNode],
+        [createEdge('start', 'start-exec-out', 'for', 'for-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('const int step_for = 3;');
+      expect(result.code).toContain('const int dir_for = (0 <= 10) ? step_for : -step_for;');
+      expect(result.code).toContain('i_for += dir_for');
+    });
+
+    it('should normalize non-positive ForLoop step and emit warning', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const forNode = createNode('ForLoop', { x: 200, y: 0 }, 'for');
+      forNode.properties = {
+        forLoopStep: 0,
+      };
+
+      const graph = createTestGraph(
+        [startNode, forNode],
+        [createEdge('start', 'start-exec-out', 'for', 'for-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('for (int i_for = 0; i_for <= 10; ++i_for)');
+      expect(result.warnings.some((warning) => warning.code === 'INFINITE_LOOP')).toBe(true);
     });
     
     it('should generate WhileLoop', () => {
@@ -351,6 +412,227 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
       expect(result.code).toContain('do {');
       expect(result.code).toContain('} while (');
+    });
+
+    it('should generate Parallel via std::async and join all branches via future::get', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel');
+      const printThread0 = createNode('Print', { x: 420, y: -80 }, 'print-thread-0');
+      const printThread1 = createNode('Print', { x: 420, y: 80 }, 'print-thread-1');
+      const printDone = createNode('Print', { x: 620, y: 0 }, 'print-done');
+      printThread0.inputs[1].value = 'thread-0';
+      printThread1.inputs[1].value = 'thread-1';
+      printDone.inputs[1].value = 'all-done';
+
+      const graph = createTestGraph(
+        [startNode, parallelNode, printThread0, printThread1, printDone],
+        [
+          createEdge('start', 'start-exec-out', 'parallel', 'parallel-exec-in'),
+          createEdge('parallel', 'parallel-thread-0', 'print-thread-0', 'print-thread-0-exec-in'),
+          createEdge('parallel', 'parallel-thread-1', 'print-thread-1', 'print-thread-1-exec-in'),
+          createEdge('parallel', 'parallel-completed', 'print-done', 'print-done-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('#include <future>');
+      expect(result.code).toContain('std::async(std::launch::async');
+      expect(result.code).toContain('.get();');
+      expect(result.code).toContain('"thread-0"');
+      expect(result.code).toContain('"thread-1"');
+      expect(result.code).toContain('"all-done"');
+    });
+
+    it('should generate Gate node', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const gateNode = createNode('Gate', { x: 200, y: 0 }, 'gate');
+      const printNode = createNode('Print', { x: 420, y: 0 }, 'print');
+      printNode.inputs[1].value = 'gate-exit';
+
+      const graph = createTestGraph(
+        [startNode, gateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'gate', 'gate-enter'),
+          createEdge('gate', 'gate-exit', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static bool gate_open_');
+      expect(result.code).toContain('if (gate_open_');
+      expect(result.code).toContain('"gate-exit"');
+    });
+
+    it('should respect Gate initial closed state in generated code', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const gateNode = createNode('Gate', { x: 200, y: 0 }, 'gate');
+      gateNode.properties = { gateInitiallyOpen: false };
+
+      const graph = createTestGraph(
+        [startNode, gateNode],
+        [createEdge('start', 'start-exec-out', 'gate', 'gate-enter')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool gate_open_');
+      expect(result.code).toContain('= false;');
+    });
+
+    it('should generate DoN node and expose counter output expression', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doNNode = createNode('DoN', { x: 200, y: 0 }, 'do-n');
+      const printNode = createNode('Print', { x: 420, y: 0 }, 'print');
+
+      const nInput = doNNode.inputs.find((port) => /-n$/i.test(port.id));
+      if (nInput) {
+        nInput.value = 3;
+      }
+
+      const graph = createTestGraph(
+        [startNode, doNNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'do-n', 'do-n-exec-in'),
+          createEdge('do-n', 'do-n-exit', 'print', 'print-exec-in'),
+          createEdge('do-n', 'do-n-counter', 'print', 'print-string', 'int32'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static int do_n_counter_');
+      expect(result.code).toContain('do_n_limit_');
+      expect(result.code).toContain('++do_n_counter_');
+    });
+
+    it('should generate DoOnce node', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doOnceNode = createNode('DoOnce', { x: 200, y: 0 }, 'do-once');
+      const printNode = createNode('Print', { x: 420, y: 0 }, 'print');
+      printNode.inputs[1].value = 'done';
+
+      const graph = createTestGraph(
+        [startNode, doOnceNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'do-once', 'do-once-exec-in'),
+          createEdge('do-once', 'do-once-completed', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static bool do_once_done_');
+      expect(result.code).toContain('if (!do_once_done_');
+      expect(result.code).toContain('"done"');
+    });
+
+    it('should generate DoOnce reset path when reset input is triggered', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const sequenceNode = createNode('Sequence', { x: 160, y: 0 }, 'seq');
+      const doOnceNode = createNode('DoOnce', { x: 360, y: 0 }, 'do-once');
+      const printNode = createNode('Print', { x: 560, y: 0 }, 'print');
+      printNode.inputs[1].value = 'after-reset';
+
+      const graph = createTestGraph(
+        [startNode, sequenceNode, doOnceNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'seq', 'seq-exec-in'),
+          createEdge('seq', 'seq-then-0', 'do-once', 'do-once-exec-in'),
+          createEdge('seq', 'seq-then-1', 'do-once', 'do-once-reset'),
+          createEdge('do-once', 'do-once-completed', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static bool do_once_done_');
+      expect(result.code).toContain('if (!do_once_done_');
+      expect(result.code).toContain('= false;');
+      expect(result.code).toContain('"after-reset"');
+    });
+
+    it('should generate FlipFlop node', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const flipFlopNode = createNode('FlipFlop', { x: 200, y: 0 }, 'flip');
+      const printANode = createNode('Print', { x: 420, y: -80 }, 'print-a');
+      const printBNode = createNode('Print', { x: 420, y: 80 }, 'print-b');
+      printANode.inputs[1].value = 'branch-a';
+      printBNode.inputs[1].value = 'branch-b';
+
+      const graph = createTestGraph(
+        [startNode, flipFlopNode, printANode, printBNode],
+        [
+          createEdge('start', 'start-exec-out', 'flip', 'flip-exec-in'),
+          createEdge('flip', 'flip-a', 'print-a', 'print-a-exec-in'),
+          createEdge('flip', 'flip-b', 'print-b', 'print-b-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static bool flip_flop_state_');
+      expect(result.code).toContain('const bool flip_flop_was_a_');
+      expect(result.code).toContain('"branch-a"');
+      expect(result.code).toContain('"branch-b"');
+    });
+
+    it('should generate MultiGate node', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multi');
+      const print0 = createNode('Print', { x: 420, y: -120 }, 'print-0');
+      const print1 = createNode('Print', { x: 420, y: 0 }, 'print-1');
+      const print2 = createNode('Print', { x: 420, y: 120 }, 'print-2');
+      print0.inputs[1].value = 'mg-0';
+      print1.inputs[1].value = 'mg-1';
+      print2.inputs[1].value = 'mg-2';
+
+      const randomInput = multiGateNode.inputs.find((port) => /is-random$/i.test(port.id));
+      if (randomInput) {
+        randomInput.value = true;
+      }
+
+      const loopInput = multiGateNode.inputs.find((port) => /-loop$/i.test(port.id));
+      if (loopInput) {
+        loopInput.value = true;
+      }
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, print0, print1, print2],
+        [
+          createEdge('start', 'start-exec-out', 'multi', 'multi-exec-in'),
+          createEdge('multi', 'multi-out-0', 'print-0', 'print-0-exec-in'),
+          createEdge('multi', 'multi-out-1', 'print-1', 'print-1-exec-in'),
+          createEdge('multi', 'multi-out-2', 'print-2', 'print-2-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('static int multi_gate_index_');
+      expect(result.code).toContain('switch (multi_gate_selected_');
+      expect(result.code).toContain('case 0:');
+      expect(result.code).toContain('case 1:');
+      expect(result.code).toContain('case 2:');
+      expect(result.code).toContain('"mg-0"');
+      expect(result.code).toContain('"mg-1"');
+      expect(result.code).toContain('"mg-2"');
     });
     
     it('should generate Switch', () => {
@@ -2814,6 +3096,207 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
       expect(result.code).toContain('int add(int a, int b)');
       expect(result.code).toContain('return');
+    });
+
+    it('should pass FunctionEntry input parameters into SetVariable assignments inside function body', () => {
+      const func = createTestFunction({
+        id: 'func-newFunction1',
+        name: 'newFunction1',
+        nameRu: 'Новая функция 1',
+        parameters: [
+          { id: 'param-1', name: 'Summa_1', nameRu: 'Сумма_1', dataType: 'int32', direction: 'input' },
+          { id: 'param-2', name: 'Summ_2', nameRu: 'Сумма_2', dataType: 'int32', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-1-param-1', 'Summa_1', 'int32', 'output', 1),
+                port('entry-1-param-2', 'Summ_2', 'int32', 'output', 2),
+              ],
+              properties: { functionId: 'func-newFunction1' },
+            },
+            {
+              id: 'set-32',
+              type: 'SetVariable',
+              label: 'Установить: 32',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('set-32-exec-in', 'exec', 'execution', 'input', 0),
+                port('set-32-value-in', 'Значение', 'int32', 'input', 1),
+              ],
+              outputs: [
+                port('set-32-exec-out', 'exec', 'execution', 'output', 0),
+                port('set-32-value-out', 'Значение', 'int32', 'output', 1),
+              ],
+              properties: { codeName: 'var_32', dataType: 'int32' },
+            },
+            {
+              id: 'set-proverka',
+              type: 'SetVariable',
+              label: 'Установить: Проверка',
+              position: { x: 420, y: 0 },
+              inputs: [
+                port('set-proverka-exec-in', 'exec', 'execution', 'input', 0),
+                port('set-proverka-value-in', 'Значение', 'int32', 'input', 1),
+              ],
+              outputs: [
+                port('set-proverka-exec-out', 'exec', 'execution', 'output', 0),
+                port('set-proverka-value-out', 'Значение', 'int32', 'output', 1),
+              ],
+              properties: { codeName: 'proverka', dataType: 'int32' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 640, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-1-result', 'result', 'int32', 'input', 1, 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-newFunction1' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'set-32', 'set-32-exec-in'),
+            createFuncEdge('set-32', 'set-32-exec-out', 'set-proverka', 'set-proverka-exec-in'),
+            createFuncEdge('set-proverka', 'set-proverka-exec-out', 'return-1', 'return-1-exec-in'),
+            {
+              id: 'entry-1-set-32-value',
+              sourceNode: 'entry-1',
+              sourcePort: 'entry-1-param-1',
+              targetNode: 'set-32',
+              targetPort: 'set-32-value-in',
+              kind: 'data',
+              dataType: 'int32',
+            },
+            {
+              id: 'entry-1-set-proverka-value',
+              sourceNode: 'entry-1',
+              sourcePort: 'entry-1-param-2',
+              targetNode: 'set-proverka',
+              targetPort: 'set-proverka-value-in',
+              kind: 'data',
+              dataType: 'int32',
+            },
+          ],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('int newFunction1(int Summa_1, int Summ_2)');
+      expect(result.code).toContain('int var_32 = Summa_1;');
+      expect(result.code).toContain('int proverka = Summ_2;');
+    });
+
+    it('should use function-local variables instead of EventGraph variables in function scope', () => {
+      const func = createTestFunction({
+        id: 'func-local-vars',
+        name: 'withLocalVar',
+        nameRu: 'С локальной переменной',
+        parameters: [],
+        variables: [
+          {
+            id: 'func-var-counter',
+            name: 'counter',
+            nameRu: 'Счётчик',
+            codeName: 'local_counter',
+            dataType: 'int32',
+            defaultValue: 10,
+            category: 'local',
+          },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-local-vars' },
+            },
+            {
+              id: 'set-local',
+              type: 'SetVariable',
+              label: 'Установить: Счётчик',
+              position: { x: 220, y: 0 },
+              inputs: [
+                port('set-local-exec-in', 'exec', 'execution', 'input', 0),
+                port('set-local-value-in', 'Значение', 'int32', 'input', 1, 42),
+              ],
+              outputs: [
+                port('set-local-exec-out', 'exec', 'execution', 'output', 0),
+                port('set-local-value-out', 'Значение', 'int32', 'output', 1),
+              ],
+              properties: {
+                variableId: 'func-var-counter',
+                dataType: 'int32',
+              },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 440, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-local-vars' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'set-local', 'set-local-exec-in'),
+            createFuncEdge('set-local', 'set-local-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.variables = [
+        {
+          id: 'global-var-counter',
+          name: 'globalCounter',
+          nameRu: 'ГлобальныйСчётчик',
+          codeName: 'global_counter',
+          dataType: 'int32',
+          defaultValue: 5,
+          category: 'default',
+        },
+      ];
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('void withLocalVar()');
+      expect(result.code).toContain('int local_counter = 10;');
+      expect(result.code).toContain('local_counter = 42;');
+      expect(result.code).toContain('int global_counter = 5;');
     });
     
     it('should generate function with Russian name (transliterated)', () => {

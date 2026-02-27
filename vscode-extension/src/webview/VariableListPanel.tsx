@@ -52,6 +52,10 @@ interface VariableListPanelProps {
   onToggleCollapsed: () => void;
   /** Вычисленные текущие значения переменных (preview) */
   resolvedVariableValues?: ResolvedVariableValues;
+  /** Показывать действие импорта переменных из EventGraph */
+  showImportFromEventGraphAction?: boolean;
+  /** Импортировать переменные из EventGraph в текущую функцию */
+  onImportFromEventGraph?: () => void;
 }
 
 interface EditDialogState {
@@ -359,6 +363,8 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
   collapsed,
   onToggleCollapsed,
   resolvedVariableValues,
+  showImportFromEventGraphAction = false,
+  onImportFromEventGraph,
 }) => {
   const isRu = displayLanguage === "ru";
   const rawVariables = useMemo<unknown[]>(
@@ -1196,6 +1202,9 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
           </button>
           <h3>{isRu ? "Переменные" : "Variables"}</h3>
         </div>
+      </div>
+
+      <div className="variable-list-toolbar">
         <button
           className="btn-add-variable"
           onClick={handleOpenCreate}
@@ -1203,6 +1212,15 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
         >
           + {isRu ? "Переменная" : "Variable"}
         </button>
+        {showImportFromEventGraphAction && onImportFromEventGraph && (
+          <button
+            className="btn-add-variable btn-import-eventgraph"
+            onClick={onImportFromEventGraph}
+            title={isRu ? "Импортировать переменные EventGraph" : "Import EventGraph variables"}
+          >
+            ⇅ {isRu ? "Из EventGraph" : "From EventGraph"}
+          </button>
+        )}
       </div>
 
       {!collapsed && (

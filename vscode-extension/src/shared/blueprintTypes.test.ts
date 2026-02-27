@@ -35,6 +35,7 @@ describe('blueprintTypes - User Functions', () => {
       expect(func.nameRu).toBe('Моя функция');
       expect(func.description).toBe('Test description');
       expect(func.parameters).toEqual([]);
+      expect(func.variables).toEqual([]);
       expect(func.isPure).toBe(false);
       expect(func.id).toMatch(/^func-/);
       expect(func.createdAt).toBeDefined();
@@ -104,7 +105,7 @@ describe('blueprintTypes - User Functions', () => {
       // Entry node has exec-out + new parameter output
       expect(entryNode!.outputs.length).toBeGreaterThan(1);
       
-      const paramPort = entryNode!.outputs.find(p => p.name === 'Значение');
+      const paramPort = entryNode!.outputs.find((p) => p.name === 'value' && p.nameRu === 'Значение');
       expect(paramPort).toBeDefined();
       expect(paramPort!.dataType).toBe('float');
     });
@@ -156,7 +157,7 @@ describe('blueprintTypes - User Functions', () => {
       // Return node has exec-in + new parameter input
       expect(returnNode!.inputs.length).toBeGreaterThan(1);
       
-      const paramPort = returnNode!.inputs.find(p => p.name === 'Выход');
+      const paramPort = returnNode!.inputs.find((p) => p.name === 'out' && p.nameRu === 'Выход');
       expect(paramPort).toBeDefined();
       expect(paramPort!.dataType).toBe('bool');
     });
@@ -265,8 +266,8 @@ describe('blueprintTypes - User Functions', () => {
       // exec-in + 2 input params
       expect(node.inputs.length).toBe(3);
       
-      const paramA = node.inputs.find(p => p.name === 'A');
-      const paramB = node.inputs.find(p => p.name === 'B');
+      const paramA = node.inputs.find((p) => p.name === 'a' && p.nameRu === 'A');
+      const paramB = node.inputs.find((p) => p.name === 'b' && p.nameRu === 'B');
       
       expect(paramA).toBeDefined();
       expect(paramA!.dataType).toBe('int32');
@@ -283,7 +284,7 @@ describe('blueprintTypes - User Functions', () => {
       // exec-out + 1 output param
       expect(node.outputs.length).toBe(2);
       
-      const resultPort = node.outputs.find(p => p.name === 'Результат');
+      const resultPort = node.outputs.find((p) => p.name === 'result' && p.nameRu === 'Результат');
       expect(resultPort).toBeDefined();
       expect(resultPort!.dataType).toBe('bool');
     });
@@ -320,7 +321,7 @@ describe('blueprintTypes - User Functions', () => {
       const updatedCallNode = updatedState.nodes[0];
       
       // Should have new input port
-      const newPort = updatedCallNode.inputs.find(p => p.name === 'Новый');
+      const newPort = updatedCallNode.inputs.find((p) => p.name === 'newParam' && p.nameRu === 'Новый');
       expect(newPort).toBeDefined();
     });
 

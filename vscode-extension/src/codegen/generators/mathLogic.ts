@@ -42,8 +42,26 @@ abstract class BinaryOperatorGenerator extends BaseNodeGenerator {
     helpers: GeneratorHelpers
   ): string {
     const config = this.getConfig();
-    const a = helpers.getInputExpression(node, 'a') ?? config.defaultA;
-    const b = helpers.getInputExpression(node, 'b') ?? config.defaultB;
+    const resolveOperand = (portId: string, fallback: string): string => {
+      const connectedExpression = helpers.getInputExpression(node, portId);
+      if (connectedExpression !== null) {
+        return connectedExpression;
+      }
+
+      const port = node.inputs.find((candidate) => candidate.id === portId);
+      if (port?.value !== undefined) {
+        return formatPortValueLiteral(port.value);
+      }
+
+      if (port?.defaultValue !== undefined) {
+        return formatPortValueLiteral(port.defaultValue);
+      }
+
+      return fallback;
+    };
+
+    const a = resolveOperand('a', config.defaultA);
+    const b = resolveOperand('b', config.defaultB);
     
     return `(${a} ${config.operator} ${b})`;
   }

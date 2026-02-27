@@ -121,7 +121,7 @@ const HELP_CONTENT_RU = {
         },
         {
           title: 'Цикл For',
-          description: 'Цикл с известным числом повторений. Итерирует от 0 до N-1.',
+          description: 'Цикл с индексом: настраиваются начало, граница, шаг и направление (вверх/вниз/авто).',
         },
         {
           title: 'Цикл While',
@@ -241,7 +241,7 @@ const HELP_CONTENT_EN = {
         },
         {
           title: 'For Loop',
-          description: 'Loop with a known number of iterations. Iterates from 0 to N-1.',
+          description: 'Indexed loop with configurable start, bound, step, and direction (up/down/auto).',
         },
         {
           title: 'While Loop',

@@ -74,9 +74,19 @@ import {
   resolveVariableValuesPreview,
   type ResolvedVariableValues,
 } from './variableValueResolver';
+import {
+  canRetargetNodeToDataType,
+  getDefaultNumericTypeForNodeType,
+  inferNodeNumericType,
+  isAutoRetargetComparisonNodeType,
+  isNumericDataType,
+  isPolymorphicNumericNodeType,
+  retargetNodeNumericPorts,
+} from './numericNodeTyping';
 
 const EDGE_INTERACTION_WIDTH = 24;
 const BLOCK_SHORTCUTS_WHEN_DIALOG_OPEN_SELECTOR = '.variable-dialog-overlay, .pointer-dialog-overlay, .function-editor-overlay';
+const FUNCTION_BOUNDARY_NODE_TYPES = new Set<NodeType>(['FunctionEntry', 'FunctionReturn']);
 
 const isTextInputContext = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -551,6 +561,27 @@ const hasSameFlowConnection = (
     getFlowEdgeKind(edge) === kind
   );
 
+const hasDataFlowConnectionForNode = (edges: Edge[], nodeId: string): boolean =>
+  edges.some((edge) =>
+    getFlowEdgeKind(edge) === 'data' &&
+    (edge.source === nodeId || edge.target === nodeId)
+  );
+
+const hasDataInputFlowConnectionForNode = (edges: Edge[], nodeId: string): boolean =>
+  edges.some((edge) =>
+    getFlowEdgeKind(edge) === 'data' &&
+    edge.target === nodeId
+  );
+
+export const hasBlockingIncomingRetargetConnections = (
+  nodeType: NodeType,
+  nodeId: string,
+  edges: Edge[]
+): boolean =>
+  isAutoRetargetComparisonNodeType(nodeType)
+    ? hasDataInputFlowConnectionForNode(edges, nodeId)
+    : hasDataFlowConnectionForNode(edges, nodeId);
+
 const createFlowEdgeId = (): string =>
   `edge-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -590,6 +621,139 @@ const createStyledFlowEdge = (
       width: 20,
       height: 20,
     },
+  };
+};
+
+interface EdgeDoubleClickMutationContext {
+  edge: Edge;
+  nodes: BlueprintFlowNode[];
+  edges: BlueprintFlowEdge[];
+  altKey: boolean;
+  flowPosition?: XYPosition;
+  computeNodePosition: (
+    desiredPosition: XYPosition,
+    existingNodes: BlueprintFlowNode[],
+    collisionDistance: number
+  ) => XYPosition;
+  createNodeByType: (type: NodeType, position: XYPosition, id?: string) => BlueprintNodeType;
+  buildFlowNode: (node: BlueprintNodeType) => BlueprintFlowNode;
+  createRerouteNodeId?: () => string;
+}
+
+type EdgeDoubleClickMutationResult =
+  | { type: 'none'; nextNodes: BlueprintFlowNode[]; nextEdges: BlueprintFlowEdge[] }
+  | { type: 'deleted'; nextNodes: BlueprintFlowNode[]; nextEdges: BlueprintFlowEdge[] }
+  | { type: 'control-point-added'; nextNodes: BlueprintFlowNode[]; nextEdges: BlueprintFlowEdge[] };
+
+export const mutateGraphForEdgeDoubleClick = (
+  context: EdgeDoubleClickMutationContext
+): EdgeDoubleClickMutationResult => {
+  const {
+    edge,
+    nodes,
+    edges,
+    altKey,
+    flowPosition,
+    computeNodePosition,
+    createNodeByType,
+    buildFlowNode,
+    createRerouteNodeId = () => `node-reroute-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  } = context;
+
+  if (altKey) {
+    const nextEdges = edges.filter((currentEdge) => currentEdge.id !== edge.id);
+    if (nextEdges.length === edges.length) {
+      return { type: 'none', nextNodes: nodes, nextEdges: edges };
+    }
+    return { type: 'deleted', nextNodes: nodes, nextEdges };
+  }
+
+  if (!flowPosition) {
+    return { type: 'none', nextNodes: nodes, nextEdges: edges };
+  }
+
+  const sourceNode = nodes.find((candidate) => candidate.id === edge.source);
+  const targetNode = nodes.find((candidate) => candidate.id === edge.target);
+  if (!sourceNode || !targetNode) {
+    return { type: 'none', nextNodes: nodes, nextEdges: edges };
+  }
+
+  const edgeKind = getFlowEdgeKind(edge);
+  const sourcePortId = edge.sourceHandle ?? pickPortIdByKind(sourceNode.data.node, 'output', edgeKind);
+  const targetPortId = edge.targetHandle ?? pickPortIdByKind(targetNode.data.node, 'input', edgeKind);
+  if (!sourcePortId || !targetPortId) {
+    return { type: 'none', nextNodes: nodes, nextEdges: edges };
+  }
+
+  const sourcePort = sourceNode.data.node.outputs.find((port) => port.id === sourcePortId);
+  const targetPort = targetNode.data.node.inputs.find((port) => port.id === targetPortId);
+  const edgeData = asRecord(edge.data);
+  const edgeDataType = isPortDataTypeValue(edgeData?.dataType) ? edgeData.dataType : undefined;
+  const effectiveDataType: PortDataType =
+    edgeKind === 'execution'
+      ? 'execution'
+      : edgeDataType
+        ?? (sourcePort && sourcePort.dataType !== 'execution' ? sourcePort.dataType : undefined)
+        ?? (targetPort && targetPort.dataType !== 'execution' ? targetPort.dataType : undefined)
+        ?? 'any';
+
+  const reroutePosition = computeNodePosition(flowPosition, nodes, 1);
+  const rerouteNode = createNodeByType('Reroute', reroutePosition, createRerouteNodeId());
+  rerouteNode.position = reroutePosition;
+  rerouteNode.customLabel = '';
+  rerouteNode.properties = {
+    ...(rerouteNode.properties ?? {}),
+    isControlPoint: true,
+  };
+  rerouteNode.inputs = rerouteNode.inputs.map((port, index) => ({
+    ...port,
+    index,
+    dataType: effectiveDataType,
+    name: '',
+    nameRu: '',
+  }));
+  rerouteNode.outputs = rerouteNode.outputs.map((port, index) => ({
+    ...port,
+    index,
+    dataType: effectiveDataType,
+    name: '',
+    nameRu: '',
+  }));
+
+  const rerouteInputPortId = rerouteNode.inputs[0]?.id;
+  const rerouteOutputPortId = rerouteNode.outputs[0]?.id;
+  if (!rerouteInputPortId || !rerouteOutputPortId) {
+    return { type: 'none', nextNodes: nodes, nextEdges: edges };
+  }
+
+  const edgeToControlPoint = createStyledFlowEdge(
+    edgeKind,
+    edge.source,
+    sourcePortId,
+    rerouteNode.id,
+    rerouteInputPortId,
+    edgeKind === 'data' ? effectiveDataType : undefined
+  ) as BlueprintFlowEdge;
+  const edgeFromControlPoint = createStyledFlowEdge(
+    edgeKind,
+    rerouteNode.id,
+    rerouteOutputPortId,
+    edge.target,
+    targetPortId,
+    edgeKind === 'data' ? effectiveDataType : undefined
+  ) as BlueprintFlowEdge;
+
+  const nextNodes = [...nodes, buildFlowNode(rerouteNode)];
+  const nextEdges = [
+    ...edges.filter((currentEdge) => currentEdge.id !== edge.id),
+    edgeToControlPoint,
+    edgeFromControlPoint,
+  ];
+
+  return {
+    type: 'control-point-added',
+    nextNodes,
+    nextEdges,
   };
 };
 
@@ -637,6 +801,27 @@ const toAvailableVariableBinding = (variable: BlueprintVariable): AvailableVaria
   pointerMeta: variable.pointerMeta,
 });
 
+const cloneDefaultValue = (
+  value: BlueprintVariable['defaultValue']
+): BlueprintVariable['defaultValue'] => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((item) => {
+    if (Array.isArray(item)) {
+      return cloneDefaultValue(item) as NonNullable<BlueprintVariable['defaultValue']>;
+    }
+    return item;
+  }) as BlueprintVariable['defaultValue'];
+};
+
+const cloneBlueprintVariable = (variable: BlueprintVariable): BlueprintVariable => ({
+  ...variable,
+  pointerMeta: variable.pointerMeta ? normalizePointerMeta(variable.pointerMeta) : undefined,
+  defaultValue: cloneDefaultValue(variable.defaultValue),
+});
+
 const isDataInputPort = (port: NodePort): boolean =>
   port.direction === 'input' && port.dataType !== 'execution';
 
@@ -653,6 +838,25 @@ const getOperandLabel = (index: number): string =>
 
 const getOperandSuffix = (index: number): string =>
   index < 26 ? String.fromCharCode(97 + index) : `arg-${index + 1}`;
+
+const extractSequenceThenIndexFromPortId = (portId: string): number | null => {
+  const match = portId.match(/then-(\d+)(?:$|[-_])/i);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isSequenceThenOutputPort = (port: NodePort): boolean =>
+  port.direction === 'output' &&
+  port.dataType === 'execution' &&
+  extractSequenceThenIndexFromPortId(port.id) !== null;
+
+const buildSequenceThenPortName = (thenIndex: number): { name: string; nameRu: string } => ({
+  name: `Then ${thenIndex}`,
+  nameRu: `Затем ${thenIndex}`,
+});
 
 const extractSwitchCaseIndexFromPortId = (portId: string): number | null => {
   const match = portId.match(/case-(\d+)(?:$|[-_])/i);
@@ -722,6 +926,41 @@ const addSwitchCaseOutputToNode = (node: BlueprintNodeType): BlueprintNodeType =
     : [...node.outputs, nextPort];
   const nextOutputs = nextOutputsUnindexed.map((port, index) => ({ ...port, index }));
 
+  return {
+    ...node,
+    outputs: nextOutputs,
+  };
+};
+
+const addSequenceThenOutputToNode = (node: BlueprintNodeType): BlueprintNodeType => {
+  if (node.type !== 'Sequence') {
+    return node;
+  }
+
+  const thenOutputPorts = node.outputs.filter(isSequenceThenOutputPort);
+  const existingIndices = new Set(
+    thenOutputPorts
+      .map((port) => extractSequenceThenIndexFromPortId(port.id))
+      .filter((value): value is number => value !== null)
+  );
+
+  let nextThenIndex = 0;
+  while (existingIndices.has(nextThenIndex)) {
+    nextThenIndex += 1;
+  }
+
+  const { name, nameRu } = buildSequenceThenPortName(nextThenIndex);
+  const nextPort: NodePort = {
+    id: `${node.id}-then-${nextThenIndex}`,
+    name,
+    nameRu,
+    dataType: 'execution',
+    direction: 'output',
+    index: node.outputs.length,
+    connected: false,
+  };
+
+  const nextOutputs = [...node.outputs, nextPort].map((port, index) => ({ ...port, index }));
   return {
     ...node,
     outputs: nextOutputs,
@@ -828,11 +1067,23 @@ const addOperandPortToVariadicArithmeticNode = (node: BlueprintNodeType): Bluepr
     attempt += 1;
   }
 
+  const inferredNodeType = inferNodeNumericType(node);
+  const defaultNodeType = getDefaultNumericTypeForNodeType(node.type as NodeType);
+  const operandDataType: PortDataType = (() => {
+    if (node.type === 'Modulo') {
+      return inferredNodeType === 'int64' ? 'int64' : 'int32';
+    }
+    if (inferredNodeType && isNumericDataType(inferredNodeType)) {
+      return inferredNodeType;
+    }
+    return defaultNodeType;
+  })();
+
   const nextPort: NodePort = {
     id: `${node.id}-${candidateSuffix}`,
     name: getOperandLabel(operandIndex),
     nameRu: getOperandLabel(operandIndex),
-    dataType: node.type === 'Modulo' ? 'int32' : 'float',
+    dataType: operandDataType,
     direction: 'input',
     defaultValue: node.type === 'Divide' || node.type === 'Modulo' ? 1 : 0,
     index: node.inputs.length,
@@ -910,6 +1161,11 @@ interface NodePaletteProps {
   userFunctions?: BlueprintFunction[];
 }
 
+const normalizePaletteSearchToken = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '');
+
 const NodePalette: React.FC<NodePaletteProps> = ({ 
   visible, 
   displayLanguage, 
@@ -925,7 +1181,8 @@ const NodePalette: React.FC<NodePaletteProps> = ({
   const { screenToFlowPosition } = useReactFlow();
   
   const filteredCategories = useMemo(() => {
-    const term = search.toLowerCase();
+    const term = search.toLowerCase().trim();
+    const normalizedTerm = normalizePaletteSearchToken(term);
     
     // Базовые категории из nodeDefinitions
     const baseCats = categories.map(cat => ({
@@ -939,7 +1196,25 @@ const NodePalette: React.FC<NodePaletteProps> = ({
           if (def.type === 'SetVariable') return false;
           if (!term) return true;
           const label = displayLanguage === 'ru' ? def.labelRu : def.label;
-          return label.toLowerCase().includes(term);
+          if (label.toLowerCase().includes(term)) {
+            return true;
+          }
+
+          const searchHaystack = [
+            def.label,
+            def.labelRu,
+            def.type,
+            def.description ?? '',
+            def.descriptionRu ?? '',
+          ]
+            .join(' ')
+            .toLowerCase();
+          if (searchHaystack.includes(term)) {
+            return true;
+          }
+
+          const normalizedHaystack = normalizePaletteSearchToken(searchHaystack);
+          return normalizedTerm.length > 0 && normalizedHaystack.includes(normalizedTerm);
         }),
       userFunctions: [] as BlueprintFunction[],
     }));
@@ -1145,6 +1420,26 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [activeFunctionId, setActiveFunctionId] = useState<string | null>(null);
   const effectiveActiveFunctionId = forcedActiveFunctionId ?? activeFunctionId;
   const [functionGraphDialogFunctionId, setFunctionGraphDialogFunctionId] = useState<string | null>(null);
+
+  const globalVariables = useMemo<BlueprintVariable[]>(
+    () => (Array.isArray(graph.variables) ? graph.variables : []),
+    [graph.variables]
+  );
+
+  const activeFunction = useMemo<BlueprintFunction | null>(() => {
+    if (!effectiveActiveFunctionId || !Array.isArray(graph.functions)) {
+      return null;
+    }
+    return graph.functions.find((func) => func.id === effectiveActiveFunctionId) ?? null;
+  }, [effectiveActiveFunctionId, graph.functions]);
+
+  const scopedVariables = useMemo<BlueprintVariable[]>(() => {
+    if (!activeFunction) {
+      return globalVariables;
+    }
+
+    return Array.isArray(activeFunction.variables) ? activeFunction.variables : [];
+  }, [activeFunction, globalVariables]);
   
   // Получить данные активного графа (основного или функции)
   const activeGraphData = useMemo(() => 
@@ -1165,10 +1460,15 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     resolveVariableValuesPreview({
       nodes: normalizedActiveGraphData.nodes,
       edges: normalizedActiveGraphData.edges,
-      variables: graph.variables ?? [],
+      variables: scopedVariables,
     }),
-    [normalizedActiveGraphData.nodes, normalizedActiveGraphData.edges, graph.variables]
+    [normalizedActiveGraphData.nodes, normalizedActiveGraphData.edges, scopedVariables]
   );
+
+  const scopedGraphState = useMemo<BlueprintGraphState>(() => ({
+    ...graph,
+    variables: scopedVariables,
+  }), [graph, scopedVariables]);
   
   const [nodes, setNodes, onNodesChange] = useNodesState(
     blueprintToFlowNodes(normalizedActiveGraphData.nodes, displayLanguage, undefined, undefined, undefined, resolvedVariableValues)
@@ -1317,8 +1617,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     if (!pointerAttachPointerId) {
       return null;
     }
-    return (graph.variables ?? []).find((variable) => variable.id === pointerAttachPointerId) ?? null;
-  }, [graph.variables, pointerAttachPointerId]);
+    return scopedVariables.find((variable) => variable.id === pointerAttachPointerId) ?? null;
+  }, [pointerAttachPointerId, scopedVariables]);
 
   const pointerAttachPointerName = useMemo(() => {
     if (!pointerAttachPointer) {
@@ -1494,6 +1794,16 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
           };
         }
 
+        if (property === '__addSequenceThen' && n.data.node.type === 'Sequence') {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              node: addSequenceThenOutputToNode(n.data.node),
+            },
+          };
+        }
+
         if (property === '__updateSwitchCaseMeta' && n.data.node.type === 'Switch') {
           const updated = updateSwitchCaseOutputMeta(n.data.node, value);
           if (updated.duplicateValue !== null) {
@@ -1567,11 +1877,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   
   // Мемоизация списка доступных переменных
   const availableVariables = useMemo<AvailableVariableBinding[]>(() => {
-    if (!graph.variables || !Array.isArray(graph.variables)) {
+    if (!Array.isArray(scopedVariables)) {
       return [];
     }
-    return graph.variables.map((variable) => toAvailableVariableBinding(variable));
-  }, [graph.variables]);
+    return scopedVariables.map((variable) => toAvailableVariableBinding(variable));
+  }, [scopedVariables]);
   
   // Inject callbacks into node data (needed because callbacks defined after state init)
   useEffect(() => {
@@ -1783,7 +2093,9 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const clipboard = useClipboard();
   
   const handleCopy = useCallback(() => {
-    const selectedNodeIds = nodes.filter(n => n.selected).map(n => n.id);
+    const selectedNodeIds = nodes
+      .filter((n) => n.selected && !FUNCTION_BOUNDARY_NODE_TYPES.has(n.data.node.type as NodeType))
+      .map((n) => n.id);
     if (selectedNodeIds.length === 0) return;
     
     const blueprintNodes = nodes.map(n => n.data.node);
@@ -1793,17 +2105,21 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   }, [nodes, edges, clipboard]);
   
   const handleCut = useCallback(() => {
-    const selectedNodeIds = nodes.filter(n => n.selected).map(n => n.id);
-    if (selectedNodeIds.length === 0) return;
+    const removableSelectedNodeIds = new Set(
+      nodes
+        .filter((n) => n.selected && !FUNCTION_BOUNDARY_NODE_TYPES.has(n.data.node.type as NodeType))
+        .map((n) => n.id)
+    );
+    if (removableSelectedNodeIds.size === 0) return;
     
     // Сначала копируем
     handleCopy();
     
     // Затем удаляем
-    const newNodes = nodes.filter(n => !n.selected);
+    const newNodes = nodes.filter((n) => !removableSelectedNodeIds.has(n.id));
     const newEdges = edges.filter(e => {
-      const sourceSelected = nodes.find(n => n.id === e.source)?.selected;
-      const targetSelected = nodes.find(n => n.id === e.target)?.selected;
+      const sourceSelected = removableSelectedNodeIds.has(e.source);
+      const targetSelected = removableSelectedNodeIds.has(e.target);
       return !sourceSelected && !targetSelected;
     });
     
@@ -1922,7 +2238,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       const resolvedValuesForGraph = resolveVariableValuesPreview({
         nodes: syncedGraphData.nodes,
         edges: syncedGraphData.edges,
-        variables: graph.variables ?? [],
+        variables: scopedVariables,
       });
       setNodes(blueprintToFlowNodes(
         syncedGraphData.nodes,
@@ -1946,6 +2262,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     handlePortValueChange,
     handlePropertyChange,
     availableVariables,
+    scopedVariables,
     setNodes,
     setEdges,
   ]);
@@ -1971,10 +2288,75 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       return;
     }
 
-    const sourcePort = sourceNode.data.node.outputs.find((port) => port.id === sourceHandleId);
-    const targetPort = targetNode.data.node.inputs.find((port) => port.id === targetHandleId);
+    let sourceFlowNode = sourceNode;
+    let targetFlowNode = targetNode;
+    let sourcePort = sourceFlowNode.data.node.outputs.find((port) => port.id === sourceHandleId);
+    let targetPort = targetFlowNode.data.node.inputs.find((port) => port.id === targetHandleId);
     if (!sourcePort || !targetPort) {
       return;
+    }
+
+    let workingNodes = nodes;
+    let nodesWereRetargeted = false;
+
+    const refreshConnectedPorts = (): boolean => {
+      sourceFlowNode = workingNodes.find((node) => node.id === sourceNodeId) ?? sourceFlowNode;
+      targetFlowNode = workingNodes.find((node) => node.id === targetNodeId) ?? targetFlowNode;
+      sourcePort = sourceFlowNode.data.node.outputs.find((port) => port.id === sourceHandleId);
+      targetPort = targetFlowNode.data.node.inputs.find((port) => port.id === targetHandleId);
+      return Boolean(sourcePort && targetPort);
+    };
+
+    const applyNodeRetarget = (nodeId: string, targetType: PortDataType): void => {
+      const currentFlowNode = workingNodes.find((candidate) => candidate.id === nodeId);
+      if (!currentFlowNode) {
+        return;
+      }
+      const updatedBlueprintNode = retargetNodeNumericPorts(currentFlowNode.data.node, targetType);
+      if (updatedBlueprintNode === currentFlowNode.data.node) {
+        return;
+      }
+      nodesWereRetargeted = true;
+      workingNodes = workingNodes.map((candidate) =>
+        candidate.id === nodeId
+          ? {
+              ...candidate,
+              data: {
+                ...candidate.data,
+                node: updatedBlueprintNode,
+              },
+            }
+          : candidate
+      );
+      refreshConnectedPorts();
+    };
+
+    if (sourcePort.dataType !== 'execution' && targetPort.dataType !== 'execution') {
+      if (
+        canRetargetNodeToDataType(
+          targetFlowNode.data.node.type as NodeType,
+          sourcePort.dataType
+        ) &&
+        !hasBlockingIncomingRetargetConnections(
+          targetFlowNode.data.node.type as NodeType,
+          targetFlowNode.id,
+          edges
+        )
+      ) {
+        applyNodeRetarget(targetFlowNode.id, sourcePort.dataType);
+      }
+
+      if (
+        isPolymorphicNumericNodeType(sourceFlowNode.data.node.type as NodeType) &&
+        isNumericDataType(targetPort.dataType) &&
+        !hasDataFlowConnectionForNode(edges, sourceFlowNode.id)
+      ) {
+        applyNodeRetarget(sourceFlowNode.id, targetPort.dataType);
+      }
+
+      if (!refreshConnectedPorts() || !sourcePort || !targetPort) {
+        return;
+      }
     }
 
     const createFlowEdge = (
@@ -2044,8 +2426,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         targetHandleId
       );
       const nextEdges = addEdge(executionEdge, edges);
+      if (nodesWereRetargeted) {
+        setNodes(workingNodes);
+      }
       setEdges(nextEdges);
-      setTimeout(() => notifyGraphChange(nodes, nextEdges), 0);
+      setTimeout(() => notifyGraphChange(workingNodes, nextEdges), 0);
       return;
     }
 
@@ -2074,8 +2459,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         directDataType
       );
       const nextEdges = addEdge(dataEdge, edges);
+      if (nodesWereRetargeted) {
+        setNodes(workingNodes);
+      }
       setEdges(nextEdges);
-      setTimeout(() => notifyGraphChange(nodes, nextEdges), 0);
+      setTimeout(() => notifyGraphChange(workingNodes, nextEdges), 0);
       return;
     }
 
@@ -2095,7 +2483,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         return false;
       }
 
-      const conversionFlowNode = nodes.find((node) => node.id === incomingEdge.target);
+      const conversionFlowNode = workingNodes.find((node) => node.id === incomingEdge.target);
       if (!conversionFlowNode || conversionFlowNode.data.node.type !== 'TypeConversion') {
         return false;
       }
@@ -2123,10 +2511,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     }
 
     const baseConversionPosition: XYPosition = {
-      x: (sourceNode.position.x + targetNode.position.x) / 2,
-      y: (sourceNode.position.y + targetNode.position.y) / 2 - 40,
+      x: (sourceFlowNode.position.x + targetFlowNode.position.x) / 2,
+      y: (sourceFlowNode.position.y + targetFlowNode.position.y) / 2 - 40,
     };
-    const conversionPosition = computeNodePosition(baseConversionPosition, nodes, 1);
+    const conversionPosition = computeNodePosition(baseConversionPosition, workingNodes, 1);
     const conversionNode = createNodeByType(
       'TypeConversion',
       conversionPosition,
@@ -2195,7 +2583,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       conversionRule.targetType
     );
 
-    const nextNodes = [...nodes, buildFlowNode(conversionNode)];
+    const nextNodes = [...workingNodes, buildFlowNode(conversionNode)];
     const nextEdges = [...edges, edgeToConversion, edgeFromConversion];
     setNodes(nextNodes);
     setEdges(nextEdges);
@@ -2251,15 +2639,47 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     event.preventDefault();
     event.stopPropagation();
 
-    setEdges((currentEdges) => {
-      const nextEdges = currentEdges.filter((currentEdge) => currentEdge.id !== edge.id);
-      if (nextEdges.length === currentEdges.length) {
-        return currentEdges;
-      }
-      setTimeout(() => notifyGraphChange(nodes, nextEdges), 0);
-      return nextEdges;
+    const mutation = mutateGraphForEdgeDoubleClick({
+      edge,
+      nodes,
+      edges,
+      altKey: event.altKey,
+      flowPosition: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+      computeNodePosition,
+      createNodeByType,
+      buildFlowNode,
     });
-  }, [nodes, notifyGraphChange, setEdges]);
+
+    if (mutation.type === 'none') {
+      return;
+    }
+
+    if (mutation.type === 'deleted') {
+      setEdges(mutation.nextEdges);
+      setTimeout(() => notifyGraphChange(nodes, mutation.nextEdges), 0);
+      return;
+    }
+
+    setNodes(mutation.nextNodes);
+    setEdges(mutation.nextEdges);
+    setNormalizationToast(
+      displayLanguage === 'ru'
+        ? 'Добавлена контрольная точка связи. Перемещайте точку для прокладки пути; Alt+двойной клик удаляет связь.'
+        : 'Connection control point added. Move it to route the path; Alt+double-click deletes a connection.'
+    );
+    setTimeout(() => notifyGraphChange(mutation.nextNodes, mutation.nextEdges), 0);
+  }, [
+    buildFlowNode,
+    computeNodePosition,
+    createNodeByType,
+    displayLanguage,
+    edges,
+    nodes,
+    notifyGraphChange,
+    screenToFlowPosition,
+    setEdges,
+    setNodes,
+  ]);
   
   // Handle drag & drop from palette
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -2289,7 +2709,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         }
 
         const sourceVariable =
-          graph.variables?.find((variable) => variable.id === parsed.variable?.id) ?? parsed.variable;
+          scopedVariables.find((variable) => variable.id === parsed.variable?.id) ?? parsed.variable;
         const availableVariable = toAvailableVariableBinding(sourceVariable);
         const variableNodeType = parsed.nodeType === 'set' ? 'SetVariable' : 'GetVariable';
 
@@ -2321,7 +2741,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     }
   }, [
     screenToFlowPosition,
-    graph.variables,
+    scopedVariables,
     displayLanguage,
     setNodes,
     computeNodePosition,
@@ -2357,6 +2777,17 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       return newNodes;
     });
   }, [graph.functions, setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
+
+  const handleCreateFunctionCallFromPanel = useCallback((functionId: string) => {
+    // Вызов функции добавляется в основной EventGraph (как в UE Blueprints).
+    setFunctionGraphDialogFunctionId(null);
+    setActiveFunctionId(null);
+    const position = screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+    handleAddCallFunction(functionId, position);
+  }, [handleAddCallFunction, screenToFlowPosition]);
   
   // Create GetVariable node from VariableListPanel
   const handleCreateGetVariable = useCallback((variable: BlueprintVariable) => {
@@ -2393,48 +2824,70 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   // Handle variables change from VariableListPanel
   const handleVariablesChange = useCallback((variables: BlueprintVariable[]) => {
     const availableBindings = variables.map((variable) => toAvailableVariableBinding(variable));
-    const previousVariableIds = new Set((graph.variables ?? []).map((variable) => variable.id));
+    const previousVariableIds = new Set(scopedVariables.map((variable) => variable.id));
     const nextVariableIds = new Set(variables.map((variable) => variable.id));
     const removedVariableIds = new Set(
       Array.from(previousVariableIds).filter((id) => !nextVariableIds.has(id))
     );
+    const nowIso = new Date().toISOString();
 
-    const reconciledMainGraph = reconcileVariableNodesAndEdges(
-      graph.nodes,
-      graph.edges,
-      removedVariableIds,
-      availableBindings,
-      displayLanguage
-    );
+    const updatedGraph: BlueprintGraphState = (() => {
+      if (effectiveActiveFunctionId && Array.isArray(graph.functions)) {
+        const targetFunction = graph.functions.find((func) => func.id === effectiveActiveFunctionId);
+        if (!targetFunction) {
+          return graph;
+        }
 
-    const reconciledFunctions = graph.functions?.map((func) => {
-      const reconciledFunctionGraph = reconcileVariableNodesAndEdges(
-        func.graph.nodes,
-        func.graph.edges,
+        const reconciledFunctionGraph = reconcileVariableNodesAndEdges(
+          targetFunction.graph.nodes,
+          targetFunction.graph.edges,
+          removedVariableIds,
+          availableBindings,
+          displayLanguage
+        );
+
+        const updatedFunctions = graph.functions.map((func) => {
+          if (func.id !== effectiveActiveFunctionId) {
+            return func;
+          }
+
+          return {
+            ...func,
+            variables,
+            graph: {
+              nodes: reconciledFunctionGraph.nodes,
+              edges: reconciledFunctionGraph.edges,
+            },
+            updatedAt: nowIso,
+          };
+        });
+
+        return {
+          ...graph,
+          functions: updatedFunctions,
+          activeFunctionId: effectiveActiveFunctionId,
+          updatedAt: nowIso,
+          dirty: true,
+        };
+      }
+
+      const reconciledMainGraph = reconcileVariableNodesAndEdges(
+        graph.nodes,
+        graph.edges,
         removedVariableIds,
         availableBindings,
         displayLanguage
       );
 
       return {
-        ...func,
-        graph: {
-          nodes: reconciledFunctionGraph.nodes,
-          edges: reconciledFunctionGraph.edges,
-        },
-        updatedAt: new Date().toISOString(),
+        ...graph,
+        variables,
+        nodes: reconciledMainGraph.nodes,
+        edges: reconciledMainGraph.edges,
+        updatedAt: nowIso,
+        dirty: true,
       };
-    });
-
-    const updatedGraph: BlueprintGraphState = {
-      ...graph,
-      variables,
-      nodes: reconciledMainGraph.nodes,
-      edges: reconciledMainGraph.edges,
-      functions: reconciledFunctions,
-      updatedAt: new Date().toISOString(),
-      dirty: true,
-    };
+    })();
 
     const currentGraphData = getActiveGraphData(updatedGraph, effectiveActiveFunctionId);
     const resolvedValuesForGraph = resolveVariableValuesPreview({
@@ -2461,12 +2914,56 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     graph,
     displayLanguage,
     effectiveActiveFunctionId,
+    scopedVariables,
     handleLabelChange,
     handlePortValueChange,
     handlePropertyChange,
     onGraphChange,
     setEdges,
     setNodes,
+  ]);
+
+  const handleImportGlobalVariablesToFunction = useCallback(() => {
+    if (!effectiveActiveFunctionId || !activeFunction) {
+      return;
+    }
+
+    if (globalVariables.length === 0) {
+      setNormalizationToast(
+        displayLanguage === 'ru'
+          ? 'В EventGraph нет переменных для импорта.'
+          : 'No EventGraph variables to import.'
+      );
+      return;
+    }
+
+    const localVariables = Array.isArray(activeFunction.variables) ? activeFunction.variables : [];
+    const existingIds = new Set(localVariables.map((variable) => variable.id));
+    const imported = globalVariables
+      .filter((variable) => !existingIds.has(variable.id))
+      .map((variable) => cloneBlueprintVariable(variable));
+
+    if (imported.length === 0) {
+      setNormalizationToast(
+        displayLanguage === 'ru'
+          ? 'Все переменные EventGraph уже импортированы в функцию.'
+          : 'All EventGraph variables are already imported into the function.'
+      );
+      return;
+    }
+
+    handleVariablesChange([...localVariables, ...imported]);
+    setNormalizationToast(
+      displayLanguage === 'ru'
+        ? `Импортировано переменных: ${imported.length}.`
+        : `Imported variables: ${imported.length}.`
+    );
+  }, [
+    activeFunction,
+    displayLanguage,
+    effectiveActiveFunctionId,
+    globalVariables,
+    handleVariablesChange,
   ]);
 
   const handleNodeClick = useCallback(
@@ -2514,7 +3011,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         return;
       }
 
-      const variables = graph.variables ?? [];
+      const variables = scopedVariables;
       const pointerVariable = variables.find((variable) => variable.id === pointerAttachPointerId);
       if (!pointerVariable || pointerVariable.dataType !== 'pointer') {
         setPointerAttachError(
@@ -2644,7 +3141,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     [
       cancelPointerAttach,
       displayLanguage,
-      graph.variables,
+      scopedVariables,
       handleVariablesChange,
       pointerAttachPointerId,
     ]
@@ -2664,7 +3161,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         return;
       }
 
-      const variables = graph.variables ?? [];
+      const variables = scopedVariables;
       const pointerVariable = variables.find((variable) => variable.id === pointerVariableId);
       if (!pointerVariable || pointerVariable.dataType !== 'pointer') {
         return;
@@ -2709,16 +3206,23 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     return () => window.removeEventListener('multicode:pointer-detach', handler as EventListener);
   }, [
     cancelPointerAttach,
-    graph.variables,
+    scopedVariables,
     handleVariablesChange,
     pointerAttachPointerId,
   ]);
   
   // Delete selected nodes
   const handleDeleteSelected = useCallback(() => {
-    const selectedNodeIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
+    const selectedNodeIds = new Set(
+      nodes
+        .filter((n) => n.selected && !FUNCTION_BOUNDARY_NODE_TYPES.has(n.data.node.type as NodeType))
+        .map((n) => n.id)
+    );
+    if (selectedNodeIds.size === 0) {
+      return;
+    }
     
-    const newNodes = nodes.filter(n => !n.selected);
+    const newNodes = nodes.filter((n) => !selectedNodeIds.has(n.id));
     const newEdges = edges.filter(e => 
       !e.selected && !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target)
     );
@@ -3026,7 +3530,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         isFunctionsSectionCollapsed,
         isVariablesSectionCollapsed,
         isPointersSectionCollapsed,
-        variablesCount: Array.isArray(graph.variables) ? graph.variables.length : 0,
+        variablesCount: scopedVariables.length,
       },
     };
     window.dispatchEvent(new CustomEvent('multicode:ui-trace', { detail }));
@@ -3034,11 +3538,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     effectiveActiveFunctionId,
     functionPanelVisible,
     graph.id,
-    graph.variables,
     isFunctionsSectionCollapsed,
     isPointersSectionCollapsed,
     isVariablesSectionCollapsed,
     pointerPanelVisible,
+    scopedVariables,
     variablePanelVisible,
   ]);
   
@@ -3054,8 +3558,9 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 graphState={graph}
                 onFunctionsChange={handleFunctionsChange}
                 onSelectFunction={handleSelectFunction}
-                activeFunctionId={effectiveActiveFunctionId}
+                activeFunctionId={functionGraphDialogFunctionId ?? effectiveActiveFunctionId}
                 displayLanguage={displayLanguage}
+                onCreateFunctionCallNode={handleCreateFunctionCallFromPanel}
                 collapsed={isFunctionsSectionCollapsed}
                 onToggleCollapsed={() => setIsFunctionsSectionCollapsed(value => !value)}
               />
@@ -3071,10 +3576,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               className={`left-sidebar-section ${isVariablesSectionCollapsed ? 'collapsed' : ''} ${shouldBalanceExpandedSections && !isVariablesSectionCollapsed ? 'balanced' : ''}`}
             >
               <VariableListPanel
-                graphState={graph}
+                graphState={scopedGraphState}
                 onVariablesChange={handleVariablesChange}
                 onCreateGetVariable={handleCreateGetVariable}
                 onCreateSetVariable={handleCreateSetVariable}
+                showImportFromEventGraphAction={Boolean(effectiveActiveFunctionId)}
+                onImportFromEventGraph={handleImportGlobalVariablesToFunction}
                 displayLanguage={displayLanguage}
                 resolvedVariableValues={resolvedVariableValues}
                 collapsed={isVariablesSectionCollapsed}
@@ -3092,7 +3599,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               className={`left-sidebar-section ${isPointersSectionCollapsed ? 'collapsed' : ''} ${shouldBalanceExpandedSections && !isPointersSectionCollapsed ? 'balanced' : ''}`}
             >
               <PointerReferencePanel
-                graphState={graph}
+                graphState={scopedGraphState}
                 onVariablesChange={handleVariablesChange}
                 onCreateGetVariable={handleCreateGetVariable}
                 onCreateSetVariable={handleCreateSetVariable}

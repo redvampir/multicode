@@ -135,6 +135,12 @@ export interface CodeGenContext {
   declaredVariableInitializers?: Map<string, string>;
   /** Обработанные узлы (для предотвращения повторов) */
   processedNodes: Set<string>;
+  /** Обработанные входы execution для узлов, у которых поведение зависит от входного порта */
+  processedExecutionEntries?: Set<string>;
+  /** Очередь ожидаемых targetPort для последующих вызовов generateFromNode */
+  pendingExecutionEntryPorts?: Map<string, string[]>;
+  /** Текущий execution-вход узла (targetPort), через который узел был вызван */
+  currentExecutionEntryPort?: string;
   /** Ошибки */
   errors: CodeGenError[];
   /** Предупреждения */

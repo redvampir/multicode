@@ -23,6 +23,10 @@ import {
   supportsArrayDataType,
 } from '../../shared/vectorValue';
 import {
+  inferNodeNumericType,
+  shouldShowNumericTypeToolbar,
+} from '../numericNodeTyping';
+import {
   type AvailableVariableBinding,
   formatVariableValueForDisplay,
   getEffectiveSetInputValue,
@@ -108,6 +112,17 @@ const styles = {
   } as React.CSSProperties,
 };
 
+const extractSequenceThenIndexFromPortId = (portId: string): number | null => {
+  const match = portId.match(/then-(\d+)(?:$|[-_])/i);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatSequenceThenLabelRu = (index: number): string => `Затем ${index}`;
+
 /** Компонент порта (Handle) */
 const PortHandle: React.FC<{
   port: NodePort;
@@ -117,9 +132,24 @@ const PortHandle: React.FC<{
   const isExec = port.dataType === 'execution';
   const isPointer = port.dataType === 'pointer'; // 🔗 Проверяем, является ли порт указателем
   const color = PORT_TYPE_COLORS[port.dataType];
-  const localizedPortName = displayLanguage === 'ru'
-    ? (port.nameRu ?? port.name)
-    : (port.name ?? port.nameRu ?? '');
+  const localizedPortName = (() => {
+    if (displayLanguage !== 'ru') {
+      return port.name ?? port.nameRu ?? '';
+    }
+
+    const primaryName = port.nameRu ?? port.name ?? '';
+    const legacyThenIndex = extractSequenceThenIndexFromPortId(port.id);
+    if (legacyThenIndex !== null && port.direction === 'output' && port.dataType === 'execution') {
+      if (
+        port.nameRu === undefined ||
+        /^Then\s+\d+$/i.test(primaryName)
+      ) {
+        return formatSequenceThenLabelRu(legacyThenIndex);
+      }
+    }
+
+    return primaryName;
+  })();
   const handleClassName = [
     'bp-handle',
     isExec ? 'bp-handle-exec' : 'bp-handle-data',
@@ -292,6 +322,55 @@ const VARIADIC_ARITHMETIC_NODE_TYPES = new Set<NodeTypeEnum>([
   'Modulo',
 ]);
 
+const COMPARISON_NODE_TYPES = new Set<NodeTypeEnum>([
+  'Equal',
+  'NotEqual',
+  'Greater',
+  'Less',
+  'GreaterEqual',
+  'LessEqual',
+]);
+
+type ForLoopDirection = 'up' | 'down' | 'auto';
+type ForLoopBoundMode = 'inclusive' | 'exclusive';
+
+const FOR_LOOP_DIRECTIONS: ReadonlyArray<ForLoopDirection> = ['up', 'down', 'auto'];
+const FOR_LOOP_BOUND_MODES: ReadonlyArray<ForLoopBoundMode> = ['inclusive', 'exclusive'];
+
+const isForLoopDirection = (value: unknown): value is ForLoopDirection =>
+  typeof value === 'string' && FOR_LOOP_DIRECTIONS.includes(value as ForLoopDirection);
+
+const isForLoopBoundMode = (value: unknown): value is ForLoopBoundMode =>
+  typeof value === 'string' && FOR_LOOP_BOUND_MODES.includes(value as ForLoopBoundMode);
+
+const normalizeForLoopStep = (value: unknown): number => {
+  const candidate = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number.parseInt(value, 10)
+      : Number.NaN;
+  if (Number.isFinite(candidate) && candidate > 0) {
+    return Math.max(1, Math.trunc(candidate));
+  }
+  return 1;
+};
+
+const getForLoopPortPreviewValue = (port: NodePort | undefined, fallback: string): string => {
+  if (!port) {
+    return fallback;
+  }
+  if (port.connected) {
+    return 'expr';
+  }
+  if (typeof port.value === 'number' && Number.isFinite(port.value)) {
+    return String(Math.trunc(port.value));
+  }
+  if (typeof port.defaultValue === 'number' && Number.isFinite(port.defaultValue)) {
+    return String(Math.trunc(port.defaultValue));
+  }
+  return fallback;
+};
+
 const normalizeArrayRank = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.max(0, Math.trunc(value));
@@ -355,17 +434,35 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   const isVariableNode = node.type === 'Variable' || node.type === 'SetVariable' || node.type === 'GetVariable';
   const isSetVariable = node.type === 'SetVariable';
   const isGetVariable = node.type === 'GetVariable';
+  const isFunctionBoundaryNode = node.type === 'FunctionEntry' || node.type === 'FunctionReturn';
   const isBranchNode = node.type === 'Branch';
+  const isSequenceNode = node.type === 'Sequence';
   const isSwitchNode = node.type === 'Switch';
+  const isForLoopNode = node.type === 'ForLoop';
+  const isGateNode = node.type === 'Gate';
+  const isDoOnceNode = node.type === 'DoOnce';
   const isPrintNode = node.type === 'Print';
   const isConstNumberNode = node.type === 'ConstNumber';
   const isConstStringNode = node.type === 'ConstString';
   const isConstBoolNode = node.type === 'ConstBool';
+  const isRerouteNode = node.type === 'Reroute';
   const isVariadicArithmeticNode = VARIADIC_ARITHMETIC_NODE_TYPES.has(node.type as NodeTypeEnum);
   const isArithmeticNode = isVariadicArithmeticNode;
+  const isComparisonNode = COMPARISON_NODE_TYPES.has(node.type as NodeTypeEnum);
+  const hasInlineLiteralInputs = isArithmeticNode || isComparisonNode;
+  const showsNumericToolbar = shouldShowNumericTypeToolbar(node.type as NodeTypeEnum);
+  const currentNumericType = inferNodeNumericType(node);
   const literalProperties = (typeof node.properties === 'object' && node.properties !== null)
     ? (node.properties as Record<string, unknown>)
     : undefined;
+  const isAutoTypeConversionEnabled = literalProperties?.autoTypeConversion !== false;
+  const forLoopStep = normalizeForLoopStep(literalProperties?.forLoopStep);
+  const forLoopDirection: ForLoopDirection = isForLoopDirection(literalProperties?.forLoopDirection)
+    ? literalProperties.forLoopDirection
+    : 'up';
+  const forLoopBoundMode: ForLoopBoundMode = isForLoopBoundMode(literalProperties?.forLoopBoundMode)
+    ? literalProperties.forLoopBoundMode
+    : 'inclusive';
   const literalNumberValue = typeof literalProperties?.value === 'number'
     ? literalProperties.value
     : typeof node.outputs[0]?.defaultValue === 'number'
@@ -562,7 +659,26 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   const switchInitValue = typeof literalProperties?.switchInit === 'string'
     ? literalProperties.switchInit
     : '';
-  
+  const gateInitiallyOpen = literalProperties?.gateInitiallyOpen !== false;
+  const gateStatusLabel = displayLanguage === 'ru'
+    ? (gateInitiallyOpen ? 'Открыт' : 'Закрыт')
+    : (gateInitiallyOpen ? 'Open' : 'Closed');
+  const forLoopFirstInputPort = isForLoopNode
+    ? node.inputs.find((port) => port.id === 'first' || port.id.endsWith('-first'))
+    : undefined;
+  const forLoopLastInputPort = isForLoopNode
+    ? node.inputs.find((port) => port.id === 'last' || port.id.endsWith('-last'))
+    : undefined;
+  const forLoopStartPreview = getForLoopPortPreviewValue(forLoopFirstInputPort, '0');
+  const forLoopBoundPreview = getForLoopPortPreviewValue(forLoopLastInputPort, '10');
+  const forLoopUpComparator = forLoopBoundMode === 'inclusive' ? '<=' : '<';
+  const forLoopDownComparator = forLoopBoundMode === 'inclusive' ? '>=' : '>';
+  const forLoopPreview = forLoopDirection === 'auto'
+    ? `for (int i = ${forLoopStartPreview}; (${forLoopStartPreview} <= ${forLoopBoundPreview}) ? i ${forLoopUpComparator} ${forLoopBoundPreview} : i ${forLoopDownComparator} ${forLoopBoundPreview}; i += (${forLoopStartPreview} <= ${forLoopBoundPreview} ? ${forLoopStep} : -${forLoopStep}))`
+    : `for (int i = ${forLoopStartPreview}; i ${forLoopDirection === 'up' ? forLoopUpComparator : forLoopDownComparator} ${forLoopBoundPreview}; ${forLoopDirection === 'up'
+      ? (forLoopStep === 1 ? '++i' : `i += ${forLoopStep}`)
+      : (forLoopStep === 1 ? '--i' : `i -= ${forLoopStep}`)})`;
+
   // Exec порты отображаются в заголовке
   const hasExecIn = inputPorts.exec.length > 0;
   const hasExecOut = outputPorts.exec.length > 0;
@@ -570,9 +686,13 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   // Start editing on double click
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    // FunctionEntry/FunctionReturn — системные узлы сигнатуры функции, их имя редактируется через FunctionEditor.
+    if (isFunctionBoundaryNode) {
+      return;
+    }
     setEditValue(node.customLabel ?? '');
     setIsEditing(true);
-  }, [node.customLabel]);
+  }, [isFunctionBoundaryNode, node.customLabel]);
   
   // Focus input when editing starts
   useEffect(() => {
@@ -662,6 +782,15 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
     onPropertyChange(node.id, '__addSwitchCase', true);
   }, [node.id, onPropertyChange]);
 
+  const handleAddSequenceThen = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onPropertyChange) {
+      return;
+    }
+    onPropertyChange(node.id, '__addSequenceThen', true);
+  }, [node.id, onPropertyChange]);
+
   const resizePrintTextArea = useCallback(() => {
     const textArea = printTextAreaRef.current;
     if (!textArea) {
@@ -716,7 +845,7 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
   }, [isPrintNode, isPrintValueConnected, printLiteralValue, resizePrintTextArea]);
 
   const renderArithmeticPortEditor = useCallback((port: NodePort): React.ReactNode => {
-    if (!isArithmeticNode || port.connected || !onPortValueChange) {
+    if (!hasInlineLiteralInputs || port.connected || !onPortValueChange) {
       return null;
     }
 
@@ -788,6 +917,47 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
       );
     }
 
+    if (port.dataType === 'any') {
+      const anyValue = port.value !== undefined
+        ? String(port.value)
+        : typeof port.defaultValue === 'string'
+          ? port.defaultValue
+          : '';
+
+      return (
+        <div
+          key={`${port.id}-editor`}
+          style={{
+            padding: '0 12px 6px 34px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <span style={{ color: '#a6adc8', fontSize: 10 }}>
+            {displayLanguage === 'ru' ? 'Константа' : 'Const'}
+          </span>
+          <input
+            type="text"
+            value={anyValue}
+            placeholder={displayLanguage === 'ru' ? 'значение' : 'value'}
+            onChange={(event) => onPortValueChange(node.id, port.id, event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              flex: 1,
+              minWidth: 60,
+              padding: '2px 6px',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid #45475a',
+              borderRadius: 4,
+              color: '#cdd6f4',
+              fontSize: 11,
+            }}
+          />
+        </div>
+      );
+    }
+
     const numericValue = typeof port.value === 'number'
       ? port.value
       : typeof port.defaultValue === 'number'
@@ -832,7 +1002,7 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
         />
       </div>
     );
-  }, [displayLanguage, isArithmeticNode, node.id, onPortValueChange]);
+  }, [displayLanguage, hasInlineLiteralInputs, node.id, onPortValueChange]);
 
   const getNodeDefaultValueDisplay = isGetVariable
     ? (() => {
@@ -913,6 +1083,63 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
     effectiveVariableDataType,
     vectorElementType,
   ]);
+
+  if (isRerouteNode) {
+    const rerouteInput = node.inputs[0];
+    const rerouteOutput = node.outputs[0];
+    const rerouteType = rerouteOutput?.dataType ?? rerouteInput?.dataType ?? 'any';
+    const rerouteColor = PORT_TYPE_COLORS[rerouteType].main;
+    const isExecution = rerouteType === 'execution';
+
+    return (
+      <div
+        className={`bp-reroute-node ${selected ? 'selected' : ''}`}
+        title={displayLanguage === 'ru' ? 'Контрольная точка связи' : 'Connection control point'}
+      >
+        {rerouteInput && (
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={rerouteInput.id}
+            className={`bp-handle ${isExecution ? 'bp-handle-exec' : 'bp-handle-data'} bp-handle-input`}
+            style={{
+              ...(isExecution ? styles.execHandle : styles.dataHandle),
+              left: -6,
+              top: '50%',
+              transform: isExecution ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
+              borderColor: rerouteColor,
+              background: rerouteInput.connected ? rerouteColor : 'transparent',
+            }}
+            isConnectable={true}
+          />
+        )}
+        <div
+          className={`bp-reroute-body ${isExecution ? 'bp-reroute-body-execution' : ''}`}
+          style={{
+            borderColor: rerouteColor,
+            boxShadow: selected ? `0 0 0 2px ${rerouteColor}66` : undefined,
+          }}
+        />
+        {rerouteOutput && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={rerouteOutput.id}
+            className={`bp-handle ${isExecution ? 'bp-handle-exec' : 'bp-handle-data'} bp-handle-output`}
+            style={{
+              ...(isExecution ? styles.execHandle : styles.dataHandle),
+              right: -6,
+              top: '50%',
+              transform: isExecution ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
+              borderColor: rerouteColor,
+              background: rerouteOutput.connected ? rerouteColor : 'transparent',
+            }}
+            isConnectable={true}
+          />
+        )}
+      </div>
+    );
+  }
   
   return (
     <div
@@ -1014,29 +1241,49 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
               style={{ 
                 flex: 1, 
                 textAlign: 'center',
-                cursor: 'text',
+                cursor: isFunctionBoundaryNode ? 'default' : 'text',
                 userSelect: 'none',
               }}
-              title={displayLanguage === 'ru' 
-                ? 'Двойной клик для редактирования' 
-                : 'Double-click to edit'
-              }
+              title={isFunctionBoundaryNode
+                ? (displayLanguage === 'ru'
+                  ? 'Сигнатура редактируется в редакторе функции'
+                  : 'Signature is edited in Function Editor')
+                : (displayLanguage === 'ru'
+                  ? 'Двойной клик для редактирования'
+                  : 'Double-click to edit')}
             >
               {displayLabel}
             </span>
-            {(isVariadicArithmeticNode || isBranchNode || isSwitchNode) && (
+            {isGateNode && (
+              <span
+                className={`bp-node-gate-status ${gateInitiallyOpen ? 'open' : 'closed'}`}
+                title={displayLanguage === 'ru'
+                  ? `Шлюз ${gateInitiallyOpen ? 'открыт' : 'закрыт'}`
+                  : `Gate is ${gateInitiallyOpen ? 'open' : 'closed'}`}
+                aria-label={displayLanguage === 'ru'
+                  ? 'Маркер состояния шлюза'
+                  : 'Gate state marker'}
+              >
+                {gateStatusLabel}
+              </span>
+            )}
+            {(isVariadicArithmeticNode || isBranchNode || isSwitchNode || isSequenceNode) && (
               <button
                 type="button"
                 onClick={isBranchNode
                   ? handleAppendElseIfBranch
                   : isSwitchNode
                     ? handleAddSwitchCase
-                    : handleAddMathOperand}
+                    : isSequenceNode
+                      ? handleAddSequenceThen
+                      : handleAddMathOperand}
                 title={isBranchNode
                   ? (displayLanguage === 'ru' ? 'Добавить else-if' : 'Add else-if')
                   : isSwitchNode
                     ? (displayLanguage === 'ru' ? 'Добавить случай' : 'Add case')
-                    : (displayLanguage === 'ru' ? 'Добавить операнд' : 'Add operand')}
+                    : isSequenceNode
+                      ? (displayLanguage === 'ru' ? 'Добавить шаг' : 'Add step')
+                      : (displayLanguage === 'ru' ? 'Добавить операнд' : 'Add operand')}
                 style={{
                   width: 20,
                   height: 20,
@@ -1074,6 +1321,187 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           />
         )}
       </div>
+
+      {showsNumericToolbar && currentNumericType && (
+        <div className="bp-node-type-toolbar">
+          <span className="bp-node-type-badge">
+            {(displayLanguage === 'ru' ? 'Тип' : 'Type')}: {currentNumericType}
+          </span>
+          <span
+            className="bp-node-type-conversion-icon"
+            title={displayLanguage === 'ru'
+              ? `Автоконвертация типов ${isAutoTypeConversionEnabled ? 'включена' : 'выключена'}`
+              : `Auto type conversion ${isAutoTypeConversionEnabled ? 'enabled' : 'disabled'}`}
+            aria-label={displayLanguage === 'ru' ? 'Индикатор автоконвертации типов' : 'Auto type conversion indicator'}
+          >
+            ⇄
+          </span>
+        </div>
+      )}
+
+      {isForLoopNode && onPropertyChange && (
+        <div style={{
+          padding: '8px 12px',
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11 }}>
+            {displayLanguage === 'ru' ? 'Параметры цикла' : 'Loop settings'}
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: '68px 1fr', gap: '6px 8px', alignItems: 'center' }}>
+            <span style={{ color: '#a6adc8', fontSize: 11 }}>
+              {displayLanguage === 'ru' ? 'Шаг' : 'Step'}
+            </span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={forLoopStep}
+              onChange={(event) => {
+                const parsed = Number.parseInt(event.target.value, 10);
+                const normalizedStep = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                onPropertyChange(node.id, 'forLoopStep', normalizedStep);
+              }}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: '100%',
+                padding: '2px 6px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid #45475a',
+                borderRadius: 4,
+                color: '#cdd6f4',
+                fontSize: 11,
+              }}
+            />
+            <span style={{ color: '#a6adc8', fontSize: 11 }}>
+              {displayLanguage === 'ru' ? 'Граница' : 'Bound'}
+            </span>
+            <select
+              value={forLoopBoundMode}
+              onChange={(event) => onPropertyChange(node.id, 'forLoopBoundMode', event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: '100%',
+                padding: '2px 6px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid #45475a',
+                borderRadius: 4,
+                color: '#cdd6f4',
+                fontSize: 11,
+              }}
+            >
+              <option value="inclusive">
+                {displayLanguage === 'ru' ? 'Включая (<= / >=)' : 'Inclusive (<= / >=)'}
+              </option>
+              <option value="exclusive">
+                {displayLanguage === 'ru' ? 'Не включая (< / >)' : 'Exclusive (< / >)'}
+              </option>
+            </select>
+            <span style={{ color: '#a6adc8', fontSize: 11 }}>
+              {displayLanguage === 'ru' ? 'Направл.' : 'Direction'}
+            </span>
+            <select
+              value={forLoopDirection}
+              onChange={(event) => onPropertyChange(node.id, 'forLoopDirection', event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: '100%',
+                padding: '2px 6px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid #45475a',
+                borderRadius: 4,
+                color: '#cdd6f4',
+                fontSize: 11,
+              }}
+            >
+              <option value="up">
+                {displayLanguage === 'ru' ? 'Вверх (+)' : 'Up (+)'}
+              </option>
+              <option value="down">
+                {displayLanguage === 'ru' ? 'Вниз (-)' : 'Down (-)'}
+              </option>
+              <option value="auto">
+                {displayLanguage === 'ru' ? 'Авто (по границам)' : 'Auto (by bounds)'}
+              </option>
+            </select>
+          </div>
+          <div style={{
+            border: '1px solid #313244',
+            borderRadius: 4,
+            padding: '6px 8px',
+            background: 'rgba(0,0,0,0.22)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}>
+            <span style={{ color: '#89b4fa', fontSize: 10 }}>
+              {displayLanguage === 'ru' ? 'Превью C++' : 'C++ preview'}
+            </span>
+            <code style={{
+              color: '#f9e2af',
+              fontSize: 11,
+              lineHeight: 1.3,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}>
+              {forLoopPreview}
+            </code>
+          </div>
+        </div>
+      )}
+
+      {isGateNode && onPropertyChange && (
+        <div style={{
+          padding: '8px 12px',
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11 }}>
+            {displayLanguage === 'ru' ? 'Состояние шлюза' : 'Gate state'}
+          </span>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            color: '#a6adc8',
+            fontSize: 11,
+            cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={gateInitiallyOpen}
+              onChange={(event) => onPropertyChange(node.id, 'gateInitiallyOpen', event.target.checked)}
+              onClick={(event) => event.stopPropagation()}
+              style={{ accentColor: '#89b4fa', cursor: 'pointer' }}
+            />
+            {displayLanguage === 'ru' ? 'Открыт по умолчанию' : 'Open by default'}
+          </label>
+        </div>
+      )}
+
+      {isDoOnceNode && (
+        <div style={{
+          padding: '8px 12px',
+          borderTop: '1px solid #313244',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}>
+          <span style={{ color: '#a6adc8', fontSize: 11 }}>
+            {displayLanguage === 'ru' ? 'Режим: один проход' : 'Mode: one-shot'}
+          </span>
+          <span style={{ color: '#89b4fa', fontSize: 10, lineHeight: 1.25 }}>
+            {displayLanguage === 'ru'
+              ? 'Вход Reset сбрасывает узел, после чего Completed снова срабатывает один раз.'
+              : 'Reset input re-arms the node, then Completed can fire once again.'}
+          </span>
+        </div>
+      )}
       
       {/* Data порты */}
       {(inputPorts.data.length > 0 || outputPorts.data.length > 0) && (
@@ -2018,6 +2446,20 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
           >
             {currentValueDisplay}
           </span>
+        </div>
+      )}
+
+      {/* Дополнительные exec входы (например: Reset у DoOnce/DoN/MultiGate) */}
+      {inputPorts.exec.length > 1 && (
+        <div style={{ ...styles.content, ...styles.inputSection }}>
+          {inputPorts.exec.slice(1).map((port) => (
+            <PortHandle
+              key={port.id}
+              port={port}
+              isInput={true}
+              displayLanguage={displayLanguage}
+            />
+          ))}
         </div>
       )}
       

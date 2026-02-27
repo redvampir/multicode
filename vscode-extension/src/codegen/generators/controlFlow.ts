@@ -1,7 +1,8 @@
 /**
  * Генераторы для Control Flow узлов
  * 
- * Start, End, Return, Branch, ForLoop, WhileLoop, Sequence
+ * Start, End, Return, Branch, ForLoop, WhileLoop, Sequence, Parallel,
+ * Gate, DoN, DoOnce, FlipFlop, MultiGate
  */
 
 import type { BlueprintNode, BlueprintNodeType, NodePort } from '../../shared/blueprintTypes';
@@ -404,6 +405,49 @@ export class BranchNodeGenerator extends BaseNodeGenerator {
 /**
  * ForLoop — цикл с счётчиком
  */
+type ForLoopDirection = 'up' | 'down' | 'auto';
+type ForLoopBoundMode = 'inclusive' | 'exclusive';
+
+interface ResolvedForLoopOptions {
+  step: number;
+  direction: ForLoopDirection;
+  boundMode: ForLoopBoundMode;
+  stepWasInvalid: boolean;
+}
+
+const isForLoopDirection = (value: unknown): value is ForLoopDirection =>
+  value === 'up' || value === 'down' || value === 'auto';
+
+const isForLoopBoundMode = (value: unknown): value is ForLoopBoundMode =>
+  value === 'inclusive' || value === 'exclusive';
+
+const resolveForLoopOptions = (node: BlueprintNode): ResolvedForLoopOptions => {
+  const properties = asRecord(node.properties);
+  const rawStep = properties?.forLoopStep;
+  const parsedStep = typeof rawStep === 'number'
+    ? rawStep
+    : typeof rawStep === 'string'
+      ? Number.parseInt(rawStep, 10)
+      : null;
+  const normalizedStep = parsedStep !== null && Number.isFinite(parsedStep) && parsedStep > 0
+    ? Math.max(1, Math.trunc(parsedStep))
+    : 1;
+  const stepWasInvalid = parsedStep !== null && (!Number.isFinite(parsedStep) || parsedStep <= 0);
+  const direction = isForLoopDirection(properties?.forLoopDirection)
+    ? properties.forLoopDirection
+    : 'up';
+  const boundMode = isForLoopBoundMode(properties?.forLoopBoundMode)
+    ? properties.forLoopBoundMode
+    : 'inclusive';
+
+  return {
+    step: normalizedStep,
+    direction,
+    boundMode,
+    stepWasInvalid,
+  };
+};
+
 export class ForLoopNodeGenerator extends BaseNodeGenerator {
   readonly nodeTypes: BlueprintNodeType[] = ['ForLoop'];
   
@@ -417,11 +461,36 @@ export class ForLoopNodeGenerator extends BaseNodeGenerator {
     
     const firstIndex = helpers.getInputExpression(node, 'first') ?? '0';
     const lastIndex = helpers.getInputExpression(node, 'last') ?? '10';
+    const options = resolveForLoopOptions(node);
+    if (options.stepWasInvalid) {
+      helpers.addWarning(
+        node.id,
+        CodeGenWarningCode.INFINITE_LOOP,
+        'Шаг цикла For должен быть больше 0. Используется 1.'
+      );
+    }
     
     // Генерируем читаемое имя переменной
-    const indexVar = `i_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
-    
-    lines.push(`${ind}for (int ${indexVar} = ${firstIndex}; ${indexVar} <= ${lastIndex}; ${indexVar}++) {`);
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6);
+    const indexVar = `i_${suffix}`;
+    const upComparator = options.boundMode === 'inclusive' ? '<=' : '<';
+    const downComparator = options.boundMode === 'inclusive' ? '>=' : '>';
+
+    if (options.direction === 'auto') {
+      const stepVar = `step_${suffix}`;
+      const directionVar = `dir_${suffix}`;
+      lines.push(`${ind}const int ${stepVar} = ${options.step};`);
+      lines.push(`${ind}const int ${directionVar} = (${firstIndex} <= ${lastIndex}) ? ${stepVar} : -${stepVar};`);
+      lines.push(
+        `${ind}for (int ${indexVar} = ${firstIndex}; (${directionVar} > 0) ? (${indexVar} ${upComparator} ${lastIndex}) : (${indexVar} ${downComparator} ${lastIndex}); ${indexVar} += ${directionVar}) {`
+      );
+    } else {
+      const comparator = options.direction === 'up' ? upComparator : downComparator;
+      const increment = options.direction === 'up'
+        ? (options.step === 1 ? `++${indexVar}` : `${indexVar} += ${options.step}`)
+        : (options.step === 1 ? `--${indexVar}` : `${indexVar} -= ${options.step}`);
+      lines.push(`${ind}for (int ${indexVar} = ${firstIndex}; ${indexVar} ${comparator} ${lastIndex}; ${increment}) {`);
+    }
     
     // Тело цикла
     helpers.pushIndent();
@@ -540,6 +609,472 @@ export class SequenceNodeGenerator extends BaseNodeGenerator {
       }
     }
     
+    return this.customExecution(lines);
+  }
+}
+
+const extractPortSuffix = (portId: string): string => {
+  const tokens = portId.split(/[-_]/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return `${tokens[tokens.length - 2]}-${tokens[tokens.length - 1]}`;
+  }
+  return portId;
+};
+
+const parseParallelThreadIndex = (portId: string): number => {
+  const match = portId.toLowerCase().match(/thread[-_](\d+)$/);
+  if (!match) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+};
+
+const parseMultiGateOutputIndex = (portId: string): number => {
+  const match = portId.toLowerCase().match(/out[-_](\d+)$/);
+  if (!match) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * Parallel — параллельное выполнение нескольких веток (fork-join)
+ */
+export class ParallelNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Parallel'];
+
+  generate(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+
+    const threadPorts = node.outputs
+      .filter((port) =>
+        port.direction === 'output' &&
+        port.dataType === 'execution' &&
+        /thread[-_]\d+$/i.test(port.id)
+      )
+      .sort((a, b) => parseParallelThreadIndex(a.id) - parseParallelThreadIndex(b.id));
+
+    const threadTargets = threadPorts
+      .map((port) => {
+        const portSuffix = extractPortSuffix(port.id);
+        return helpers.getExecutionTarget(node, portSuffix);
+      })
+      .filter((target): target is BlueprintNode => target !== null);
+
+    if (threadTargets.length === 0) {
+      helpers.addWarning(
+        node.id,
+        CodeGenWarningCode.EMPTY_BRANCH,
+        'Узел "Параллельно" не содержит подключённых Thread-веток'
+      );
+    }
+
+    const mergeNodeId = threadTargets.length >= 2
+      ? findExecutionMergeNodeId(
+          context,
+          threadTargets.map((target) => target.id),
+          new Set<string>([node.id])
+        )
+      : null;
+    const mergeNode = mergeNodeId
+      ? context.graph.nodes.find((candidate) => candidate.id === mergeNodeId) ?? null
+      : null;
+    const shouldMaskMergeNode =
+      mergeNodeId !== null &&
+      mergeNode !== null &&
+      !context.processedNodes.has(mergeNodeId);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.add(mergeNodeId);
+    }
+
+    const futureNames: string[] = [];
+    const idSuffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    let emittedThreadCount = 0;
+
+    for (const port of threadPorts) {
+      const portSuffix = extractPortSuffix(port.id);
+      const targetNode = helpers.getExecutionTarget(node, portSuffix);
+      if (!targetNode) {
+        continue;
+      }
+
+      const futureName = `parallel_future_${idSuffix}_${emittedThreadCount}`;
+      emittedThreadCount += 1;
+      futureNames.push(futureName);
+
+      lines.push(`${ind}auto ${futureName} = std::async(std::launch::async, [&]() {`);
+      helpers.pushIndent();
+      const branchLines = helpers.generateFromNode(targetNode);
+      lines.push(...branchLines);
+      helpers.popIndent();
+      lines.push(`${ind}});`);
+    }
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.delete(mergeNodeId);
+    }
+
+    for (const futureName of futureNames) {
+      lines.push(`${ind}${futureName}.get();`);
+    }
+
+    const completedNode = helpers.getExecutionTarget(node, 'completed');
+    if (completedNode) {
+      const completedLines = helpers.generateFromNode(completedNode);
+      lines.push(...completedLines);
+    }
+
+    const shouldGenerateMergeNode =
+      mergeNode !== null &&
+      (!completedNode || completedNode.id !== mergeNode.id);
+    if (shouldGenerateMergeNode) {
+      const mergeLines = helpers.generateFromNode(mergeNode);
+      lines.push(...mergeLines);
+    }
+
+    return this.customExecution(lines);
+  }
+}
+
+/**
+ * Gate — базовый управляемый шлюз
+ */
+export class GateNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Gate'];
+
+  generate(
+    node: BlueprintNode,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    const gateStateVar = `gate_open_${suffix}`;
+    const properties = asRecord(node.properties);
+    const initiallyOpen = properties?.gateInitiallyOpen !== false;
+    const exitNode = helpers.getExecutionTarget(node, 'exit');
+
+    lines.push(`${ind}static bool ${gateStateVar} = ${initiallyOpen ? 'true' : 'false'};`);
+    lines.push(`${ind}if (${gateStateVar}) {`);
+    helpers.pushIndent();
+    if (exitNode) {
+      lines.push(...helpers.generateFromNode(exitNode));
+    } else {
+      lines.push(`${helpers.indent()}// Пустая ветка`);
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "Exit" пуста');
+    }
+    helpers.popIndent();
+    lines.push(`${ind}}`);
+
+    return this.customExecution(lines);
+  }
+}
+
+/**
+ * DoN — выполнить ветку не более N раз
+ */
+export class DoNNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['DoN'];
+
+  generate(
+    node: BlueprintNode,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    const counterVar = `do_n_counter_${suffix}`;
+    const limitVar = `do_n_limit_${suffix}`;
+    const nExpr = helpers.getInputExpression(node, 'n') ?? '1';
+    const exitNode = helpers.getExecutionTarget(node, 'exit');
+
+    lines.push(`${ind}static int ${counterVar} = 0;`);
+    lines.push(`${ind}const int ${limitVar} = static_cast<int>(${nExpr});`);
+    lines.push(`${ind}if (${limitVar} > 0 && ${counterVar} < ${limitVar}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}++${counterVar};`);
+    if (exitNode) {
+      lines.push(...helpers.generateFromNode(exitNode));
+    } else {
+      lines.push(`${helpers.indent()}// Пустая ветка`);
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "Exit" пуста');
+    }
+    helpers.popIndent();
+    lines.push(`${ind}}`);
+
+    return this.customExecution(lines);
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    portId: string,
+    _context: CodeGenContext,
+    _helpers: GeneratorHelpers
+  ): string {
+    if (!portId.includes('counter')) {
+      return '0';
+    }
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    return `do_n_counter_${suffix}`;
+  }
+}
+
+/**
+ * DoOnce — выполнить ветку только один раз
+ */
+export class DoOnceNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['DoOnce'];
+
+  generate(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    const doneVar = `do_once_done_${suffix}`;
+    const completedNode = helpers.getExecutionTarget(node, 'completed');
+    const incomingExecutionPort = context.currentExecutionEntryPort ?? '';
+    const triggeredByReset = incomingExecutionPort.length > 0 && matchPortId(incomingExecutionPort, 'reset');
+
+    lines.push(`${ind}static bool ${doneVar} = false;`);
+    if (triggeredByReset) {
+      lines.push(`${ind}${doneVar} = false;`);
+      return this.customExecution(lines);
+    }
+    lines.push(`${ind}if (!${doneVar}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}${doneVar} = true;`);
+    if (completedNode) {
+      lines.push(...helpers.generateFromNode(completedNode));
+    } else {
+      lines.push(`${helpers.indent()}// Пустая ветка`);
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "Completed" пуста');
+    }
+    helpers.popIndent();
+    lines.push(`${ind}}`);
+
+    return this.customExecution(lines);
+  }
+}
+
+/**
+ * FlipFlop — чередование между ветками A и B
+ */
+export class FlipFlopNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['FlipFlop'];
+
+  generate(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    const stateVar = `flip_flop_state_${suffix}`;
+    const wasAVar = `flip_flop_was_a_${suffix}`;
+    const aNode = helpers.getExecutionTarget(node, 'a');
+    const bNode = helpers.getExecutionTarget(node, 'b');
+
+    const mergeNodeId = aNode && bNode
+      ? findExecutionMergeNodeId(
+          context,
+          [aNode.id, bNode.id],
+          new Set<string>([node.id])
+        )
+      : null;
+    const mergeNode = mergeNodeId
+      ? context.graph.nodes.find((candidate) => candidate.id === mergeNodeId) ?? null
+      : null;
+    const shouldMaskMergeNode =
+      mergeNodeId !== null &&
+      mergeNode !== null &&
+      !context.processedNodes.has(mergeNodeId);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.add(mergeNodeId);
+    }
+
+    lines.push(`${ind}static bool ${stateVar} = true;`);
+    lines.push(`${ind}const bool ${wasAVar} = ${stateVar};`);
+    lines.push(`${ind}if (${wasAVar}) {`);
+    helpers.pushIndent();
+    if (aNode) {
+      lines.push(...helpers.generateFromNode(aNode));
+    } else {
+      lines.push(`${helpers.indent()}// Пустая ветка`);
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "A" пуста');
+    }
+    helpers.popIndent();
+    lines.push(`${ind}} else {`);
+    helpers.pushIndent();
+    if (bNode) {
+      lines.push(...helpers.generateFromNode(bNode));
+    } else {
+      lines.push(`${helpers.indent()}// Пустая ветка`);
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Ветка "B" пуста');
+    }
+    helpers.popIndent();
+    lines.push(`${ind}}`);
+    lines.push(`${ind}${stateVar} = !${wasAVar};`);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.delete(mergeNodeId);
+    }
+
+    if (mergeNode) {
+      lines.push(...helpers.generateFromNode(mergeNode));
+    }
+
+    return this.customExecution(lines);
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    portId: string,
+    _context: CodeGenContext,
+    _helpers: GeneratorHelpers
+  ): string {
+    if (!portId.includes('is-a') && !portId.includes('is_a')) {
+      return '0';
+    }
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    return `flip_flop_was_a_${suffix}`;
+  }
+}
+
+/**
+ * MultiGate — переключение между несколькими ветками
+ */
+export class MultiGateNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['MultiGate'];
+
+  generate(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const lines: string[] = [];
+    const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'node';
+    const indexVar = `multi_gate_index_${suffix}`;
+    const selectedVar = `multi_gate_selected_${suffix}`;
+    const loopVar = `multi_gate_loop_${suffix}`;
+    const randomVar = `multi_gate_random_${suffix}`;
+    const randomSeedVar = `multi_gate_seed_${suffix}`;
+
+    const outputPorts = node.outputs
+      .filter((port) =>
+        port.direction === 'output' &&
+        port.dataType === 'execution' &&
+        /out[-_]\d+$/i.test(port.id)
+      )
+      .sort((a, b) => parseMultiGateOutputIndex(a.id) - parseMultiGateOutputIndex(b.id));
+
+    const loopExpr = helpers.getInputExpression(node, 'loop') ?? 'true';
+    const randomExpr = helpers.getInputExpression(node, 'is-random') ?? 'false';
+    const branchTargets = outputPorts
+      .map((port) => {
+        const portSuffix = extractPortSuffix(port.id);
+        return helpers.getExecutionTarget(node, portSuffix);
+      })
+      .filter((target): target is BlueprintNode => target !== null);
+    const mergeNodeId = branchTargets.length >= 2
+      ? findExecutionMergeNodeId(
+          context,
+          branchTargets.map((target) => target.id),
+          new Set<string>([node.id])
+        )
+      : null;
+    const mergeNode = mergeNodeId
+      ? context.graph.nodes.find((candidate) => candidate.id === mergeNodeId) ?? null
+      : null;
+    const shouldMaskMergeNode =
+      mergeNodeId !== null &&
+      mergeNode !== null &&
+      !context.processedNodes.has(mergeNodeId);
+
+    if (outputPorts.length === 0) {
+      helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, 'Узел "Мульти-шлюз" не содержит выходов');
+      return this.customExecution(lines);
+    }
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.add(mergeNodeId);
+    }
+
+    lines.push(`${ind}static int ${indexVar} = 0;`);
+    lines.push(`${ind}int ${selectedVar} = -1;`);
+    lines.push(`${ind}const bool ${loopVar} = (${loopExpr});`);
+    lines.push(`${ind}const bool ${randomVar} = (${randomExpr});`);
+    lines.push(`${ind}if (${randomVar}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}static unsigned int ${randomSeedVar} = 0x9E3779B9u;`);
+    lines.push(`${helpers.indent()}${randomSeedVar} = ${randomSeedVar} * 1664525u + 1013904223u;`);
+    lines.push(
+      `${helpers.indent()}${selectedVar} = static_cast<int>(${randomSeedVar} % ${outputPorts.length}u);`
+    );
+    helpers.popIndent();
+    lines.push(`${ind}} else if (${indexVar} < ${outputPorts.length}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}${selectedVar} = ${indexVar};`);
+    lines.push(`${helpers.indent()}++${indexVar};`);
+    helpers.popIndent();
+    lines.push(`${ind}} else if (${loopVar}) {`);
+    helpers.pushIndent();
+    lines.push(`${helpers.indent()}${indexVar} = 1;`);
+    lines.push(`${helpers.indent()}${selectedVar} = 0;`);
+    helpers.popIndent();
+    lines.push(`${ind}}`);
+    lines.push(`${ind}switch (${selectedVar}) {`);
+
+    for (const outputPort of outputPorts) {
+      const parsedIndex = parseMultiGateOutputIndex(outputPort.id);
+      const caseIndex = Number.isFinite(parsedIndex)
+        ? parsedIndex
+        : outputPorts.indexOf(outputPort);
+      const portSuffix = extractPortSuffix(outputPort.id);
+      const targetNode = helpers.getExecutionTarget(node, portSuffix);
+
+      lines.push(`${ind}case ${caseIndex}: {`);
+      helpers.pushIndent();
+      if (targetNode) {
+        lines.push(...helpers.generateFromNode(targetNode));
+      } else {
+        lines.push(`${helpers.indent()}// Пустая ветка`);
+        helpers.addWarning(node.id, CodeGenWarningCode.EMPTY_BRANCH, `Ветка "${outputPort.name}" пуста`);
+      }
+      lines.push(`${helpers.indent()}break;`);
+      helpers.popIndent();
+      lines.push(`${ind}}`);
+    }
+
+    lines.push(`${ind}default:`);
+    lines.push(`${ind}  break;`);
+    lines.push(`${ind}}`);
+
+    if (shouldMaskMergeNode && mergeNodeId) {
+      context.processedNodes.delete(mergeNodeId);
+    }
+
+    if (mergeNode) {
+      lines.push(...helpers.generateFromNode(mergeNode));
+    }
+
     return this.customExecution(lines);
   }
 }
@@ -897,6 +1432,12 @@ export function createControlFlowGenerators(): BaseNodeGenerator[] {
     new BranchNodeGenerator(),
     new ForLoopNodeGenerator(),
     new WhileLoopNodeGenerator(),
+    new ParallelNodeGenerator(),
+    new GateNodeGenerator(),
+    new DoNNodeGenerator(),
+    new DoOnceNodeGenerator(),
+    new FlipFlopNodeGenerator(),
+    new MultiGateNodeGenerator(),
     new DoWhileNodeGenerator(),
     new ForEachNodeGenerator(),
     new SwitchNodeGenerator(),

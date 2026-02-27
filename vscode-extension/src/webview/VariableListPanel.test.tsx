@@ -16,6 +16,44 @@ const createBaseGraph = (variables: unknown[]): BlueprintGraphState => ({
 });
 
 describe('VariableListPanel', () => {
+  it('renders EventGraph import action only when explicitly enabled', () => {
+    const graphState = createBaseGraph([]);
+    const onImportFromEventGraph = vi.fn();
+
+    const { rerender } = render(
+      <VariableListPanel
+        graphState={graphState}
+        onVariablesChange={vi.fn()}
+        onCreateGetVariable={vi.fn()}
+        onCreateSetVariable={vi.fn()}
+        displayLanguage="ru"
+        collapsed={false}
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /Из EventGraph/i })).not.toBeInTheDocument();
+
+    rerender(
+      <VariableListPanel
+        graphState={graphState}
+        onVariablesChange={vi.fn()}
+        onCreateGetVariable={vi.fn()}
+        onCreateSetVariable={vi.fn()}
+        displayLanguage="ru"
+        collapsed={false}
+        onToggleCollapsed={vi.fn()}
+        showImportFromEventGraphAction
+        onImportFromEventGraph={onImportFromEventGraph}
+      />,
+    );
+
+    const importButton = screen.getByRole('button', { name: /Из EventGraph/i });
+    fireEvent.click(importButton);
+
+    expect(onImportFromEventGraph).toHaveBeenCalledTimes(1);
+  });
+
   it('does not crash when legacy variables contain invalid entries', () => {
     const graphState = createBaseGraph([
       {

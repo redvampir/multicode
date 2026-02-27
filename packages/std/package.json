@@ -10,7 +10,12 @@
     "name": "MultiCode Team"
   },
   "license": "MIT",
-  "keywords": ["multicode", "nodes", "standard", "core"],
+  "keywords": [
+    "multicode",
+    "nodes",
+    "standard",
+    "core"
+  ],
   "engines": {
     "multicode": ">=0.5.0"
   },
@@ -35,6 +40,20 @@
       "labelRu": "Ввод/Вывод",
       "icon": "📤",
       "color": "#00BCD4"
+    },
+    {
+      "id": "string",
+      "label": "String",
+      "labelRu": "Строки",
+      "icon": "\"\"",
+      "color": "#E91E63"
+    },
+    {
+      "id": "array",
+      "label": "Collections",
+      "labelRu": "Коллекции",
+      "icon": "[]",
+      "color": "#FF9800"
     }
   ],
   "nodes": [
@@ -48,7 +67,11 @@
       "headerColor": "#E53935",
       "inputs": [],
       "outputs": [
-        { "id": "exec-out", "name": "", "dataType": "execution" }
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -64,7 +87,11 @@
       "category": "flow",
       "headerColor": "#E53935",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        }
       ],
       "outputs": [],
       "codegen": {
@@ -82,12 +109,31 @@
       "descriptionRu": "Условный переход",
       "headerColor": "#7C4DFF",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "condition", "name": "Condition", "nameRu": "Условие", "dataType": "bool" }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "condition",
+          "name": "Condition",
+          "nameRu": "Условие",
+          "dataType": "bool"
+        }
       ],
       "outputs": [
-        { "id": "true", "name": "True", "nameRu": "Истина", "dataType": "execution" },
-        { "id": "false", "name": "False", "nameRu": "Ложь", "dataType": "execution" }
+        {
+          "id": "true",
+          "name": "True",
+          "nameRu": "Истина",
+          "dataType": "execution"
+        },
+        {
+          "id": "false",
+          "name": "False",
+          "nameRu": "Ложь",
+          "dataType": "execution"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -102,14 +148,45 @@
       "category": "flow",
       "headerColor": "#7C4DFF",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "first", "name": "First Index", "nameRu": "Начальный индекс", "dataType": "int32", "defaultValue": 0 },
-        { "id": "last", "name": "Last Index", "nameRu": "Конечный индекс", "dataType": "int32", "defaultValue": 10 }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "first",
+          "name": "First Index",
+          "nameRu": "Начальный индекс",
+          "dataType": "int32",
+          "defaultValue": 0
+        },
+        {
+          "id": "last",
+          "name": "Last Index",
+          "nameRu": "Конечный индекс",
+          "dataType": "int32",
+          "defaultValue": 10
+        }
       ],
       "outputs": [
-        { "id": "loop-body", "name": "Loop Body", "nameRu": "Тело цикла", "dataType": "execution" },
-        { "id": "index", "name": "Index", "nameRu": "Индекс", "dataType": "int32" },
-        { "id": "completed", "name": "Completed", "nameRu": "Завершено", "dataType": "execution" }
+        {
+          "id": "loop-body",
+          "name": "Loop Body",
+          "nameRu": "Тело цикла",
+          "dataType": "execution"
+        },
+        {
+          "id": "index",
+          "name": "Index",
+          "nameRu": "Индекс",
+          "dataType": "int32"
+        },
+        {
+          "id": "completed",
+          "name": "Completed",
+          "nameRu": "Завершено",
+          "dataType": "execution"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -124,11 +201,26 @@
       "category": "math",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
-        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float",
+          "defaultValue": 0
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float",
+          "defaultValue": 0
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -143,11 +235,26 @@
       "category": "math",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
-        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float",
+          "defaultValue": 0
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float",
+          "defaultValue": 0
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -162,11 +269,26 @@
       "category": "math",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
-        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 0 }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float",
+          "defaultValue": 0
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float",
+          "defaultValue": 0
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -181,11 +303,26 @@
       "category": "math",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float", "defaultValue": 0 },
-        { "id": "b", "name": "B", "dataType": "float", "defaultValue": 1 }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float",
+          "defaultValue": 0
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float",
+          "defaultValue": 1
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "float" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -200,16 +337,32 @@
       "category": "io",
       "headerColor": "#00BCD4",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "string", "name": "Value", "nameRu": "Значение", "dataType": "any", "defaultValue": "" }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "string",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any",
+          "defaultValue": ""
+        }
       ],
       "outputs": [
-        { "id": "exec-out", "name": "", "dataType": "execution" }
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
       ],
       "codegen": {
         "cpp": {
           "template": "std::cout << {{input.string}} << std::endl;",
-          "includes": ["<iostream>"]
+          "includes": [
+            "<iostream>"
+          ]
         }
       }
     },
@@ -220,17 +373,39 @@
       "category": "io",
       "headerColor": "#00BCD4",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "prompt", "name": "Prompt", "nameRu": "Приглашение", "dataType": "string", "defaultValue": "" }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "prompt",
+          "name": "Prompt",
+          "nameRu": "Приглашение",
+          "dataType": "string",
+          "defaultValue": ""
+        }
       ],
       "outputs": [
-        { "id": "exec-out", "name": "", "dataType": "execution" },
-        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "string" }
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "string"
+        }
       ],
       "codegen": {
         "cpp": {
           "template": "std::cout << {{input.prompt}};\nstd::string {{output.value}};\nstd::getline(std::cin, {{output.value}});",
-          "includes": ["<iostream>", "<string>"]
+          "includes": [
+            "<iostream>",
+            "<string>"
+          ]
         }
       }
     },
@@ -242,7 +417,12 @@
       "headerColor": "#4CAF50",
       "inputs": [],
       "outputs": [
-        { "id": "value", "name": "Value", "nameRu": "Значение", "dataType": "any" }
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
       ],
       "properties": [
         {
@@ -259,10 +439,26 @@
           "type": "enum",
           "default": "int",
           "enum": [
-            { "value": "int", "label": "Integer", "labelRu": "Целое" },
-            { "value": "float", "label": "Float", "labelRu": "Дробное" },
-            { "value": "string", "label": "String", "labelRu": "Строка" },
-            { "value": "bool", "label": "Boolean", "labelRu": "Логическое" }
+            {
+              "value": "int",
+              "label": "Integer",
+              "labelRu": "Целое"
+            },
+            {
+              "value": "float",
+              "label": "Float",
+              "labelRu": "Дробное"
+            },
+            {
+              "value": "string",
+              "label": "String",
+              "labelRu": "Строка"
+            },
+            {
+              "value": "bool",
+              "label": "Boolean",
+              "labelRu": "Логическое"
+            }
           ]
         },
         {
@@ -286,12 +482,28 @@
       "category": "variable",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "exec-in", "name": "", "dataType": "execution" },
-        { "id": "value", "name": "", "dataType": "any" }
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "value-in",
+          "name": "",
+          "dataType": "any"
+        }
       ],
       "outputs": [
-        { "id": "exec-out", "name": "", "dataType": "execution" },
-        { "id": "value", "name": "", "dataType": "any" }
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "value-out",
+          "name": "",
+          "dataType": "any"
+        }
       ],
       "properties": [
         {
@@ -304,7 +516,7 @@
       ],
       "codegen": {
         "cpp": {
-          "template": "{{prop.varName}} = {{input.value}};"
+          "template": "{{prop.varName}} = {{input.value-in}};"
         }
       }
     },
@@ -316,7 +528,11 @@
       "headerColor": "#4CAF50",
       "inputs": [],
       "outputs": [
-        { "id": "value", "name": "", "dataType": "any" }
+        {
+          "id": "value-out",
+          "name": "",
+          "dataType": "any"
+        }
       ],
       "properties": [
         {
@@ -340,11 +556,24 @@
       "category": "comparison",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "any" },
-        { "id": "b", "name": "B", "dataType": "any" }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "any"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "any"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -359,11 +588,24 @@
       "category": "comparison",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float" },
-        { "id": "b", "name": "B", "dataType": "float" }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -378,11 +620,24 @@
       "category": "comparison",
       "headerColor": "#4CAF50",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "float" },
-        { "id": "b", "name": "B", "dataType": "float" }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "float"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "float"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -397,11 +652,24 @@
       "category": "logic",
       "headerColor": "#E53935",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "bool" },
-        { "id": "b", "name": "B", "dataType": "bool" }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "bool"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "bool"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -416,11 +684,24 @@
       "category": "logic",
       "headerColor": "#E53935",
       "inputs": [
-        { "id": "a", "name": "A", "dataType": "bool" },
-        { "id": "b", "name": "B", "dataType": "bool" }
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "bool"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "bool"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "Result", "nameRu": "Результат", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
@@ -435,16 +716,551 @@
       "category": "logic",
       "headerColor": "#E53935",
       "inputs": [
-        { "id": "a", "name": "", "dataType": "bool" }
+        {
+          "id": "a",
+          "name": "",
+          "dataType": "bool"
+        }
       ],
       "outputs": [
-        { "id": "result", "name": "", "dataType": "bool" }
+        {
+          "id": "result",
+          "name": "",
+          "dataType": "bool"
+        }
       ],
       "codegen": {
         "cpp": {
           "template": "(!{{input.a}})"
         }
       }
+    },
+    {
+      "type": "StringConcat",
+      "label": "Concat",
+      "labelRu": "Сцепить строки",
+      "category": "string",
+      "description": "Concatenate two strings",
+      "descriptionRu": "Объединить две строки",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "a",
+          "name": "A",
+          "nameRu": "A",
+          "dataType": "string",
+          "defaultValue": ""
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "nameRu": "B",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "string"
+        }
+      ]
+    },
+    {
+      "type": "StringLength",
+      "label": "Length",
+      "labelRu": "Длина строки",
+      "category": "string",
+      "description": "Get string length",
+      "descriptionRu": "Получить длину строки",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "length",
+          "name": "Length",
+          "nameRu": "Длина",
+          "dataType": "int32"
+        }
+      ]
+    },
+    {
+      "type": "Substring",
+      "label": "Substring",
+      "labelRu": "Подстрока",
+      "category": "string",
+      "description": "Extract part of a string by start and length",
+      "descriptionRu": "Извлечь часть строки по позиции и длине",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": ""
+        },
+        {
+          "id": "start",
+          "name": "Start",
+          "nameRu": "Начало",
+          "dataType": "int32",
+          "defaultValue": 0
+        },
+        {
+          "id": "length",
+          "name": "Length",
+          "nameRu": "Длина",
+          "dataType": "int32",
+          "defaultValue": 1
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "string"
+        }
+      ]
+    },
+    {
+      "type": "Contains",
+      "label": "Contains",
+      "labelRu": "Содержит",
+      "category": "string",
+      "description": "Check whether string contains a substring",
+      "descriptionRu": "Проверить наличие подстроки в строке",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": ""
+        },
+        {
+          "id": "search",
+          "name": "Search",
+          "nameRu": "Поиск",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Found",
+          "nameRu": "Найдено",
+          "dataType": "bool"
+        }
+      ]
+    },
+    {
+      "type": "Split",
+      "label": "Split",
+      "labelRu": "Разделить строку",
+      "category": "string",
+      "description": "Split string by delimiter",
+      "descriptionRu": "Разделить строку по разделителю",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": ""
+        },
+        {
+          "id": "delimiter",
+          "name": "Delimiter",
+          "nameRu": "Разделитель",
+          "dataType": "string",
+          "defaultValue": " "
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Items",
+          "nameRu": "Элементы",
+          "dataType": "array",
+          "typeName": "string[]"
+        }
+      ]
+    },
+    {
+      "type": "Trim",
+      "label": "Trim",
+      "labelRu": "Обрезать пробелы",
+      "category": "string",
+      "description": "Trim spaces at both string ends",
+      "descriptionRu": "Удалить пробелы в начале и в конце строки",
+      "headerColor": "#E91E63",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "string"
+        }
+      ]
+    },
+    {
+      "type": "MakeArray",
+      "label": "Make Array",
+      "labelRu": "Создать массив",
+      "category": "array",
+      "description": "Create an array from values",
+      "descriptionRu": "Создать массив из значений",
+      "headerColor": "#FF9800",
+      "dynamicPorts": true,
+      "inputs": [
+        {
+          "id": "item-0",
+          "name": "Item 0",
+          "nameRu": "Элемент 0",
+          "dataType": "any"
+        },
+        {
+          "id": "item-1",
+          "name": "Item 1",
+          "nameRu": "Элемент 1",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ]
+    },
+    {
+      "type": "ArrayGet",
+      "label": "Array Get",
+      "labelRu": "Взять из массива",
+      "category": "array",
+      "description": "Get array element by index",
+      "descriptionRu": "Получить элемент массива по индексу",
+      "headerColor": "#FF9800",
+      "inputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        },
+        {
+          "id": "index",
+          "name": "Index",
+          "nameRu": "Индекс",
+          "dataType": "int32",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ]
+    },
+    {
+      "type": "ArraySet",
+      "label": "Array Set",
+      "labelRu": "Записать в массив",
+      "category": "array",
+      "description": "Set array element by index",
+      "descriptionRu": "Установить элемент массива по индексу",
+      "headerColor": "#FF9800",
+      "inputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        },
+        {
+          "id": "index",
+          "name": "Index",
+          "nameRu": "Индекс",
+          "dataType": "int32",
+          "defaultValue": 0
+        },
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "array-out",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ]
+    },
+    {
+      "type": "ArrayPushBack",
+      "label": "Array Push Back",
+      "labelRu": "Добавить в конец массива",
+      "category": "array",
+      "description": "Append value to array end",
+      "descriptionRu": "Добавить значение в конец массива",
+      "headerColor": "#FF9800",
+      "inputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        },
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "array-out",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ]
+    },
+    {
+      "type": "ArraySize",
+      "label": "Array Size",
+      "labelRu": "Размер массива",
+      "category": "array",
+      "description": "Get number of items in array",
+      "descriptionRu": "Получить количество элементов в массиве",
+      "headerColor": "#FF9800",
+      "inputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "size",
+          "name": "Size",
+          "nameRu": "Размер",
+          "dataType": "int32"
+        }
+      ]
+    },
+    {
+      "type": "ArrayClear",
+      "label": "Array Clear",
+      "labelRu": "Очистить массив",
+      "category": "array",
+      "description": "Clear all array items",
+      "descriptionRu": "Очистить массив полностью",
+      "headerColor": "#FF9800",
+      "inputs": [
+        {
+          "id": "array",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "array-out",
+          "name": "Array",
+          "nameRu": "Массив",
+          "dataType": "array"
+        }
+      ]
+    },
+    {
+      "type": "ToInt",
+      "label": "To Int",
+      "labelRu": "В целое",
+      "category": "math",
+      "description": "Convert value to int32",
+      "descriptionRu": "Преобразовать значение в int32",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "int32"
+        }
+      ]
+    },
+    {
+      "type": "ToFloat",
+      "label": "To Float",
+      "labelRu": "В дробное",
+      "category": "math",
+      "description": "Convert value to float",
+      "descriptionRu": "Преобразовать значение в float",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
+      ]
+    },
+    {
+      "type": "ToBool",
+      "label": "To Bool",
+      "labelRu": "В логическое",
+      "category": "logic",
+      "description": "Convert value to boolean",
+      "descriptionRu": "Преобразовать значение в логический тип",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "bool"
+        }
+      ]
+    },
+    {
+      "type": "ToString",
+      "label": "To String",
+      "labelRu": "В строку",
+      "category": "string",
+      "description": "Convert value to string",
+      "descriptionRu": "Преобразовать значение в строку",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "string"
+        }
+      ]
+    },
+    {
+      "type": "ParseInt",
+      "label": "Parse Int",
+      "labelRu": "Разобрать целое",
+      "category": "math",
+      "description": "Parse int32 from string",
+      "descriptionRu": "Преобразовать строку в int32",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": "0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "int32"
+        }
+      ]
+    },
+    {
+      "type": "ParseFloat",
+      "label": "Parse Float",
+      "labelRu": "Разобрать дробное",
+      "category": "math",
+      "description": "Parse float from string",
+      "descriptionRu": "Преобразовать строку во float",
+      "headerColor": "#607D8B",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": "0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
+      ]
     }
   ]
 }

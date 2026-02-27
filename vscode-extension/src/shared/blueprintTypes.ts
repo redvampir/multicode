@@ -54,6 +54,27 @@ export type BlueprintNodeType =
   | 'ConstNumber'
   | 'ConstString'
   | 'ConstBool'
+  // Strings
+  | 'StringConcat'
+  | 'StringLength'
+  | 'Substring'
+  | 'Contains'
+  | 'Split'
+  | 'Trim'
+  // Collections
+  | 'MakeArray'
+  | 'ArrayGet'
+  | 'ArraySet'
+  | 'ArrayPushBack'
+  | 'ArraySize'
+  | 'ArrayClear'
+  // Explicit conversions
+  | 'ToInt'
+  | 'ToFloat'
+  | 'ToBool'
+  | 'ToString'
+  | 'ParseInt'
+  | 'ParseFloat'
   | 'Add'
   | 'Subtract'
   | 'Multiply'
@@ -433,7 +454,7 @@ export interface NodeTypeDefinition {
   type: BlueprintNodeType;
   label: string;
   labelRu: string;
-  category: 'flow' | 'function' | 'variable' | 'math' | 'comparison' | 'logic' | 'io' | 'other';
+  category: 'flow' | 'function' | 'variable' | 'math' | 'comparison' | 'logic' | 'io' | 'string' | 'collection' | 'other';
   /** Ключ иконки или путь (например: 'loop' или 'vscode-extension/media/icons/loop.svg') */
   icon?: string;
   description?: string;
@@ -1655,6 +1676,306 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'result', name: 'Value', nameRu: 'Значение', dataType: 'bool', direction: 'output', defaultValue: false }
     ],
   },
+
+  StringConcat: {
+    type: 'StringConcat',
+    label: 'Concat',
+    labelRu: 'Сцепить строки',
+    icon: 'string',
+    category: 'string',
+    description: 'Concatenate two strings',
+    descriptionRu: 'Объединить две строки',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'a', name: 'A', nameRu: 'A', dataType: 'string', direction: 'input', defaultValue: '' },
+      { id: 'b', name: 'B', nameRu: 'B', dataType: 'string', direction: 'input', defaultValue: '' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'string', direction: 'output' }
+    ],
+  },
+  StringLength: {
+    type: 'StringLength',
+    label: 'Length',
+    labelRu: 'Длина строки',
+    icon: 'string',
+    category: 'string',
+    description: 'Get string length',
+    descriptionRu: 'Получить длину строки',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '' }
+    ],
+    outputs: [
+      { id: 'length', name: 'Length', nameRu: 'Длина', dataType: 'int32', direction: 'output' }
+    ],
+  },
+  Substring: {
+    type: 'Substring',
+    label: 'Substring',
+    labelRu: 'Подстрока',
+    icon: 'string',
+    category: 'string',
+    description: 'Extract part of a string by start and length',
+    descriptionRu: 'Извлечь часть строки по позиции и длине',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '' },
+      { id: 'start', name: 'Start', nameRu: 'Начало', dataType: 'int32', direction: 'input', defaultValue: 0 },
+      { id: 'length', name: 'Length', nameRu: 'Длина', dataType: 'int32', direction: 'input', defaultValue: 1 }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'string', direction: 'output' }
+    ],
+  },
+  Contains: {
+    type: 'Contains',
+    label: 'Contains',
+    labelRu: 'Содержит',
+    icon: 'string',
+    category: 'string',
+    description: 'Check whether string contains a substring',
+    descriptionRu: 'Проверить наличие подстроки в строке',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '' },
+      { id: 'search', name: 'Search', nameRu: 'Поиск', dataType: 'string', direction: 'input', defaultValue: '' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Found', nameRu: 'Найдено', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  Split: {
+    type: 'Split',
+    label: 'Split',
+    labelRu: 'Разделить строку',
+    icon: 'string',
+    category: 'string',
+    description: 'Split string by delimiter',
+    descriptionRu: 'Разделить строку по разделителю',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '' },
+      { id: 'delimiter', name: 'Delimiter', nameRu: 'Разделитель', dataType: 'string', direction: 'input', defaultValue: ' ' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Items', nameRu: 'Элементы', dataType: 'array', direction: 'output', typeName: 'string[]' }
+    ],
+  },
+  Trim: {
+    type: 'Trim',
+    label: 'Trim',
+    labelRu: 'Обрезать пробелы',
+    icon: 'string',
+    category: 'string',
+    description: 'Trim spaces at both string ends',
+    descriptionRu: 'Удалить пробелы в начале и в конце строки',
+    headerColor: '#E91E63',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'string', direction: 'output' }
+    ],
+  },
+  MakeArray: {
+    type: 'MakeArray',
+    label: 'Make Array',
+    labelRu: 'Создать массив',
+    icon: 'array',
+    category: 'collection',
+    description: 'Create an array from values',
+    descriptionRu: 'Создать массив из значений',
+    headerColor: '#FF9800',
+    dynamicPorts: true,
+    inputs: [
+      { id: 'item-0', name: 'Item 0', nameRu: 'Элемент 0', dataType: 'any', direction: 'input' },
+      { id: 'item-1', name: 'Item 1', nameRu: 'Элемент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
+    ],
+  },
+  ArrayGet: {
+    type: 'ArrayGet',
+    label: 'Array Get',
+    labelRu: 'Взять из массива',
+    icon: 'array',
+    category: 'collection',
+    description: 'Get array element by index',
+    descriptionRu: 'Получить элемент массива по индексу',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' },
+      { id: 'index', name: 'Index', nameRu: 'Индекс', dataType: 'int32', direction: 'input', defaultValue: 0 }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  ArraySet: {
+    type: 'ArraySet',
+    label: 'Array Set',
+    labelRu: 'Записать в массив',
+    icon: 'array',
+    category: 'collection',
+    description: 'Set array element by index',
+    descriptionRu: 'Установить элемент массива по индексу',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' },
+      { id: 'index', name: 'Index', nameRu: 'Индекс', dataType: 'int32', direction: 'input', defaultValue: 0 },
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'array-out', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
+    ],
+  },
+  ArrayPushBack: {
+    type: 'ArrayPushBack',
+    label: 'Array Push Back',
+    labelRu: 'Добавить в конец массива',
+    icon: 'array',
+    category: 'collection',
+    description: 'Append value to array end',
+    descriptionRu: 'Добавить значение в конец массива',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' },
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'array-out', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
+    ],
+  },
+  ArraySize: {
+    type: 'ArraySize',
+    label: 'Array Size',
+    labelRu: 'Размер массива',
+    icon: 'array',
+    category: 'collection',
+    description: 'Get number of items in array',
+    descriptionRu: 'Получить количество элементов в массиве',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'size', name: 'Size', nameRu: 'Размер', dataType: 'int32', direction: 'output' }
+    ],
+  },
+  ArrayClear: {
+    type: 'ArrayClear',
+    label: 'Array Clear',
+    labelRu: 'Очистить массив',
+    icon: 'array',
+    category: 'collection',
+    description: 'Clear all array items',
+    descriptionRu: 'Очистить массив полностью',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'array-out', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
+    ],
+  },
+  ToInt: {
+    type: 'ToInt',
+    label: 'To Int',
+    labelRu: 'В целое',
+    icon: 'math',
+    category: 'math',
+    description: 'Convert value to int32',
+    descriptionRu: 'Преобразовать значение в int32',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'int32', direction: 'output' }
+    ],
+  },
+  ToFloat: {
+    type: 'ToFloat',
+    label: 'To Float',
+    labelRu: 'В дробное',
+    icon: 'math',
+    category: 'math',
+    description: 'Convert value to float',
+    descriptionRu: 'Преобразовать значение в float',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
+    ],
+  },
+  ToBool: {
+    type: 'ToBool',
+    label: 'To Bool',
+    labelRu: 'В логическое',
+    icon: 'logic',
+    category: 'logic',
+    description: 'Convert value to boolean',
+    descriptionRu: 'Преобразовать значение в логический тип',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  ToString: {
+    type: 'ToString',
+    label: 'To String',
+    labelRu: 'В строку',
+    icon: 'string',
+    category: 'string',
+    description: 'Convert value to string',
+    descriptionRu: 'Преобразовать значение в строку',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'string', direction: 'output' }
+    ],
+  },
+  ParseInt: {
+    type: 'ParseInt',
+    label: 'Parse Int',
+    labelRu: 'Разобрать целое',
+    icon: 'math',
+    category: 'math',
+    description: 'Parse int32 from string',
+    descriptionRu: 'Преобразовать строку в int32',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '0' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'int32', direction: 'output' }
+    ],
+  },
+  ParseFloat: {
+    type: 'ParseFloat',
+    label: 'Parse Float',
+    labelRu: 'Разобрать дробное',
+    icon: 'math',
+    category: 'math',
+    description: 'Parse float from string',
+    descriptionRu: 'Преобразовать строку во float',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'value', name: 'String', nameRu: 'Строка', dataType: 'string', direction: 'input', defaultValue: '0' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
+    ],
+  },
   Add: {
     type: 'Add',
     label: 'Add',
@@ -1955,6 +2276,8 @@ export const NODE_CATEGORIES: { id: NodeTypeDefinition['category']; label: strin
   { id: 'comparison', label: 'Comparison', labelRu: 'Сравнение' },
   { id: 'logic', label: 'Logic', labelRu: 'Логика' },
   { id: 'io', label: 'Input/Output', labelRu: 'Ввод/Вывод' },
+  { id: 'string', label: 'String', labelRu: 'Строки' },
+  { id: 'collection', label: 'Collection', labelRu: 'Коллекции' },
   { id: 'other', label: 'Other', labelRu: 'Прочее' },
 ];
 

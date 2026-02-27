@@ -27,38 +27,38 @@ void NodeFactory::configure_ports(Node& node) {
     const auto type = node.get_type();
 
     if (type.name == NodeTypes::Start.name) {
-        node.add_output_port(DataType::Execution, "start", generate_port_id());
+        node.add_output_port(DataType::Execution, "exec-out", generate_port_id());
     } else if (type.name == NodeTypes::End.name) {
-        node.add_input_port(DataType::Execution, "end", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
     } else if (type.name == NodeTypes::PrintString.name) {
-        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
-        node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
-        node.add_input_port(DataType::StringView, "value", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
+        node.add_output_port(DataType::Execution, "exec-out", generate_port_id());
+        node.add_input_port(DataType::StringView, "string", generate_port_id());
         node.set_property("value", std::string("Hello, World!"));
     } else if (type.name == NodeTypes::Branch.name) {
-        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
         node.add_input_port(DataType::Bool, "condition", generate_port_id());
-        node.add_output_port(DataType::Execution, "true_exec", generate_port_id());
-        node.add_output_port(DataType::Execution, "false_exec", generate_port_id());
+        node.add_output_port(DataType::Execution, "true", generate_port_id());
+        node.add_output_port(DataType::Execution, "false", generate_port_id());
     } else if (type.name == NodeTypes::Sequence.name) {
-        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
-        node.add_output_port(DataType::Execution, "Then 0", generate_port_id());
-        node.add_output_port(DataType::Execution, "Then 1", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
+        node.add_output_port(DataType::Execution, "then-0", generate_port_id());
+        node.add_output_port(DataType::Execution, "then-1", generate_port_id());
     } else if (type.name == NodeTypes::ForLoop.name) {
-        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
-        node.add_input_port(DataType::Int32, "first_index", generate_port_id());
-        node.add_input_port(DataType::Int32, "last_index", generate_port_id());
-        node.add_output_port(DataType::Execution, "loop_body", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
+        node.add_input_port(DataType::Int32, "first", generate_port_id());
+        node.add_input_port(DataType::Int32, "last", generate_port_id());
+        node.add_output_port(DataType::Execution, "loop-body", generate_port_id());
         node.add_output_port(DataType::Int32, "index", generate_port_id());
         node.add_output_port(DataType::Execution, "completed", generate_port_id());
     } else if (type.name == NodeTypes::StringLiteral.name) {
-        node.add_output_port(DataType::String, "output", generate_port_id());
+        node.add_output_port(DataType::String, "result", generate_port_id());
         node.set_property("value", std::string("default string"));
     } else if (type.name == NodeTypes::BoolLiteral.name) {
-        node.add_output_port(DataType::Bool, "output", generate_port_id());
+        node.add_output_port(DataType::Bool, "result", generate_port_id());
         node.set_property("value", false);
     } else if (type.name == NodeTypes::IntLiteral.name) {
-        node.add_output_port(DataType::Int32, "output", generate_port_id());
+        node.add_output_port(DataType::Int32, "result", generate_port_id());
         node.set_property("value", 0);
     } else if (type.name == NodeTypes::Add.name) {
         node.add_input_port(DataType::Int32, "a", generate_port_id());
@@ -66,12 +66,13 @@ void NodeFactory::configure_ports(Node& node) {
         node.add_output_port(DataType::Int32, "result", generate_port_id());
     } else if (type.name == NodeTypes::GetVariable.name) {
         node.set_property("variable_name", std::string(""));
-        node.add_output_port(DataType::Any, "value", generate_port_id());
+        node.add_output_port(DataType::Any, "value-out", generate_port_id());
     } else if (type.name == NodeTypes::SetVariable.name) {
         node.set_property("variable_name", std::string(""));
-        node.add_input_port(DataType::Execution, "in_exec", generate_port_id());
-        node.add_input_port(DataType::Any, "value", generate_port_id());
-        node.add_output_port(DataType::Execution, "out_exec", generate_port_id());
+        node.add_input_port(DataType::Execution, "exec-in", generate_port_id());
+        node.add_input_port(DataType::Any, "value-in", generate_port_id());
+        node.add_output_port(DataType::Execution, "exec-out", generate_port_id());
+        node.add_output_port(DataType::Any, "value-out", generate_port_id());
     }
 }
 

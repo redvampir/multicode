@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <array>
 #include <compare>
 #include <cstdint>
 #include <optional>
@@ -95,6 +96,22 @@ inline constexpr NodeType Add{.name = "core.math.add", .label = "Add"};
 // Variables
 inline constexpr NodeType GetVariable{.name = "core.variable.get", .label = "Get Variable"};
 inline constexpr NodeType SetVariable{.name = "core.variable.set", .label = "Set Variable"};
+
+/// @brief Подмножество нод, которые исполняются напрямую через C++ ядро.
+inline constexpr std::array<const NodeType*, 12> CoreRuntimeNodeTypes = {
+    &Start,
+    &End,
+    &Branch,
+    &Sequence,
+    &ForLoop,
+    &PrintString,
+    &StringLiteral,
+    &BoolLiteral,
+    &IntLiteral,
+    &Add,
+    &GetVariable,
+    &SetVariable,
+};
 
 }  // namespace NodeTypes
 

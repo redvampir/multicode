@@ -28,6 +28,16 @@ const core::Port* find_port_by_name(const core::Node& node, std::string_view nam
     return nullptr;
 }
 
+const core::Port* find_port_by_names(const core::Node& node,
+                                     std::initializer_list<std::string_view> names) {
+    for (const auto name : names) {
+        if (const auto* port = find_port_by_name(node, name); port != nullptr) {
+            return port;
+        }
+    }
+    return nullptr;
+}
+
 const core::Node* find_node_with_port(const core::Graph& graph, core::PortId port_id) {
     for (const auto& node : graph.get_nodes()) {
         if (node->find_port(port_id) != nullptr) {
@@ -124,7 +134,7 @@ private:
         if (type.name == core::NodeTypes::End.name) {
             main_body_ << indentation << "return 0;\n";
         } else if (type.name == core::NodeTypes::PrintString.name) {
-            if (const auto* msg_port = find_port_by_name(*current_node, "value")) {
+            if (const auto* msg_port = find_port_by_names(*current_node, {"string", "value"})) {
                 const auto value_expr = generate_data_expression(*msg_port);
                 main_body_ << indentation << "std::cout << " << value_expr << " << std::endl;\n";
             }
@@ -132,7 +142,7 @@ private:
         } else if (type.name == core::NodeTypes::SetVariable.name) {
             const auto var_name =
                 current_node->get_property<std::string>("variable_name").value_or("");
-            const auto* value_port = find_port_by_name(*current_node, "value");
+            const auto* value_port = find_port_by_names(*current_node, {"value-in", "value"});
 
             if (!var_name.empty() && value_port != nullptr) {
                 const auto value_expr = generate_data_expression(*value_port);
@@ -154,17 +164,19 @@ private:
             const auto condition_expr = cond_port ? generate_data_expression(*cond_port) : "false";
 
             main_body_ << indentation << "if (" << condition_expr << ") {\n";
-            if (const auto* true_exec = find_port_by_name(*current_node, "true_exec")) {
+            if (const auto* true_exec = find_port_by_names(*current_node, {"true", "true_exec"})) {
                 generate_exec_flow(get_connected_node(graph_, *true_exec), indent + 1);
             }
             main_body_ << indentation << "} else {\n";
-            if (const auto* false_exec = find_port_by_name(*current_node, "false_exec")) {
+            if (const auto* false_exec =
+                    find_port_by_names(*current_node, {"false", "false_exec"})) {
                 generate_exec_flow(get_connected_node(graph_, *false_exec), indent + 1);
             }
             main_body_ << indentation << "}\n";
         } else if (type.name == core::NodeTypes::ForLoop.name) {
-            const auto* first_idx_port = find_port_by_name(*current_node, "first_index");
-            const auto* last_idx_port = find_port_by_name(*current_node, "last_index");
+            const auto* first_idx_port =
+                find_port_by_names(*current_node, {"first", "first_index"});
+            const auto* last_idx_port = find_port_by_names(*current_node, {"last", "last_index"});
             const auto* index_out_port = find_port_by_name(*current_node, "index");
 
             const auto first_idx_expr =
@@ -181,7 +193,8 @@ private:
             main_body_ << indentation << "for (int " << loop_var << " = " << first_idx_expr << "; "
                        << loop_var << " < " << last_idx_expr << "; ++" << loop_var << ") {\n";
 
-            if (const auto* loop_body = find_port_by_name(*current_node, "loop_body")) {
+            if (const auto* loop_body =
+                    find_port_by_names(*current_node, {"loop-body", "loop_body"})) {
                 generate_exec_flow(get_connected_node(graph_, *loop_body), indent + 1);
             }
 

@@ -34,6 +34,37 @@
 | ParseInt | ✅ | ❌ | ❌ | ✅ |
 | ParseFloat | ✅ | ❌ | ❌ | ✅ |
 
+## Supported-by-layer matrix (базовые ноды)
+
+Этот раздел явно фиксирует, какие базовые ноды считаются поддерживаемыми:
+- напрямую через C++ core (NodeTypes + NodeFactory + GraphSerializer),
+- только на уровне TS/codegen (палитра + TS runtime/codegen).
+
+| Нода (UI type) | Canonical core type | C++ core runtime | TS codegen/runtime |
+|---|---|---:|---:|
+| Start | core.flow.start | ✅ | ✅ |
+| End | core.flow.end | ✅ | ✅ |
+| Branch | core.flow.branch | ✅ | ✅ |
+| Sequence | core.flow.sequence | ✅ | ✅ |
+| ForLoop | core.flow.for_loop | ✅ | ✅ |
+| Print | core.io.print_string | ✅ | ✅ |
+| ConstString | core.literal.string | ✅ | ✅ |
+| ConstBool | core.literal.bool | ✅ | ✅ |
+| ConstNumber | core.literal.int | ✅ | ✅ |
+| Add | core.math.add | ✅ | ✅ |
+| GetVariable | core.variable.get | ✅ | ✅ |
+| SetVariable | core.variable.set | ✅ | ✅ |
+
+### Ноды, которые пока остаются только на TS-слое
+
+Следующие семейства нод **не считаются direct-core** и пока поддерживаются только на уровне TS:
+- расширенный control-flow (например, `WhileLoop`, `Parallel`, `Gate`),
+- расширенная математика/сравнения/логика вне `Add`,
+- расширенные I/O и служебные ноды,
+- пакетные ноды `@multicode/std`, перечисленные в матрице выше.
+
+Для этих нод C++ core-совместимость должна добавляться отдельно (NodeTypes/NodeFactory/GraphSerializer + тесты миграции портов).
+
 ## Основания для статусов
 
 1. **Доступность в палитре:**

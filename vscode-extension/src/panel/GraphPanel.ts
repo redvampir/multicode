@@ -711,6 +711,7 @@ export class GraphPanel {
       this.outputChannel.appendLine(
         `[Compile & Run] ⚠ Игнорирую стандарт из UI (${standardOverride}). Используется ${cppStandard} (strict).`
       );
+      this.postToast('warning', this.translate('warnings.cpp23RequiredForModernStd', { standard: standardOverride }));
     }
 
     this.outputChannel.appendLine(`[Compile & Run] Стандарт C++: ${cppStandard} (strict)`);

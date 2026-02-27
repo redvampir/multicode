@@ -11,6 +11,17 @@ import {
   ArrayGetNodeGenerator,
   ArraySetNodeGenerator,
   ArrayPushBackNodeGenerator,
+  MakeExpectedNodeGenerator,
+  ExpectedHasValueNodeGenerator,
+  ExpectedValueNodeGenerator,
+  ExpectedErrorNodeGenerator,
+  MakeOptionalNodeGenerator,
+  OptionalHasValueNodeGenerator,
+  OptionalValueOrNodeGenerator,
+  MakeVariantNodeGenerator,
+  HoldsAlternativeNodeGenerator,
+  VisitVariantNodeGenerator,
+  FormatNodeGenerator,
   FallbackNodeGenerator,
   createOtherGenerators,
 } from './other';
@@ -285,6 +296,119 @@ describe('Array generators', () => {
   });
 });
 
+
+
+describe('Expected/Optional/Variant/Format generators', () => {
+  it('ExpectedValue returns default constructed value in debug/recovery mode when expected is empty', () => {
+    const generator = new ExpectedValueNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('maybeResult'),
+    });
+    const context = createMockContext();
+    context.options.includeSourceMarkers = true;
+    const node = createMockNode('ExpectedValue', 'Expected Value', {
+      inputs: [{ id: 'expected', name: 'Expected', dataType: 'any', direction: 'input', index: 0 }],
+      outputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expression).toContain('if (!multicode_expected.has_value())');
+    expect(expression).toContain('value_type{}');
+  });
+
+  it('OptionalValueOr adds explicit missing-value branch in debug/recovery mode', () => {
+    const generator = new OptionalValueOrNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'optional') {
+          return 'maybeName';
+        }
+        if (portId === 'fallback') {
+          return '"unknown"';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    context.options.includeSourceMarkers = true;
+    const node = createMockNode('OptionalValueOr', 'Optional Value Or', {
+      inputs: [
+        { id: 'optional', name: 'Optional', dataType: 'any', direction: 'input', index: 0 },
+        { id: 'fallback', name: 'Fallback', dataType: 'any', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expression).toContain('if (!multicode_optional.has_value())');
+    expect(expression).toContain('return "unknown";');
+  });
+
+  it('Format builds std::format call with dynamic args', () => {
+    const generator = new FormatNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'format') {
+          return '"{} -> {}"';
+        }
+        if (portId === 'arg-0') {
+          return 'lhs';
+        }
+        if (portId === 'arg-1') {
+          return 'rhs';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    const node = createMockNode('Format', 'Format', {
+      inputs: [
+        { id: 'format', name: 'Format', dataType: 'string', direction: 'input', index: 0 },
+        { id: 'arg-0', name: 'Arg 0', dataType: 'any', direction: 'input', index: 1 },
+        { id: 'arg-1', name: 'Arg 1', dataType: 'any', direction: 'input', index: 2 },
+      ],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'string', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'result', context, helpers);
+    expect(expression).toContain('std::format("{} -> {}", lhs, rhs)');
+  });
+
+  it('MakeExpected / Optional / Variant / Holds / Visit expressions use C++23 containers', () => {
+    const context = createMockContext();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'value') return 'valueExpr';
+        if (portId === 'error') return 'errorExpr';
+        if (portId === 'has-value') return 'flagExpr';
+        if (portId === 'variant') return 'variantExpr';
+        if (portId === 'index') return '2';
+        return null;
+      }),
+    });
+
+    const makeExpectedExpr = new MakeExpectedNodeGenerator().getOutputExpression(createMockNode('MakeExpected', 'MakeExpected'), 'expected', context, helpers);
+    const hasValueExpr = new ExpectedHasValueNodeGenerator().getOutputExpression(createMockNode('ExpectedHasValue', 'ExpectedHasValue'), 'result', context, helpers);
+    const errorExpr = new ExpectedErrorNodeGenerator().getOutputExpression(createMockNode('ExpectedError', 'ExpectedError'), 'error', context, helpers);
+    const makeOptionalExpr = new MakeOptionalNodeGenerator().getOutputExpression(createMockNode('MakeOptional', 'MakeOptional'), 'optional', context, helpers);
+    const optionalHasValueExpr = new OptionalHasValueNodeGenerator().getOutputExpression(createMockNode('OptionalHasValue', 'OptionalHasValue'), 'result', context, helpers);
+    const makeVariantExpr = new MakeVariantNodeGenerator().getOutputExpression(createMockNode('MakeVariant', 'MakeVariant'), 'variant', context, helpers);
+    const holdsExpr = new HoldsAlternativeNodeGenerator().getOutputExpression(createMockNode('HoldsAlternative', 'HoldsAlternative'), 'result', context, helpers);
+    const visitExpr = new VisitVariantNodeGenerator().getOutputExpression(createMockNode('VisitVariant', 'VisitVariant'), 'value', context, helpers);
+
+    expect(makeExpectedExpr).toContain('std::expected');
+    expect(hasValueExpr).toContain('.has_value()');
+    expect(errorExpr).toContain('.error()');
+    expect(makeOptionalExpr).toContain('std::optional');
+    expect(optionalHasValueExpr).toContain('.has_value()');
+    expect(makeVariantExpr).toContain('std::variant');
+    expect(holdsExpr).toContain('.index()');
+    expect(visitExpr).toContain('std::visit');
+  });
+});
+
 // ============================================
 // FallbackNodeGenerator Tests
 // ============================================
@@ -388,12 +512,23 @@ describe('createOtherGenerators', () => {
   it('should return array with all other generators', () => {
     const generators = createOtherGenerators();
 
-    expect(generators).toHaveLength(6);
+    expect(generators).toHaveLength(17);
     expect(generators[0]).toBeInstanceOf(CommentNodeGenerator);
     expect(generators[1]).toBeInstanceOf(RerouteNodeGenerator);
     expect(generators[2]).toBeInstanceOf(ArrayGetNodeGenerator);
     expect(generators[3]).toBeInstanceOf(ArraySetNodeGenerator);
     expect(generators[4]).toBeInstanceOf(ArrayPushBackNodeGenerator);
-    expect(generators[5]).toBeInstanceOf(FallbackNodeGenerator);
+    expect(generators[5]).toBeInstanceOf(MakeExpectedNodeGenerator);
+    expect(generators[6]).toBeInstanceOf(ExpectedHasValueNodeGenerator);
+    expect(generators[7]).toBeInstanceOf(ExpectedValueNodeGenerator);
+    expect(generators[8]).toBeInstanceOf(ExpectedErrorNodeGenerator);
+    expect(generators[9]).toBeInstanceOf(MakeOptionalNodeGenerator);
+    expect(generators[10]).toBeInstanceOf(OptionalHasValueNodeGenerator);
+    expect(generators[11]).toBeInstanceOf(OptionalValueOrNodeGenerator);
+    expect(generators[12]).toBeInstanceOf(MakeVariantNodeGenerator);
+    expect(generators[13]).toBeInstanceOf(HoldsAlternativeNodeGenerator);
+    expect(generators[14]).toBeInstanceOf(VisitVariantNodeGenerator);
+    expect(generators[15]).toBeInstanceOf(FormatNodeGenerator);
+    expect(generators[16]).toBeInstanceOf(FallbackNodeGenerator);
   });
 });

@@ -68,6 +68,17 @@ export type BlueprintNodeType =
   | 'ArrayPushBack'
   | 'ArraySize'
   | 'ArrayClear'
+  | 'MakeExpected'
+  | 'ExpectedHasValue'
+  | 'ExpectedValue'
+  | 'ExpectedError'
+  | 'MakeOptional'
+  | 'OptionalHasValue'
+  | 'OptionalValueOr'
+  | 'MakeVariant'
+  | 'HoldsAlternative'
+  | 'VisitVariant'
+  | 'Format'
   // Explicit conversions
   | 'ToInt'
   | 'ToFloat'
@@ -1878,6 +1889,171 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     ],
     outputs: [
       { id: 'array-out', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
+    ],
+  },
+  MakeExpected: {
+    type: 'MakeExpected',
+    label: 'Make Expected',
+    labelRu: 'Создать Expected',
+    icon: 'array',
+    category: 'collection',
+    description: 'Construct std::expected from value/error pair',
+    descriptionRu: 'Создать std::expected из значения или ошибки',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' },
+      { id: 'error', name: 'Error', nameRu: 'Ошибка', dataType: 'any', direction: 'input' },
+      { id: 'has-value', name: 'Has Value', nameRu: 'Есть значение', dataType: 'bool', direction: 'input', defaultValue: true }
+    ],
+    outputs: [
+      { id: 'expected', name: 'Expected', nameRu: 'Expected', dataType: 'any', direction: 'output' }
+    ],
+  },
+  ExpectedHasValue: {
+    type: 'ExpectedHasValue',
+    label: 'Expected Has Value',
+    labelRu: 'Expected содержит значение',
+    icon: 'logic',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'expected', name: 'Expected', nameRu: 'Expected', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Has Value', nameRu: 'Есть значение', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  ExpectedValue: {
+    type: 'ExpectedValue',
+    label: 'Expected Value',
+    labelRu: 'Значение из Expected',
+    icon: 'collection',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'expected', name: 'Expected', nameRu: 'Expected', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  ExpectedError: {
+    type: 'ExpectedError',
+    label: 'Expected Error',
+    labelRu: 'Ошибка из Expected',
+    icon: 'collection',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'expected', name: 'Expected', nameRu: 'Expected', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'error', name: 'Error', nameRu: 'Ошибка', dataType: 'any', direction: 'output' }
+    ],
+  },
+  MakeOptional: {
+    type: 'MakeOptional',
+    label: 'Make Optional',
+    labelRu: 'Создать Optional',
+    icon: 'collection',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' },
+      { id: 'has-value', name: 'Has Value', nameRu: 'Есть значение', dataType: 'bool', direction: 'input', defaultValue: true }
+    ],
+    outputs: [
+      { id: 'optional', name: 'Optional', nameRu: 'Optional', dataType: 'any', direction: 'output' }
+    ],
+  },
+  OptionalHasValue: {
+    type: 'OptionalHasValue',
+    label: 'Optional Has Value',
+    labelRu: 'Optional содержит значение',
+    icon: 'logic',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'optional', name: 'Optional', nameRu: 'Optional', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Has Value', nameRu: 'Есть значение', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  OptionalValueOr: {
+    type: 'OptionalValueOr',
+    label: 'Optional Value Or',
+    labelRu: 'Значение Optional или',
+    icon: 'collection',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'optional', name: 'Optional', nameRu: 'Optional', dataType: 'any', direction: 'input' },
+      { id: 'fallback', name: 'Fallback', nameRu: 'Запасное значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  MakeVariant: {
+    type: 'MakeVariant',
+    label: 'Make Variant',
+    labelRu: 'Создать Variant',
+    icon: 'collection',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'variant', name: 'Variant', nameRu: 'Variant', dataType: 'any', direction: 'output' }
+    ],
+  },
+  HoldsAlternative: {
+    type: 'HoldsAlternative',
+    label: 'Holds Alternative',
+    labelRu: 'Variant содержит тип',
+    icon: 'logic',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'variant', name: 'Variant', nameRu: 'Variant', dataType: 'any', direction: 'input' },
+      { id: 'index', name: 'Index', nameRu: 'Индекс типа', dataType: 'int32', direction: 'input', defaultValue: 0 }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  VisitVariant: {
+    type: 'VisitVariant',
+    label: 'Visit Variant',
+    labelRu: 'Посетить Variant',
+    icon: 'function',
+    category: 'collection',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'variant', name: 'Variant', nameRu: 'Variant', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  Format: {
+    type: 'Format',
+    label: 'Format',
+    labelRu: 'Форматировать',
+    icon: 'string',
+    category: 'string',
+    description: 'Format string via std::format',
+    descriptionRu: 'Форматирование строки через std::format',
+    headerColor: '#E91E63',
+    dynamicPorts: true,
+    inputs: [
+      { id: 'format', name: 'Format', nameRu: 'Шаблон', dataType: 'string', direction: 'input', defaultValue: '{}' },
+      { id: 'arg-0', name: 'Arg 0', nameRu: 'Аргумент 0', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'string', direction: 'output' }
     ],
   },
   ToInt: {

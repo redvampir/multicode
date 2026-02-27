@@ -113,7 +113,7 @@ TEST_CASE("NodeFactory: Create Core Nodes", "[factory]") {
         auto it =
             std::ranges::find_if(data_ports, [](const Port* p) { return !p->is_execution(); });
         REQUIRE(it != data_ports.end());
-        REQUIRE((*it)->get_name() == "value");
+        REQUIRE((*it)->get_name() == "string");
         REQUIRE((*it)->get_data_type() == DataType::StringView);
     }
 

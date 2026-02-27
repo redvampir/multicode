@@ -69,19 +69,19 @@ TEST_CASE("CppCodeGenerator: Sequence Node", "[generators]") {
     graph.get_node_mut(literal2_id)->set_property("value", std::string("Second"));
 
     // Execution flow
-    require_connect(graph, start_id, "start", sequence_id, "in_exec");
-    require_connect(graph, sequence_id, "Then 0", print1_id, "in_exec");
-    require_connect(graph, sequence_id, "Then 1", print2_id, "in_exec");
-    require_connect(graph, print1_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "exec-out", sequence_id, "exec-in");
+    require_connect(graph, sequence_id, "then-0", print1_id, "exec-in");
+    require_connect(graph, sequence_id, "then-1", print2_id, "exec-in");
+    require_connect(graph, print1_id, "exec-out", end_id, "exec-in");
     require_connect(graph,
                     print2_id,
-                    "out_exec",
+                    "exec-out",
                     end_id,
-                    "end");  // An input port can have multiple connections
+                    "exec-in");  // An input port can have multiple connections
 
     // Data flow
-    require_connect(graph, literal1_id, "output", print1_id, "value");
-    require_connect(graph, literal2_id, "output", print2_id, "value");
+    require_connect(graph, literal1_id, "result", print1_id, "string");
+    require_connect(graph, literal2_id, "result", print2_id, "string");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -132,22 +132,22 @@ TEST_CASE("CppCodeGenerator: Variables with For Loop", "[generators]") {
 
     // 4. Connect nodes
     // Execution flow
-    require_connect(graph, start_id, "start", for_loop_id, "in_exec");
-    require_connect(graph, for_loop_id, "loop_body", set_var_id, "in_exec");
-    require_connect(graph, for_loop_id, "completed", print_result_id, "in_exec");
-    require_connect(graph, print_result_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "exec-out", for_loop_id, "exec-in");
+    require_connect(graph, for_loop_id, "loop-body", set_var_id, "exec-in");
+    require_connect(graph, for_loop_id, "completed", print_result_id, "exec-in");
+    require_connect(graph, print_result_id, "exec-out", end_id, "exec-in");
 
     // Data flow for loop limits
-    require_connect(graph, loop_start_id, "output", for_loop_id, "first_index");
-    require_connect(graph, loop_end_id, "output", for_loop_id, "last_index");
+    require_connect(graph, loop_start_id, "result", for_loop_id, "first");
+    require_connect(graph, loop_end_id, "result", for_loop_id, "last");
 
     // Data flow for counter increment
-    require_connect(graph, get_var_id, "value", add_id, "a");
-    require_connect(graph, literal_one_id, "output", add_id, "b");
-    require_connect(graph, add_id, "result", set_var_id, "value");
+    require_connect(graph, get_var_id, "value-out", add_id, "a");
+    require_connect(graph, literal_one_id, "result", add_id, "b");
+    require_connect(graph, add_id, "result", set_var_id, "value-in");
 
     // Data flow for final print
-    require_connect(graph, get_final_var_id, "value", print_result_id, "value");
+    require_connect(graph, get_final_var_id, "value-out", print_result_id, "string");
 
     // 5. Generate and verify code
     auto result = generator.generate(graph);
@@ -173,9 +173,9 @@ TEST_CASE("CppCodeGenerator: Data Flow with StringLiteral", "[generators]") {
 
     graph.get_node_mut(literal_id)->set_property("value", std::string("Data flow works!"));
 
-    require_connect(graph, start_id, "start", print_id, "in_exec");
-    require_connect(graph, print_id, "out_exec", end_id, "end");
-    require_connect(graph, literal_id, "output", print_id, "value");
+    require_connect(graph, start_id, "exec-out", print_id, "exec-in");
+    require_connect(graph, print_id, "exec-out", end_id, "exec-in");
+    require_connect(graph, literal_id, "result", print_id, "string");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -208,15 +208,15 @@ TEST_CASE("CppCodeGenerator: Data-Driven Branching Logic", "[generators]") {
     graph.get_node_mut(true_str_id)->set_property("value", std::string("True branch"));
     graph.get_node_mut(false_str_id)->set_property("value", std::string("False branch"));
 
-    require_connect(graph, start_id, "start", branch_id, "in_exec");
-    require_connect(graph, branch_id, "true_exec", true_print_id, "in_exec");
-    require_connect(graph, branch_id, "false_exec", false_print_id, "in_exec");
-    require_connect(graph, true_print_id, "out_exec", end_id, "end");
-    require_connect(graph, false_print_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "exec-out", branch_id, "exec-in");
+    require_connect(graph, branch_id, "true", true_print_id, "exec-in");
+    require_connect(graph, branch_id, "false", false_print_id, "exec-in");
+    require_connect(graph, true_print_id, "exec-out", end_id, "exec-in");
+    require_connect(graph, false_print_id, "exec-out", end_id, "exec-in");
 
-    require_connect(graph, bool_literal_id, "output", branch_id, "condition");
-    require_connect(graph, true_str_id, "output", true_print_id, "value");
-    require_connect(graph, false_str_id, "output", false_print_id, "value");
+    require_connect(graph, bool_literal_id, "result", branch_id, "condition");
+    require_connect(graph, true_str_id, "result", true_print_id, "string");
+    require_connect(graph, false_str_id, "result", false_print_id, "string");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -249,12 +249,12 @@ TEST_CASE("CppCodeGenerator: Arithmetic with Add Node", "[generators]") {
     graph.get_node_mut(literal_a_id)->set_property("value", 40);
     graph.get_node_mut(literal_b_id)->set_property("value", 2);
 
-    require_connect(graph, start_id, "start", print_id, "in_exec");
-    require_connect(graph, print_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "exec-out", print_id, "exec-in");
+    require_connect(graph, print_id, "exec-out", end_id, "exec-in");
 
-    require_connect(graph, literal_a_id, "output", add_id, "a");
-    require_connect(graph, literal_b_id, "output", add_id, "b");
-    require_connect(graph, add_id, "result", print_id, "value");
+    require_connect(graph, literal_a_id, "result", add_id, "a");
+    require_connect(graph, literal_b_id, "result", add_id, "b");
+    require_connect(graph, add_id, "result", print_id, "string");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());
@@ -290,16 +290,16 @@ TEST_CASE("CppCodeGenerator: For Loop", "[generators]") {
     graph.get_node_mut(print_completed_id)->set_property("value", std::string("Completed"));
 
     // Execution Flow
-    require_connect(graph, start_id, "start", for_loop_id, "in_exec");
-    require_connect(graph, for_loop_id, "loop_body", print_index_id, "in_exec");
-    require_connect(graph, for_loop_id, "completed", print_completed_node_id, "in_exec");
-    require_connect(graph, print_completed_node_id, "out_exec", end_id, "end");
+    require_connect(graph, start_id, "exec-out", for_loop_id, "exec-in");
+    require_connect(graph, for_loop_id, "loop-body", print_index_id, "exec-in");
+    require_connect(graph, for_loop_id, "completed", print_completed_node_id, "exec-in");
+    require_connect(graph, print_completed_node_id, "exec-out", end_id, "exec-in");
 
     // Data Flow
-    require_connect(graph, first_idx_id, "output", for_loop_id, "first_index");
-    require_connect(graph, last_idx_id, "output", for_loop_id, "last_index");
-    require_connect(graph, for_loop_id, "index", print_index_id, "value");
-    require_connect(graph, print_completed_id, "output", print_completed_node_id, "value");
+    require_connect(graph, first_idx_id, "result", for_loop_id, "first");
+    require_connect(graph, last_idx_id, "result", for_loop_id, "last");
+    require_connect(graph, for_loop_id, "index", print_index_id, "string");
+    require_connect(graph, print_completed_id, "result", print_completed_node_id, "string");
 
     auto result = generator.generate(graph);
     REQUIRE(result.has_value());

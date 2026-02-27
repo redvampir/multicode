@@ -29,10 +29,10 @@ TEST_CASE("Flow Control Nodes", "[core][flow][legacy]") {
         auto node = factory.create(NodeTypes::Branch);
         REQUIRE(node != nullptr);
 
-        const auto* in_exec = find_port(*node, "in_exec", PortDirection::Input);
+        const auto* in_exec = find_port(*node, "exec-in", PortDirection::Input);
         const auto* condition = find_port(*node, "condition", PortDirection::Input);
-        const auto* true_exec = find_port(*node, "true_exec", PortDirection::Output);
-        const auto* false_exec = find_port(*node, "false_exec", PortDirection::Output);
+        const auto* true_exec = find_port(*node, "true", PortDirection::Output);
+        const auto* false_exec = find_port(*node, "false", PortDirection::Output);
 
         REQUIRE(in_exec != nullptr);
         REQUIRE(condition != nullptr);
@@ -45,9 +45,9 @@ TEST_CASE("Flow Control Nodes", "[core][flow][legacy]") {
         auto node = factory.create(NodeTypes::Sequence);
         REQUIRE(node != nullptr);
 
-        const auto* in_exec = find_port(*node, "in_exec", PortDirection::Input);
-        const auto* then_0 = find_port(*node, "Then 0", PortDirection::Output);
-        const auto* then_1 = find_port(*node, "Then 1", PortDirection::Output);
+        const auto* in_exec = find_port(*node, "exec-in", PortDirection::Input);
+        const auto* then_0 = find_port(*node, "then-0", PortDirection::Output);
+        const auto* then_1 = find_port(*node, "then-1", PortDirection::Output);
 
         REQUIRE(in_exec != nullptr);
         REQUIRE(then_0 != nullptr);

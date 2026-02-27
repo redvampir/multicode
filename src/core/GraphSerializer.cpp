@@ -70,6 +70,7 @@ namespace NodeTypes = visprog::core::NodeTypes;
         {"string", DataType::String},
         {"string_view", DataType::StringView},
         {"Execution", DataType::Execution},
+        {"execution", DataType::Execution},
         {"any", DataType::Any},
     };
 }
@@ -90,9 +91,33 @@ namespace NodeTypes = visprog::core::NodeTypes;
 [[nodiscard]] auto build_node_type_lookup()
     -> std::unordered_map<std::string_view, const NodeType*> {
     return {
+        // Canonical core IDs
         {NodeTypes::Start.name, &NodeTypes::Start},
         {NodeTypes::End.name, &NodeTypes::End},
+        {NodeTypes::Branch.name, &NodeTypes::Branch},
+        {NodeTypes::Sequence.name, &NodeTypes::Sequence},
+        {NodeTypes::ForLoop.name, &NodeTypes::ForLoop},
         {NodeTypes::PrintString.name, &NodeTypes::PrintString},
+        {NodeTypes::StringLiteral.name, &NodeTypes::StringLiteral},
+        {NodeTypes::BoolLiteral.name, &NodeTypes::BoolLiteral},
+        {NodeTypes::IntLiteral.name, &NodeTypes::IntLiteral},
+        {NodeTypes::Add.name, &NodeTypes::Add},
+        {NodeTypes::GetVariable.name, &NodeTypes::GetVariable},
+        {NodeTypes::SetVariable.name, &NodeTypes::SetVariable},
+
+        // UI aliases (Blueprint/Classic)
+        {"Start", &NodeTypes::Start},
+        {"End", &NodeTypes::End},
+        {"Branch", &NodeTypes::Branch},
+        {"Sequence", &NodeTypes::Sequence},
+        {"ForLoop", &NodeTypes::ForLoop},
+        {"Print", &NodeTypes::PrintString},
+        {"ConstString", &NodeTypes::StringLiteral},
+        {"ConstBool", &NodeTypes::BoolLiteral},
+        {"ConstNumber", &NodeTypes::IntLiteral},
+        {"Add", &NodeTypes::Add},
+        {"GetVariable", &NodeTypes::GetVariable},
+        {"SetVariable", &NodeTypes::SetVariable},
     };
 }
 

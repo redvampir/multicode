@@ -110,6 +110,42 @@ const formatPortValueLiteral = (value: string | number | boolean): string => {
   return String(value);
 };
 
+const resolvePortExpression = (
+  node: BlueprintNode,
+  portId: string,
+  fallback: string,
+  helpers: GeneratorHelpers
+): string => {
+  const connectedExpression = helpers.getInputExpression(node, portId);
+  if (connectedExpression !== null) {
+    return connectedExpression;
+  }
+
+  const port = node.inputs.find((candidate) => candidate.id === portId);
+  if (port?.value !== undefined) {
+    const normalized = normalizeLiteralInput(port.value);
+    if (normalized !== null) {
+      return formatPortValueLiteral(normalized);
+    }
+  }
+
+  if (port?.defaultValue !== undefined) {
+    const normalized = normalizeLiteralInput(port.defaultValue);
+    if (normalized !== null) {
+      return formatPortValueLiteral(normalized);
+    }
+  }
+
+  return fallback;
+};
+
+
+const normalizeLiteralInput = (value: unknown): string | number | boolean | null => {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  return null;
+};
 const getDataOperandPorts = (node: BlueprintNode) =>
   node.inputs
     .filter((port) => port.dataType !== 'execution')
@@ -471,6 +507,46 @@ export class NotNodeGenerator extends BaseNodeGenerator {
   }
 }
 
+export class ParseIntNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ParseInt'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', '"0"', helpers);
+    helpers.addWarning(node.id, 'PARSE_INT_SAFE_FALLBACK', 'ParseInt использует безопасный fallback при ошибке разбора');
+
+    return `([&]() { struct ParseIntResult { int value; bool ok; }; const std::string multicode_parse_input = ${valueExpr}; std::stringstream multicode_parse_stream(multicode_parse_input); int multicode_parse_value = 0; char multicode_parse_tail = '\\0'; const bool multicode_parse_ok = static_cast<bool>(multicode_parse_stream >> multicode_parse_value) && !(multicode_parse_stream >> multicode_parse_tail); const ParseIntResult multicode_parse_result{multicode_parse_ok ? multicode_parse_value : 0, multicode_parse_ok}; return multicode_parse_result.ok ? multicode_parse_result.value : 0; })()`;
+  }
+}
+
+export class ParseFloatNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ParseFloat'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', '"0"', helpers);
+    helpers.addWarning(node.id, 'PARSE_FLOAT_SAFE_FALLBACK', 'ParseFloat использует безопасный fallback при ошибке разбора');
+
+    return `([&]() { struct ParseFloatResult { double value; bool ok; }; const std::string multicode_parse_input = ${valueExpr}; std::stringstream multicode_parse_stream(multicode_parse_input); double multicode_parse_value = 0.0; char multicode_parse_tail = '\\0'; const bool multicode_parse_ok = static_cast<bool>(multicode_parse_stream >> multicode_parse_value) && !(multicode_parse_stream >> multicode_parse_tail); const ParseFloatResult multicode_parse_result{multicode_parse_ok ? multicode_parse_value : 0.0, multicode_parse_ok}; return multicode_parse_result.ok ? multicode_parse_result.value : 0.0; })()`;
+  }
+}
+
 /**
  * Фабричная функция для создания всех Math/Comparison/Logic генераторов
  */
@@ -497,5 +573,7 @@ export function createMathLogicGenerators(): BaseNodeGenerator[] {
     new AndNodeGenerator(),
     new OrNodeGenerator(),
     new NotNodeGenerator(),
+    new ParseIntNodeGenerator(),
+    new ParseFloatNodeGenerator(),
   ];
 }

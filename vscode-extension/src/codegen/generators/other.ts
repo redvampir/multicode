@@ -13,6 +13,41 @@ import {
   NodeGenerationResult,
 } from './base';
 
+const formatLiteral = (value: unknown): string => {
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '0';
+  }
+  if (typeof value === 'string') {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return '{}';
+};
+
+const resolveInputExpression = (
+  node: BlueprintNode,
+  portId: string,
+  fallback: string,
+  helpers: GeneratorHelpers
+): string => {
+  const connected = helpers.getInputExpression(node, portId);
+  if (connected !== null) {
+    return connected;
+  }
+
+  const port = node.inputs.find((candidate) => candidate.id === portId);
+  if (port?.value !== undefined) {
+    return formatLiteral(port.value);
+  }
+  if (port?.defaultValue !== undefined) {
+    return formatLiteral(port.defaultValue);
+  }
+
+  return fallback;
+};
+
 /**
  * Comment — комментарий в коде
  */
@@ -61,6 +96,77 @@ export class RerouteNodeGenerator extends BaseNodeGenerator {
   }
 }
 
+export class ArrayGetNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ArrayGet'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    const indexExpr = resolveInputExpression(node, 'index', '0', helpers);
+    const fallbackExpr = 'MulticodeValue{}';
+    const safeMode = context.options.includeSourceMarkers;
+
+    if (safeMode) {
+      return `([&]() { const auto multicode_array = ${arrayExpr}; using MulticodeArray = std::decay_t<decltype(multicode_array)>; using MulticodeValue = typename MulticodeArray::value_type; const int multicode_index = static_cast<int>(${indexExpr}); if (multicode_index < 0 || multicode_index >= static_cast<int>(multicode_array.size())) { return ${fallbackExpr}; } return multicode_array[static_cast<std::size_t>(multicode_index)]; })()`;
+    }
+
+    return `(${arrayExpr}[static_cast<std::size_t>(${indexExpr})])`;
+  }
+}
+
+export class ArraySetNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ArraySet'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    const indexExpr = resolveInputExpression(node, 'index', '0', helpers);
+    const valueExpr = resolveInputExpression(node, 'value', '0', helpers);
+    const safeMode = context.options.includeSourceMarkers;
+
+    if (safeMode) {
+      return `([&]() { auto multicode_array = ${arrayExpr}; const int multicode_index = static_cast<int>(${indexExpr}); if (multicode_index < 0 || multicode_index >= static_cast<int>(multicode_array.size())) { return multicode_array; } multicode_array[static_cast<std::size_t>(multicode_index)] = ${valueExpr}; return multicode_array; })()`;
+    }
+
+    return `([&]() { auto multicode_array = ${arrayExpr}; multicode_array[static_cast<std::size_t>(${indexExpr})] = ${valueExpr}; return multicode_array; })()`;
+  }
+}
+
+export class ArrayPushBackNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ArrayPushBack'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    const valueExpr = resolveInputExpression(node, 'value', '0', helpers);
+    return `([&]() { auto multicode_array = ${arrayExpr}; multicode_array.push_back(${valueExpr}); return multicode_array; })()`;
+  }
+}
+
 /**
  * Fallback генератор для неподдерживаемых типов узлов
  */
@@ -103,6 +209,9 @@ export function createOtherGenerators(): BaseNodeGenerator[] {
   return [
     new CommentNodeGenerator(),
     new RerouteNodeGenerator(),
+    new ArrayGetNodeGenerator(),
+    new ArraySetNodeGenerator(),
+    new ArrayPushBackNodeGenerator(),
     new FallbackNodeGenerator(),
   ];
 }

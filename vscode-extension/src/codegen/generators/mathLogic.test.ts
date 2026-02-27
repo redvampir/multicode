@@ -5,6 +5,8 @@ import type { GeneratorHelpers } from './base';
 import {
   EqualNodeGenerator,
   GreaterNodeGenerator,
+  ParseIntNodeGenerator,
+  ParseFloatNodeGenerator,
 } from './mathLogic';
 
 const createMockHelpers = (overrides: Partial<GeneratorHelpers> = {}): GeneratorHelpers => ({
@@ -88,5 +90,62 @@ describe('mathLogic comparison literals', () => {
     const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
 
     expect(expression).toBe('("left" == "right")');
+  });
+});
+
+
+describe('mathLogic parse generators', () => {
+  it('builds safe ParseInt expression with fallback and warning', () => {
+    const generator = new ParseIntNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'parse-int-1',
+      type: 'ParseInt',
+      label: 'Parse Int',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'int32', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('ParseIntResult');
+    expect(expression).toContain('std::stringstream');
+    expect(expression).toContain('multicode_parse_result.ok ? multicode_parse_result.value : 0');
+    expect(helpers.addWarning).toHaveBeenCalledWith(
+      'parse-int-1',
+      'PARSE_INT_SAFE_FALLBACK',
+      'ParseInt использует безопасный fallback при ошибке разбора'
+    );
+  });
+
+  it('builds safe ParseFloat expression with fallback and warning', () => {
+    const generator = new ParseFloatNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'parse-float-1',
+      type: 'ParseFloat',
+      label: 'Parse Float',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'float', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('ParseFloatResult');
+    expect(expression).toContain('std::stringstream');
+    expect(expression).toContain('multicode_parse_result.ok ? multicode_parse_result.value : 0.0');
+    expect(helpers.addWarning).toHaveBeenCalledWith(
+      'parse-float-1',
+      'PARSE_FLOAT_SAFE_FALLBACK',
+      'ParseFloat использует безопасный fallback при ошибке разбора'
+    );
   });
 });

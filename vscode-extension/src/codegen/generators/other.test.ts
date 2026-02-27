@@ -8,6 +8,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { 
   CommentNodeGenerator,
   RerouteNodeGenerator,
+  ArrayGetNodeGenerator,
+  ArraySetNodeGenerator,
+  ArrayPushBackNodeGenerator,
   FallbackNodeGenerator,
   createOtherGenerators,
 } from './other';
@@ -184,6 +187,104 @@ describe('RerouteNodeGenerator', () => {
   });
 });
 
+
+
+// ============================================
+// Array generators
+// ============================================
+
+describe('Array generators', () => {
+  it('ArrayGet uses bounds guard and fallback in debug/recovery mode', () => {
+    const generator = new ArrayGetNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'array') {
+          return 'numbers';
+        }
+        if (portId === 'index') {
+          return 'idx';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    context.options.includeSourceMarkers = true;
+    const node = createMockNode('ArrayGet', 'Array Get', {
+      inputs: [
+        { id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 },
+        { id: 'index', name: 'Index', dataType: 'int32', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expression).toContain('multicode_index < 0 || multicode_index >= static_cast<int>(multicode_array.size())');
+    expect(expression).toContain('MulticodeValue{}');
+  });
+
+  it('ArraySet uses guarded assignment in debug/recovery mode', () => {
+    const generator = new ArraySetNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'array') {
+          return 'numbers';
+        }
+        if (portId === 'index') {
+          return 'idx';
+        }
+        if (portId === 'value') {
+          return 'nextValue';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    context.options.includeSourceMarkers = true;
+    const node = createMockNode('ArraySet', 'Array Set', {
+      inputs: [
+        { id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 },
+        { id: 'index', name: 'Index', dataType: 'int32', direction: 'input', index: 1 },
+        { id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 2 },
+      ],
+      outputs: [{ id: 'array-out', name: 'Array', dataType: 'array', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'array-out', context, helpers);
+
+    expect(expression).toContain('if (multicode_index < 0 || multicode_index >= static_cast<int>(multicode_array.size())) { return multicode_array; }');
+    expect(expression).toContain('multicode_array[static_cast<std::size_t>(multicode_index)] = nextValue;');
+  });
+
+  it('ArrayPushBack appends and returns cloned array expression', () => {
+    const generator = new ArrayPushBackNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'array') {
+          return 'numbers';
+        }
+        if (portId === 'value') {
+          return 'nextValue';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    const node = createMockNode('ArrayPushBack', 'Array Push Back', {
+      inputs: [
+        { id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 },
+        { id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'array-out', name: 'Array', dataType: 'array', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'array-out', context, helpers);
+
+    expect(expression).toContain('multicode_array.push_back(nextValue);');
+    expect(expression).toContain('return multicode_array;');
+  });
+});
+
 // ============================================
 // FallbackNodeGenerator Tests
 // ============================================
@@ -287,9 +388,12 @@ describe('createOtherGenerators', () => {
   it('should return array with all other generators', () => {
     const generators = createOtherGenerators();
 
-    expect(generators).toHaveLength(3);
+    expect(generators).toHaveLength(6);
     expect(generators[0]).toBeInstanceOf(CommentNodeGenerator);
     expect(generators[1]).toBeInstanceOf(RerouteNodeGenerator);
-    expect(generators[2]).toBeInstanceOf(FallbackNodeGenerator);
+    expect(generators[2]).toBeInstanceOf(ArrayGetNodeGenerator);
+    expect(generators[3]).toBeInstanceOf(ArraySetNodeGenerator);
+    expect(generators[4]).toBeInstanceOf(ArrayPushBackNodeGenerator);
+    expect(generators[5]).toBeInstanceOf(FallbackNodeGenerator);
   });
 });

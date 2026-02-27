@@ -346,6 +346,7 @@ export const VARIABLE_TYPE_LABELS: Record<PortDataType, { ru: string; en: string
   double: { ru: 'Дробное (64)', en: 'Double' },
   string: { ru: 'Строка', en: 'String' },
   vector: { ru: 'Вектор', en: 'Vector' },
+  object: { ru: 'Объект', en: 'Object' },
   pointer: { ru: 'Указатель', en: 'Pointer' },
   class: { ru: 'Класс', en: 'Class' },
   array: { ru: 'Массив', en: 'Array' },

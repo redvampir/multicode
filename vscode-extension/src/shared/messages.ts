@@ -168,6 +168,7 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('requestLoad') }),
   z.object({ type: z.literal('requestNewGraph') }),
   z.object({ type: z.literal('requestGenerate') }),
+  z.object({ type: z.literal('requestGenerateBinding') }),
   z.object({ type: z.literal('requestValidate') }),
   z.object({
     type: z.literal('requestCompileAndRun'),
@@ -229,4 +230,3 @@ export const parseGraphNode = (data: unknown): ReturnType<typeof graphNodeSchema
 
 export const parseThemeMessage = (data: unknown): ReturnType<typeof themeMessageSchema.safeParse> =>
   themeMessageSchema.safeParse(data);
-

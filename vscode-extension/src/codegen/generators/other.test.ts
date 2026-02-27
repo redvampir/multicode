@@ -62,6 +62,7 @@ function createMockContext(): CodeGenContext {
     warnings: [],
     sourceMap: [],
     currentLine: 1,
+    supportedNodeTypes: ['Start', 'End', 'Print', 'Branch'],
   };
 }
 
@@ -197,37 +198,85 @@ describe('FallbackNodeGenerator', () => {
     expect(generator.nodeTypes).toContain('Event');
   });
 
-  it('should generate TODO comment for Custom node', () => {
+  it('should return structured error for Custom node', () => {
     const node = createMockNode('Custom', 'MyCustomNode');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('    // TODO: Custom - MyCustomNode');
+    expect(result.lines).toHaveLength(0);
     expect(result.followExecutionFlow).toBe(true);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'custom-1',
+      'UNIMPLEMENTED_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="MyCustomNode". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=custom-1, type=Custom, label="MyCustomNode". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
+    );
   });
 
-  it('should generate TODO comment for Function node', () => {
+  it('should return structured error for Function node', () => {
     const node = createMockNode('Function', 'CalculateSum');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines[0]).toContain('// TODO: Function - CalculateSum');
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'function-1',
+      'UNIMPLEMENTED_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=function-1, type=Function, label="CalculateSum". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=function-1, type=Function, label="CalculateSum". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
+    );
   });
 
-  it('should generate TODO comment for Event node', () => {
+  it('should return structured error for Event node', () => {
     const node = createMockNode('Event', 'OnClick');
     const helpers = createMockHelpers();
     const context = createMockContext();
 
     const result = generator.generate(node, context, helpers);
 
-    expect(result.lines[0]).toContain('// TODO: Event - OnClick');
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'event-1',
+      'UNIMPLEMENTED_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=event-1, type=Event, label="OnClick". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=event-1, type=Event, label="OnClick". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
+    );
   });
+
+  it('should keep identical message format for FunctionCall node', () => {
+    const node = createMockNode('FunctionCall', 'InvokeSomething');
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+
+    generator.generate(node, context, helpers);
+
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'functioncall-1',
+      'UNIMPLEMENTED_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Поддерживаемые типы: Branch, End, Print, Start. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=functioncall-1, type=FunctionCall, label="InvokeSomething". Supported types: Branch, End, Print, Start. Hint: check supported node types.'
+    );
+  });
+
+  it('should fallback to documentation path when supported types are unavailable', () => {
+    const node = createMockNode('Custom', 'NoRegistryNode');
+    const helpers = createMockHelpers();
+    const context = { ...createMockContext(), supportedNodeTypes: undefined };
+
+    generator.generate(node, context, helpers);
+
+    expect(helpers.addError).toHaveBeenCalledWith(
+      'custom-1',
+      'UNIMPLEMENTED_NODE_TYPE',
+      'Неподдерживаемый узел для C++ генератора: id=custom-1, type=Custom, label="NoRegistryNode". Поддерживаемые типы: см. Документы/Архитектура/VisualEditor.md. Подсказка: проверьте поддерживаемые типы узлов.',
+      'Unsupported node for C++ generator: id=custom-1, type=Custom, label="NoRegistryNode". Supported types: см. Документы/Архитектура/VisualEditor.md. Hint: check supported node types.'
+    );
+  });
+
 });
 
 // ============================================

@@ -31,3 +31,15 @@ export {
 
 // Генераторы
 export { CppCodeGenerator } from './CppCodeGenerator';
+
+export {
+  createGenerator,
+  UnsupportedLanguageError,
+  getUnsupportedLanguageMessages,
+  createUnsupportedLanguageError,
+} from './factory';
+
+export {
+  getLanguageSupportInfo,
+  isLanguageSupported,
+} from './languageSupport';

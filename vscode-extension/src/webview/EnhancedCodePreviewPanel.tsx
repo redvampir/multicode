@@ -9,10 +9,18 @@
  * - Визуализация проблем и предупреждений
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
-import type { CodeGenerationResult, CodeGenErrorCode } from '../codegen/types';
+import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
+import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
+import { CodeGenErrorCode } from '../codegen/types';
+import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
+import {
+  resolveCodePreviewGenerator,
+  type PackageRegistrySnapshot,
+} from './codePreviewGenerator';
 
 // ============================================
 // Расширенные стили
@@ -52,6 +60,14 @@ const styles = {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+  } as React.CSSProperties,
+
+  warningBox: {
+    padding: '8px 12px',
+    backgroundColor: 'rgba(249, 226, 175, 0.1)',
+    borderTop: '1px solid #313244',
+    color: '#f9e2af',
+    fontSize: 11,
   } as React.CSSProperties,
   
   statsContainer: {
@@ -219,6 +235,7 @@ interface EnhancedCodePreviewProps {
   locale: 'ru' | 'en';
   onNodeSelect?: (nodeId: string) => void;
   onGenerateComplete?: (result: CodeGenerationResult) => void;
+  packageRegistrySnapshot?: Partial<PackageRegistrySnapshot>;
 }
 
 // ============================================
@@ -230,6 +247,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   locale,
   onNodeSelect,
   onGenerateComplete,
+  packageRegistrySnapshot,
 }) => {
   const [result, setResult] = useState<CodeGenerationResult | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -241,6 +259,24 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const [showMinimap, setShowMinimap] = useState(true);
   const [showFunctionsPanel, setShowFunctionsPanel] = useState(false);  
   const codeRef = useRef<HTMLDivElement>(null);
+  const supportInfo = getLanguageSupportInfo(graph.language);
+
+  const previewWarnings = useMemo(() => {
+    const fallbackWithoutRegistry = !packageRegistrySnapshot
+      || !Array.isArray(packageRegistrySnapshot.packageNodeTypes)
+      || packageRegistrySnapshot.packageNodeTypes.length === 0;
+
+    if (!fallbackWithoutRegistry) {
+      return [] as string[];
+    }
+
+    const hasUnknownNodes = graph.nodes.some((node) => !(node.type in NODE_TYPE_DEFINITIONS));
+    if (!hasUnknownNodes) {
+      return [] as string[];
+    }
+
+    return [getTranslation(locale, 'codegen.registryUnavailable')];
+  }, [graph.nodes, locale, packageRegistrySnapshot]);
 
   // Генерация кода
   useEffect(() => {
@@ -248,7 +284,12 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       setIsLoading(true);
       
       try {
-        const generator = new CppCodeGenerator();
+        const { generator, diagnostics } = resolveCodePreviewGenerator(graph.language, packageRegistrySnapshot);
+        if (diagnostics.fallbackReason) {
+          console.debug('[EnhancedCodePreviewPanel] fallback generator selected', diagnostics);
+        } else {
+          console.debug('[EnhancedCodePreviewPanel] package-aware generator selected', diagnostics);
+        }
         const generationResult = generator.generate(graph);
         
         setResult(generationResult);
@@ -275,10 +316,26 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
         setLineInfos(lineInfos);
       } catch (error) {
         console.error('Error generating code:', error);
+
+        if (error instanceof UnsupportedLanguageError) {
+          const languageError = createUnsupportedLanguageError(error.language);
+          setResult({
+            success: false,
+            code: locale === 'ru'
+              ? `// Предпросмотр недоступен: ${languageError.message}`
+              : `// Preview unavailable: ${languageError.messageEn}`,
+            errors: [languageError],
+            warnings: [],
+            sourceMap: [],
+            stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+          });
+          return;
+        }
+
         setResult({
           success: false,
-          code: '// Ошибка генерации кода',
-          errors: [{ message: String(error), code: 'INTERNAL_ERROR' as CodeGenErrorCode, messageEn: 'Generation error', nodeId: '' }],
+          code: locale === 'ru' ? '// Ошибка генерации кода' : '// Code generation failed',
+          errors: [{ message: String(error), code: CodeGenErrorCode.UNKNOWN_NODE_TYPE, messageEn: 'Generation error', nodeId: '' }],
           warnings: [],
           sourceMap: [],
           stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
@@ -289,7 +346,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     };
     
     generateCode();
-  }, [graph, onGenerateComplete]);
+  }, [graph, locale, onGenerateComplete, packageRegistrySnapshot]);
 
   // Клик на строку кода
   const handleLineClick = useCallback((lineInfo: CodeLineInfo) => {
@@ -503,10 +560,13 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.title}>
-          {locale === 'ru' ? '🔍 Предпросмотр C++' : '🔍 C++ Preview'}
+          {locale === 'ru' ? `🔍 Предпросмотр ${graph.language.toUpperCase()}` : `🔍 ${graph.language.toUpperCase()} Preview`}
           {isLoading && <span style={{ color: '#f9e2af' }}>⏳</span>}
           {result?.success === false && <span style={{ color: '#f38ba8' }}>❌</span>}
           {result?.success === true && <span style={{ color: '#a6e3a1' }}>✅</span>}
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {getTranslation(locale, 'codegen.supportStatus')}: {supportInfo.supportsGenerator ? getTranslation(locale, 'codegen.support.ready') : getTranslation(locale, 'codegen.support.unsupported')}
+          </span>
         </div>
         <div style={styles.headerActions}>
           <div style={styles.windowControls}>
@@ -548,6 +608,13 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
           </button>
         </div>
       </div>
+
+
+      {previewWarnings.length > 0 && (
+        <div style={styles.warningBox}>
+          {previewWarnings.join('; ')}
+        </div>
+      )}
 
       {/* Статистика */}
       {renderStats()}

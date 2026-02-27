@@ -14,6 +14,7 @@ import { BlueprintEditor } from './BlueprintEditor';
 import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
 import {
   BlueprintGraphState,
+  BlueprintNodeType,
   migrateToBlueprintFormat,
   migrateFromBlueprintFormat,
 } from '../shared/blueprintTypes';
@@ -40,6 +41,7 @@ import {
   type WebviewToExtensionMessage
 } from '../shared/messages';
 import HelpPanel from './HelpPanel';
+import { globalRegistry } from '../shared/packageLoader';
 
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape';
@@ -988,6 +990,8 @@ const App: React.FC = () => {
   
   // Help panel state
   const [showHelp, setShowHelp] = useState(false);
+  // Версия snapshot package registry для реактивного предпросмотра кода
+  const [registryVersion, setRegistryVersion] = useState(0);
   
   // Blueprint graph state (derived from GraphState for Blueprint editor)
   const [blueprintGraph, setBlueprintGraph] = useState<BlueprintGraphState>(() => 
@@ -1416,6 +1420,7 @@ const App: React.FC = () => {
               <EnhancedCodePreviewPanel
                 graph={blueprintGraph}
                 locale={locale}
+                packageRegistrySnapshot={package_registry_snapshot_for_preview}
                 onGenerateComplete={(result) => {
                   pushToast('success', result.success 
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')

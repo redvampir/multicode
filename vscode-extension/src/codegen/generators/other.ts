@@ -6,6 +6,7 @@
 
 import type { BlueprintNode, BlueprintNodeType } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
+import { CodeGenErrorCode } from '../types';
 import {
   BaseNodeGenerator,
   GeneratorHelpers,
@@ -68,16 +69,30 @@ export class FallbackNodeGenerator extends BaseNodeGenerator {
   
   generate(
     node: BlueprintNode,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
-    const ind = helpers.indent();
-    const lines: string[] = [];
-    
-    // Генерируем TODO комментарий
-    lines.push(`${ind}// TODO: ${node.type} - ${node.label}`);
-    
-    return this.code(lines);
+    const supportedTypes = this.getSupportedTypesText(context);
+    const nodeLabel = node.label?.trim() || '—';
+    const message = `Неподдерживаемый узел для C++ генератора: id=${node.id}, type=${node.type}, label="${nodeLabel}". Поддерживаемые типы: ${supportedTypes}. Подсказка: проверьте поддерживаемые типы узлов.`;
+    const messageEn = `Unsupported node for C++ generator: id=${node.id}, type=${node.type}, label="${nodeLabel}". Supported types: ${supportedTypes}. Hint: check supported node types.`;
+
+    helpers.addError(node.id, CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE, message, messageEn);
+
+    return this.code([], true);
+  }
+
+  private getSupportedTypesText(context: CodeGenContext): string {
+    const supportedTypes = context.supportedNodeTypes
+      ?.map(type => type.trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (!supportedTypes || supportedTypes.length === 0) {
+      return 'см. Документы/Архитектура/VisualEditor.md';
+    }
+
+    return supportedTypes.join(', ');
   }
 }
 

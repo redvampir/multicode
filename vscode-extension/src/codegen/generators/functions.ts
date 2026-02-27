@@ -252,16 +252,9 @@ export class FunctionEntryNodeGenerator extends BaseNodeGenerator {
    */
   static generateFunctionSignature(func: BlueprintFunction): string {
     const inputParams = func.parameters.filter(p => p.direction === 'input');
-    const outputParams = func.parameters.filter(p => p.direction === 'output');
-    
+
     // Определяем тип возврата
-    let returnType = 'void';
-    if (outputParams.length === 1) {
-      returnType = portTypeToCpp(outputParams[0].dataType);
-    } else if (outputParams.length > 1) {
-      // Множественные выходы — используем структуру или tuple
-      returnType = 'auto'; // TODO: генерировать struct
-    }
+    const returnType = getFunctionReturnType(func);
     
     // Формируем параметры
     const params = inputParams.map(p => {
@@ -322,14 +315,15 @@ export class FunctionReturnNodeGenerator extends BaseNodeGenerator {
       return this.code([`${ind}return ${returnValue};`], false);
     }
     
-    // Множественные выходные параметры — return tuple/struct
-    // TODO: поддержка multiple returns через struct
+    // Множественные выходные параметры — возвращаем std::tuple
     const values = outputParams.map(param => {
       const value = helpers.getInputExpression(node, param.id);
       return value ?? getDefaultValue(param.dataType);
     });
-    
-    return this.code([`${ind}return std::make_tuple(${values.join(', ')});`], false);
+
+    const resultTypeName = getFunctionResultTypeName(func);
+
+    return this.code([`${ind}return ${resultTypeName}${buildTupleExpression(values)};`], false);
   }
 }
 
@@ -404,7 +398,19 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
         ?? 'result';
       const resultVar = buildCallResultVariableName(node, functionName, firstOutputName);
       helpers.declareVariable(`${node.id}-result`, resultVar, 'Result', 'auto', node.id);
-      return this.code([`${ind}auto ${resultVar} = ${call};`], true);
+
+      const lines = [`${ind}auto ${resultVar} = ${call};`];
+      const outputParams = func?.parameters.filter(p => p.direction === 'output') ?? [];
+
+      if (outputParams.length > 1) {
+        outputParams.forEach((param, index) => {
+          const outputVar = getOutputVariableName(node, index, param.name);
+          helpers.declareVariable(`${node.id}-result-${param.id}`, outputVar, param.name, 'auto', node.id);
+          lines.push(`${ind}auto ${outputVar} = std::get<${index}>(${resultVar});`);
+        });
+      }
+
+      return this.code(lines, true);
     }
     
     // Нет выходов — просто вызов
@@ -414,17 +420,24 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
   getOutputExpression(
     node: BlueprintNode,
     portId: string,
-    _context: CodeGenContext,
+    context: CodeGenContext,
     helpers: GeneratorHelpers
   ): string {
-    // Возвращаем имя переменной с результатом
     if (portId.includes('exec')) {
       return ''; // execution порты не имеют значений
     }
-    
+
+    const funcContext = context as FunctionAwareContext;
+    const functionId = node.properties?.functionId as string | undefined;
+    const func = functionId
+      ? funcContext.functions?.find(f => f.id === functionId)
+      : null;
+
     const varInfo = helpers.getVariable(`${node.id}-result`);
-    if (varInfo) {
-      return varInfo.codeName;
+    const resultVar = varInfo?.codeName ?? getResultVariableName(node);
+
+    if (!func) {
+      return resultVar;
     }
     
     // Fallback
@@ -484,4 +497,7 @@ export {
   portTypeToCpp,
   transliterate,
   getDefaultValue,
+  getFunctionResultTypeName,
+  generateFunctionResultTypeDeclaration,
+  buildTupleExpression,
 };

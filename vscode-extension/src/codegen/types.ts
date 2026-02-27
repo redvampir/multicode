@@ -43,10 +43,14 @@ export enum CodeGenErrorCode {
   UNCONNECTED_REQUIRED_PORT = 'UNCONNECTED_REQUIRED_PORT',
   /** Неизвестный тип узла */
   UNKNOWN_NODE_TYPE = 'UNKNOWN_NODE_TYPE',
+  /** Тип узла известен, но генерация для него ещё не реализована */
+  UNIMPLEMENTED_NODE_TYPE = 'UNIMPLEMENTED_NODE_TYPE',
   /** Несовместимые типы данных */
   TYPE_MISMATCH = 'TYPE_MISMATCH',
   /** Недостижимый узел */
   UNREACHABLE_NODE = 'UNREACHABLE_NODE',
+  /** Язык кодогенерации не поддерживается */
+  UNSUPPORTED_LANGUAGE = 'UNSUPPORTED_LANGUAGE',
 }
 
 /** Коды предупреждений */
@@ -61,6 +65,8 @@ export enum CodeGenWarningCode {
   EMPTY_BRANCH = 'EMPTY_BRANCH',
   /** Бесконечный цикл (условие всегда true) */
   INFINITE_LOOP = 'INFINITE_LOOP',
+  /** Выбран язык, который пока не поддерживается генератором */
+  UNSUPPORTED_LANGUAGE = 'UNSUPPORTED_LANGUAGE',
 }
 
 /** Маппинг узел → строки кода */

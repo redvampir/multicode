@@ -10,8 +10,16 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import type { BlueprintGraphState } from '../shared/blueprintTypes';
-import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import { NODE_TYPE_DEFINITIONS } from '../shared/blueprintTypes';
+import { UnsupportedLanguageError, createUnsupportedLanguageError } from '../codegen/factory';
+import { getLanguageSupportInfo } from '../codegen/languageSupport';
+import { CodeGenErrorCode } from '../codegen/types';
 import type { CodeGenerationResult } from '../codegen/types';
+import { getTranslation } from '../shared/translations';
+import {
+  resolveCodePreviewGenerator,
+  type PackageRegistrySnapshot,
+} from './codePreviewGenerator';
 
 // ============================================
 // Стили
@@ -274,6 +282,7 @@ export interface CodePreviewPanelProps {
   onClose: () => void;
   highlightedNodeId?: string | null;
   onLineHover?: (nodeId: string | null) => void;
+  packageRegistrySnapshot?: Partial<PackageRegistrySnapshot>;
 }
 
 export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
@@ -283,20 +292,74 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   onClose,
   highlightedNodeId,
   onLineHover,
+  packageRegistrySnapshot,
 }) => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [hoveredLineNodeId, setHoveredLineNodeId] = useState<string | null>(null);
   
   // Генерируем код
+  const previewWarnings = useMemo(() => {
+    const fallbackWithoutRegistry = !packageRegistrySnapshot
+      || !Array.isArray(packageRegistrySnapshot.packageNodeTypes)
+      || packageRegistrySnapshot.packageNodeTypes.length === 0;
+
+    if (!fallbackWithoutRegistry) {
+      return [] as string[];
+    }
+
+    const hasUnknownNodes = graph.nodes.some((node) => !(node.type in NODE_TYPE_DEFINITIONS));
+    if (!hasUnknownNodes) {
+      return [] as string[];
+    }
+
+    return [getTranslation(displayLanguage, 'codegen.registryUnavailable')];
+  }, [displayLanguage, graph.nodes, packageRegistrySnapshot]);
+
   const result: CodeGenerationResult = useMemo(() => {
-    const generator = new CppCodeGenerator();
-    return generator.generate(graph, {
-      includeHeaders: true,
-      generateMainWrapper: true,
-      includeRussianComments: true,
-      includeSourceMarkers: true,
-    });
-  }, [graph]);
+    try {
+      const { generator, diagnostics } = resolveCodePreviewGenerator(graph.language, packageRegistrySnapshot);
+      if (diagnostics.fallbackReason) {
+        console.debug('[CodePreviewPanel] fallback generator selected', diagnostics);
+      } else {
+        console.debug('[CodePreviewPanel] package-aware generator selected', diagnostics);
+      }
+
+      return generator.generate(graph, {
+        includeHeaders: true,
+        generateMainWrapper: true,
+        includeRussianComments: true,
+        includeSourceMarkers: true,
+      });
+    } catch (error) {
+      if (error instanceof UnsupportedLanguageError) {
+        const languageError = createUnsupportedLanguageError(error.language);
+        return {
+          success: false,
+          code: displayLanguage === 'ru'
+            ? `// Предпросмотр недоступен: ${languageError.message}`
+            : `// Preview unavailable: ${languageError.messageEn}`,
+          errors: [languageError],
+          warnings: [],
+          sourceMap: [],
+          stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+        };
+      }
+
+      return {
+        success: false,
+        code: displayLanguage === 'ru' ? '// Ошибка генерации кода' : '// Code generation failed',
+        errors: [{
+          nodeId: '',
+          code: CodeGenErrorCode.UNKNOWN_NODE_TYPE,
+          message: String(error),
+          messageEn: String(error),
+        }],
+        warnings: [],
+        sourceMap: [],
+        stats: { nodesProcessed: 0, linesOfCode: 0, generationTimeMs: 0 },
+      } as CodeGenerationResult;
+    }
+  }, [graph, packageRegistrySnapshot, displayLanguage]);
   
   // Разбиваем код на строки
   const lines = useMemo(() => result.code.split('\n'), [result.code]);
@@ -355,8 +418,12 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
   
   if (!visible) return null;
   
+  const supportInfo = getLanguageSupportInfo(graph.language);
+
   const t = {
-    title: displayLanguage === 'ru' ? 'C++ Код' : 'C++ Code',
+    title: displayLanguage === 'ru'
+      ? `Код (${graph.language.toUpperCase()})`
+      : `Code (${graph.language.toUpperCase()})`,
     copy: displayLanguage === 'ru' ? 'Копировать' : 'Copy',
     copied: displayLanguage === 'ru' ? 'Скопировано!' : 'Copied!',
     close: displayLanguage === 'ru' ? 'Закрыть' : 'Close',
@@ -365,6 +432,9 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
     time: displayLanguage === 'ru' ? 'мс' : 'ms',
     errors: displayLanguage === 'ru' ? 'Ошибки' : 'Errors',
     warnings: displayLanguage === 'ru' ? 'Предупреждения' : 'Warnings',
+    supportStatus: getTranslation(displayLanguage, 'codegen.supportStatus'),
+    supportReady: getTranslation(displayLanguage, 'codegen.support.ready'),
+    supportMissing: getTranslation(displayLanguage, 'codegen.support.unsupported'),
   };
   
   return (
@@ -374,6 +444,9 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
         <div style={styles.title}>
           <span>{'</>'}</span>
           <span>{t.title}</span>
+          <span style={{ fontSize: 11, color: supportInfo.supportsGenerator ? '#a6e3a1' : '#f9e2af' }}>
+            {t.supportStatus}: {supportInfo.supportsGenerator ? t.supportReady : t.supportMissing}
+          </span>
         </div>
         <div style={styles.headerActions}>
           <button
@@ -427,10 +500,10 @@ export const CodePreviewPanel: React.FC<CodePreviewPanelProps> = ({
       </div>
       
       {/* Предупреждения */}
-      {result.warnings.length > 0 && (
+      {(result.warnings.length > 0 || previewWarnings.length > 0) && (
         <div style={styles.warningContainer}>
           <strong>{t.warnings}:</strong>{' '}
-          {result.warnings.map(w => w.message).join('; ')}
+          {[...result.warnings.map(w => w.message), ...previewWarnings].join('; ')}
         </div>
       )}
       

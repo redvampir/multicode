@@ -109,8 +109,7 @@ add_library(multicode_core STATIC
     src/core/GraphSerializer.cpp
 
     # Generators
-    # TODO: CppCodeGenerator требует рефакторинга - временно отключен
-    # src/generators/CppCodeGenerator.cpp
+    src/generators/CppCodeGenerator.cpp
 )
 
 target_include_directories(multicode_core
@@ -140,16 +139,16 @@ target_compile_features(multicode_core PUBLIC cxx_std_20)
 
 if(Catch2_FOUND)
     enable_testing()
+
+    option(MULTICODE_ENABLE_LEGACY_TESTS "Build legacy C++ tests disabled in main suite" OFF)
     
     add_executable(multicode_tests
         tests/test_main.cpp
         tests/core/test_node.cpp
         tests/core/test_port.cpp
+        tests/core/test_graph.cpp
         tests/core/test_graph_serializer.cpp
-        # TODO: test_flow_control_nodes требует обновления API - временно отключен
-        # tests/core/test_flow_control_nodes.cpp
-        # TODO: test_cpp_code_generator требует рефакторинга CppCodeGenerator - временно отключен
-        # tests/generators/test_cpp_code_generator.cpp
+        tests/generators/test_cpp_code_generator.cpp
     )
     
     target_link_libraries(multicode_tests
@@ -165,7 +164,31 @@ if(Catch2_FOUND)
     
     # Register tests manually (catch_discover_tests runs at configure time)
     add_test(NAME multicode_tests COMMAND multicode_tests)
-    
+
+    if(MULTICODE_ENABLE_LEGACY_TESTS)
+        add_executable(multicode_legacy_tests
+            tests/test_main.cpp
+            tests/core/test_flow_control_nodes.cpp
+        )
+
+        target_link_libraries(multicode_legacy_tests
+            PRIVATE
+                multicode_core
+                Catch2::Catch2WithMain
+        )
+
+        if(MSVC)
+            target_compile_options(multicode_legacy_tests PRIVATE /WX-)
+        endif()
+
+        add_test(NAME multicode_legacy_tests COMMAND multicode_legacy_tests "[legacy]")
+        set_tests_properties(multicode_legacy_tests PROPERTIES LABELS "legacy")
+
+        message(STATUS "Legacy tests: ON (multicode_legacy_tests)")
+    else()
+        message(STATUS "Legacy tests: OFF")
+    endif()
+
     # Code coverage (optional)
     if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
         target_compile_options(multicode_tests PRIVATE --coverage)
@@ -220,4 +243,5 @@ message(STATUS "C++ Standard:   C++${CMAKE_CXX_STANDARD}")
 message(STATUS "Build Type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "Compiler:       ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "Tests:          ${Catch2_FOUND}")
+message(STATUS "Legacy tests:   ${MULTICODE_ENABLE_LEGACY_TESTS}")
 message(STATUS "==================================================")

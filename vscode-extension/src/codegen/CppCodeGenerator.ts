@@ -60,6 +60,9 @@ import {
   TemplateNodeGenerator,
   NodeDefinitionGetter,
   FunctionEntryNodeGenerator,
+  generateFunctionResultTypeDeclaration,
+  getFunctionResultTypeName,
+  buildTupleExpression,
 } from './generators';
 
 const VECTOR_ELEMENT_TYPES: VectorElementType[] = [
@@ -573,10 +576,12 @@ export class CppCodeGenerator implements ICodeGenerator {
       }
     }
     
+    const processedErrors = this.postProcessErrors(context.errors);
+
     return {
-      success: context.errors.length === 0,
+      success: processedErrors.length === 0,
       code,
-      errors: context.errors,
+      errors: processedErrors,
       warnings: context.warnings,
       sourceMap: context.sourceMap,
       stats: {
@@ -1192,6 +1197,12 @@ export class CppCodeGenerator implements ICodeGenerator {
       }
     }
     
+    // Объявление именованного типа результата для множественного output
+    const resultTypeDeclaration = generateFunctionResultTypeDeclaration(func);
+    if (resultTypeDeclaration) {
+      lines.push(resultTypeDeclaration);
+    }
+
     // Сигнатура функции
     const signature = FunctionEntryNodeGenerator.generateFunctionSignature(func);
     lines.push(`${signature} {`);
@@ -1267,7 +1278,8 @@ export class CppCodeGenerator implements ICodeGenerator {
         lines.push(`${ind}return ${defaultVal};`);
       } else {
         const defaults = outputParams.map(p => this.getDefaultValueForType(p.dataType));
-        lines.push(`${ind}return std::make_tuple(${defaults.join(', ')});`);
+        const resultTypeName = getFunctionResultTypeName(func);
+        lines.push(`${ind}return ${resultTypeName}${buildTupleExpression(defaults)};`);
       }
     }
     

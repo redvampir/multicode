@@ -1397,6 +1397,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     packages,
     loadPackage,
     unloadPackage,
+    registry,
+    registryVersion,
   } = usePackageRegistry();
 
   const createNodeByType = useCallback((
@@ -3888,6 +3890,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         onClose={() => setCodePreviewVisible(false)}
         highlightedNodeId={highlightedNodeId}
         onLineHover={handleCodeLineHover}
+        packageRegistrySnapshot={package_registry_snapshot}
       />
       
       {/* Панель управления пакетами */}

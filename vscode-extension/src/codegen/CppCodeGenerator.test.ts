@@ -6,6 +6,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { CppCodeGenerator } from './CppCodeGenerator';
+import type { INodeGenerator } from './generators';
+import { TemplateNodeGenerator } from './generators/template';
+import { CodeGenErrorCode } from './types';
 import { 
   BlueprintGraphState, 
   BlueprintNode, 
@@ -60,6 +63,22 @@ describe('CppCodeGenerator', () => {
       expect(result.errors[0].code).toBe('MULTIPLE_START_NODES');
     });
     
+    it('should support extended control flow nodes in canGenerate', () => {
+      const graph = createTestGraph([
+        createNode('Start', { x: 0, y: 0 }, 'start-1'),
+        createNode('Parallel', { x: 100, y: 0 }, 'parallel-1'),
+        createNode('Gate', { x: 200, y: 0 }, 'gate-1'),
+        createNode('DoN', { x: 300, y: 0 }, 'don-1'),
+        createNode('DoOnce', { x: 400, y: 0 }, 'doonce-1'),
+        createNode('FlipFlop', { x: 500, y: 0 }, 'flipflop-1'),
+        createNode('MultiGate', { x: 600, y: 0 }, 'multigate-1'),
+      ]);
+
+      const result = generator.canGenerate(graph);
+
+      expect(result.errors.filter(error => error.code === 'UNKNOWN_NODE_TYPE')).toHaveLength(0);
+    });
+
     it('should accept valid graph with Start node', () => {
       const graph = createTestGraph([
         createNode('Start', { x: 0, y: 0 }, 'start-1'),
@@ -907,6 +926,170 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('continue;');
     });
     
+    it('should generate Parallel with fallback when thread outputs are not connected', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel');
+
+      const graph = createTestGraph(
+        [startNode, parallelNode],
+        [createEdge('start', 'start-exec-out', 'parallel', 'parallel-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('Parallel: нет подключённых Thread-веток'))).toBe(true);
+    });
+
+    it('should generate Gate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const gateNode = createNode('Gate', { x: 200, y: 0 }, 'gate');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, gateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'gate', 'gate-enter'),
+          createEdge('gate', 'gate-exit', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool gate_open_gate = false;');
+    });
+
+    it('should generate DoN and expose counter output', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doNNode = createNode('DoN', { x: 200, y: 0 }, 'don');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, doNNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'don', 'don-exec-in'),
+          createEdge('don', 'don-exit', 'print', 'print-exec-in'),
+          createEdge('don', 'don-counter', 'print', 'print-string', 'int32'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static int do_n_counter_don = 0;');
+      expect(result.code).toContain('std::cout << do_n_counter_don');
+    });
+
+    it('should generate DoOnce', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const doOnceNode = createNode('DoOnce', { x: 200, y: 0 }, 'doonce');
+
+      const graph = createTestGraph(
+        [startNode, doOnceNode],
+        [createEdge('start', 'start-exec-out', 'doonce', 'doonce-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool do_once_done_doonce = false;');
+    });
+
+    it('should generate FlipFlop', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const flipFlopNode = createNode('FlipFlop', { x: 200, y: 0 }, 'flipflop');
+
+      const graph = createTestGraph(
+        [startNode, flipFlopNode],
+        [createEdge('start', 'start-exec-out', 'flipflop', 'flipflop-exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static bool flip_flop_is_a_flipflop = true;');
+      expect(result.code).toContain('flip_flop_is_a_flipflop = !flip_flop_is_a_flipflop;');
+    });
+
+    it('should generate MultiGate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate', 'multigate-exec-in'),
+          createEdge('multigate', 'multigate-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static int multi_gate_index_multigate = 0;');
+      expect(result.code).toContain('switch (multi_gate_index_multigate)');
+    });
+
+    it('should use deterministic random generator for MultiGate', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-rng');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-rng', 'multigate-rng-exec-in'),
+          createEdge('multigate-rng', 'multigate-rng-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('static std::mt19937 multi_gate_rng_multigaterng');
+      expect(result.code).toContain('std::uniform_int_distribution<int>');
+    });
+
+    it('should warn about partially connected MultiGate outputs', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const multiGateNode = createNode('MultiGate', { x: 200, y: 0 }, 'multigate-partial');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, multiGateNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'multigate-partial', 'multigate-partial-exec-in'),
+          createEdge('multigate-partial', 'multigate-partial-out-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('MultiGate: подключено 1 из 3 выходов Out-*'))).toBe(true);
+    });
+
+    it('should warn about partially connected Parallel outputs', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const parallelNode = createNode('Parallel', { x: 200, y: 0 }, 'parallel-partial');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      const graph = createTestGraph(
+        [startNode, parallelNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'parallel-partial', 'parallel-partial-exec-in'),
+          createEdge('parallel-partial', 'parallel-partial-thread-0', 'print', 'print-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('Parallel: подключено 1 из 2 Thread-веток'))).toBe(true);
+    });
+
     it('should generate ForEach', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const forEachNode = createNode('ForEach', { x: 200, y: 0 }, 'foreach');
@@ -1520,7 +1703,7 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
     });
     
-    it('should generate TODO for Custom node (fallback)', () => {
+    it('should return structured error for Custom node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const customNode: BlueprintNode = {
         id: 'custom-1',
@@ -1542,12 +1725,15 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Custom');
-      expect(result.code).toContain('MyCustomNode');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'custom-1',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
     
-    it('should generate TODO for Function node (fallback)', () => {
+    it('should return structured error for Function node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const functionNode: BlueprintNode = {
         id: 'func-1',
@@ -1569,11 +1755,15 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Function');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'func-1',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
     
-    it('should generate TODO for Event node (fallback)', () => {
+    it('should return structured error for Event node (fallback)', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const eventNode: BlueprintNode = {
         id: 'event-1',
@@ -1595,9 +1785,84 @@ describe('CppCodeGenerator', () => {
       
       const result = generator.generate(graph);
       
-      expect(result.success).toBe(true);
-      expect(result.code).toContain('// TODO: Event');
+      expect(result.success).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({
+        nodeId: 'event-1',
+        code: 'UNIMPLEMENTED_NODE_TYPE',
+      }));
+      expect(result.code).not.toContain('TODO');
     });
+
+    it('should deduplicate repeated errors with stable order', () => {
+      const localGenerator = new CppCodeGenerator();
+      const duplicateErrorGenerator: INodeGenerator = {
+        nodeTypes: ['Custom' as BlueprintNodeType],
+        generate: (node, _context, helpers) => {
+          helpers.addError(
+            node.id,
+            CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+            'Дублируемая ошибка',
+            'Duplicated error'
+          );
+          // Имитируем вложенный проход: та же ошибка добавляется повторно.
+          helpers.addError(
+            node.id,
+            CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+            'Дублируемая ошибка',
+            'Duplicated error'
+          );
+
+          return { lines: [], followExecutionFlow: true };
+        },
+      };
+      localGenerator.registerGenerator(duplicateErrorGenerator);
+
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const customNode = createNode('Custom' as BlueprintNodeType, { x: 200, y: 0 }, 'custom-1');
+
+      const graph = createTestGraph(
+        [startNode, customNode],
+        [createEdge('start', 'start-exec-out', 'custom-1', 'custom-1-exec-in')]
+      );
+
+      const firstPass = localGenerator.generate(graph);
+      const secondPass = localGenerator.generate(graph);
+
+      expect(firstPass.success).toBe(false);
+      expect(secondPass.success).toBe(false);
+
+      expect(firstPass.errors).toEqual([
+        {
+          nodeId: 'custom-1',
+          code: CodeGenErrorCode.UNIMPLEMENTED_NODE_TYPE,
+          message: 'Дублируемая ошибка',
+          messageEn: 'Duplicated error',
+        },
+      ]);
+
+      expect(secondPass.errors).toEqual(firstPass.errors);
+    });
+
+
+    it('не должен генерировать TODO для поддержанных узлов', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const printNode = createNode('Print', { x: 200, y: 0 }, 'print');
+      const endNode = createNode('End', { x: 400, y: 0 }, 'end');
+
+      const graph = createTestGraph(
+        [startNode, printNode, endNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('print', 'print-exec-out', 'end', 'end-exec-in'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('TODO');
+    });
+
   });
   
   describe('generate - Variables detailed', () => {
@@ -2890,6 +3155,61 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('<logging.h>');
     });
     
+
+    it('should generate final code for package node with codegen.cpp.template and collect includes', () => {
+      const customNodeDef = {
+        type: 'Custom' as BlueprintNodeType,
+        label: 'Package Delay',
+        labelRu: 'Пакетная задержка',
+        category: 'flow',
+        inputs: [
+          { id: 'exec-in', name: 'In', dataType: 'execution' },
+          { id: 'ms', name: 'Milliseconds', dataType: 'float' },
+        ],
+        outputs: [
+          { id: 'exec-out', name: 'Out', dataType: 'execution' },
+        ],
+        _codegen: {
+          cpp: {
+            template: 'std::this_thread::sleep_for(std::chrono::milliseconds({{input.ms}}));',
+            includes: ['<chrono>'],
+          },
+        },
+      };
+
+      const packageGenerator = CppCodeGenerator.withPackages(
+        (type: string) => (type === 'Custom' ? customNodeDef : undefined),
+        ['Custom' as BlueprintNodeType]
+      );
+
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const delayNode: BlueprintNode = {
+        id: 'delay-1',
+        type: 'Custom' as BlueprintNodeType,
+        label: 'Package Delay',
+        position: { x: 200, y: 0 },
+        inputs: [
+          { id: 'delay-1-exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+          { id: 'delay-1-ms', name: 'Milliseconds', dataType: 'float', direction: 'input', index: 1, value: 250 },
+        ],
+        outputs: [
+          { id: 'delay-1-exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        ],
+      };
+
+      const graph = createTestGraph(
+        [startNode, delayNode],
+        [createEdge('start', 'start-exec-out', 'delay-1', 'delay-1-exec-in')]
+      );
+
+      const result = packageGenerator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::this_thread::sleep_for(std::chrono::milliseconds(250));');
+      expect(result.code).toContain('#include <chrono>');
+      expect(TemplateNodeGenerator.getCollectedIncludes()).toContain('<chrono>');
+    });
+
     it('should include custom headers from package templates', () => {
       const customNodeDef = {
         type: 'Custom' as BlueprintNodeType,
@@ -2944,6 +3264,15 @@ describe('CppCodeGenerator', () => {
       expect(result.success).toBe(true);
       expect(result.code).toContain('#include <fstream>');
       expect(result.code).toContain('#include <filesystem>');
+
+      const fstreamOccurrences = (result.code.match(/#include <fstream>/g) ?? []).length;
+      expect(fstreamOccurrences).toBe(1);
+
+      const includeLines = result.code
+        .split('\n')
+        .filter((line) => line.startsWith('#include '));
+      const sortedIncludeLines = [...includeLines].sort();
+      expect(includeLines).toEqual(sortedIncludeLines);
     });
   });
   
@@ -2993,6 +3322,219 @@ describe('CppCodeGenerator', () => {
     function port(id: string, name: string, dataType: PortDataType, direction: 'input' | 'output', index: number, value?: number) {
       return { id, name, dataType, direction, index, ...(value !== undefined && { value }) };
     }
+
+    it('should generate function body from graph.functions with FunctionEntry and FunctionReturn without TODO markers', () => {
+      const func = createTestFunction({
+        id: 'func-format-message',
+        name: 'formatMessage',
+        nameRu: 'Форматировать сообщение',
+        parameters: [
+          { id: 'text', name: 'text', nameRu: 'текст', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-format',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-format-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-format-text', 'text', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-format-message' },
+            },
+            {
+              id: 'return-format',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 220, y: 0 },
+              inputs: [
+                port('return-format-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-format-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-format-message' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-format', 'entry-format-exec-out', 'return-format', 'return-format-exec-in'),
+          ],
+        },
+      });
+
+      const callNode: BlueprintNode = {
+        id: 'call-format',
+        type: 'CallUserFunction',
+        label: 'Вызов: formatMessage',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-format-exec-in', 'exec', 'execution', 'input', 0),
+          { ...port('call-format-text', 'text', 'string', 'input', 1), value: 'Привет, MultiCode!' },
+        ],
+        outputs: [
+          port('call-format-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-format-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-format-message', functionName: 'formatMessage' },
+      };
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start'), callNode],
+        [createEdge('start', 'start-exec-out', 'call-format', 'call-format-exec-in')]
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::string formatMessage(std::string text)');
+      expect(result.code).toContain('auto result_');
+      expect(result.code).toContain('formatMessage("Привет, MultiCode!")');
+      expect(result.code).not.toContain('TODO');
+    });
+
+    it('should generate full path for multiple custom functions without TODO markers', () => {
+      const normalizeFunction = createTestFunction({
+        id: 'func-normalize',
+        name: 'normalizeName',
+        nameRu: 'Нормализовать имя',
+        parameters: [
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-normalize',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-normalize-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-normalize-name', 'name', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-normalize' },
+            },
+            {
+              id: 'return-normalize',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-normalize-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-normalize-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-normalize' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-normalize', 'entry-normalize-exec-out', 'return-normalize', 'return-normalize-exec-in'),
+          ],
+        },
+      });
+
+      const buildGreetingFunction = createTestFunction({
+        id: 'func-build-greeting',
+        name: 'buildGreeting',
+        nameRu: 'Собрать приветствие',
+        parameters: [
+          { id: 'name', name: 'name', nameRu: 'имя', dataType: 'string', direction: 'input' },
+          { id: 'result', name: 'result', nameRu: 'результат', dataType: 'string', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-greeting',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-greeting-exec-out', 'exec', 'execution', 'output', 0),
+                port('entry-greeting-name', 'name', 'string', 'output', 1),
+              ],
+              properties: { functionId: 'func-build-greeting' },
+            },
+            {
+              id: 'return-greeting',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-greeting-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-greeting-result', 'result', 'string', 'input', 1),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-build-greeting' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-greeting', 'entry-greeting-exec-out', 'return-greeting', 'return-greeting-exec-in'),
+          ],
+        },
+      });
+
+      const callNormalize: BlueprintNode = {
+        id: 'call-normalize',
+        type: 'CallUserFunction',
+        label: 'Вызов: normalizeName',
+        position: { x: 200, y: 0 },
+        inputs: [
+          port('call-normalize-exec-in', 'exec', 'execution', 'input', 0),
+          { ...port('call-normalize-name', 'name', 'string', 'input', 1), value: 'София' },
+        ],
+        outputs: [
+          port('call-normalize-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-normalize-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-normalize', functionName: 'normalizeName' },
+      };
+
+      const callGreeting: BlueprintNode = {
+        id: 'call-greeting',
+        type: 'CallUserFunction',
+        label: 'Вызов: buildGreeting',
+        position: { x: 400, y: 0 },
+        inputs: [
+          port('call-greeting-exec-in', 'exec', 'execution', 'input', 0),
+          port('call-greeting-name', 'name', 'string', 'input', 1),
+        ],
+        outputs: [
+          port('call-greeting-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-greeting-result', 'result', 'string', 'output', 1),
+        ],
+        properties: { functionId: 'func-build-greeting', functionName: 'buildGreeting' },
+      };
+
+      const printNode = createNode('Print', { x: 620, y: 0 }, 'print-greeting');
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start'), callNormalize, callGreeting, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'call-normalize', 'call-normalize-exec-in'),
+          createEdge('call-normalize', 'call-normalize-exec-out', 'call-greeting', 'call-greeting-exec-in'),
+          createEdge('call-normalize', 'call-normalize-result', 'call-greeting', 'call-greeting-name', 'string'),
+          createEdge('call-greeting', 'call-greeting-exec-out', 'print-greeting', 'print-greeting-exec-in'),
+          createEdge('call-greeting', 'call-greeting-result', 'print-greeting', 'print-greeting-string', 'string'),
+        ]
+      );
+      graph.functions = [normalizeFunction, buildGreetingFunction];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('std::string normalizeName(std::string name)');
+      expect(result.code).toContain('std::string buildGreeting(std::string name)');
+      expect(result.code).toContain('normalizeName("София")');
+      expect(result.code).toContain('buildGreeting(result_');
+      expect(result.code).toContain('std::cout << result_');
+      expect(result.code).not.toContain('TODO');
+    });
     
     it('should generate void function without parameters', () => {
       const func = createTestFunction({
@@ -3446,6 +3988,169 @@ describe('CppCodeGenerator', () => {
       expect(funcPos).toBeLessThan(mainPos);
     });
     
+
+    it('should generate named result type before function signature for multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-minmax',
+        name: 'getMinMax',
+        nameRu: 'Получить минимум и максимум',
+        parameters: [
+          { id: 'min', name: 'min', nameRu: 'мин', dataType: 'int32', direction: 'output' },
+          { id: 'max', name: 'max', nameRu: 'макс', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-1',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-1-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-minmax' },
+            },
+            {
+              id: 'return-1',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-1-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-1-min', 'min', 'int32', 'input', 1, 1),
+                port('return-1-max', 'max', 'int32', 'input', 2, 10),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-minmax' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-1', 'entry-1-exec-out', 'return-1', 'return-1-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('using getMinMaxResult = std::tuple<int, int>;');
+      expect(result.code).toContain('getMinMaxResult getMinMax()');
+      expect(result.code).toContain('return getMinMaxResult{1, 10};');
+
+      const aliasPos = result.code.indexOf('using getMinMaxResult = std::tuple<int, int>;');
+      const signaturePos = result.code.indexOf('getMinMaxResult getMinMax()');
+      expect(aliasPos).toBeLessThan(signaturePos);
+    });
+
+    it('should not include <tuple> when no tuple usage is generated', () => {
+      const func = createTestFunction({
+        id: 'func-single-output',
+        name: 'singleOutput',
+        nameRu: 'Функция с одним выходом',
+        parameters: [
+          { id: 'value', name: 'value', nameRu: 'значение', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-single',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-single-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-single-output' },
+            },
+            {
+              id: 'return-single',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-single-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-single-value', 'value', 'int32', 'input', 1, 7),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-single-output' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-single', 'entry-single-exec-out', 'return-single', 'return-single-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph([createNode('Start', { x: 0, y: 0 }, 'start')], []);
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).not.toContain('#include <tuple>');
+      expect(result.code).toContain('int singleOutput()');
+    });
+
+    it('should include <tuple> when function has multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-multi-output',
+        name: 'multiOutput',
+        nameRu: 'Функция с несколькими выходами',
+        parameters: [
+          { id: 'left', name: 'left', nameRu: 'левый', dataType: 'int32', direction: 'output' },
+          { id: 'right', name: 'right', nameRu: 'правый', dataType: 'int32', direction: 'output' },
+        ],
+        graph: {
+          nodes: [
+            {
+              id: 'entry-multi',
+              type: 'FunctionEntry',
+              label: 'Вход',
+              position: { x: 0, y: 0 },
+              inputs: [],
+              outputs: [
+                port('entry-multi-exec-out', 'exec', 'execution', 'output', 0),
+              ],
+              properties: { functionId: 'func-multi-output' },
+            },
+            {
+              id: 'return-multi',
+              type: 'FunctionReturn',
+              label: 'Возврат',
+              position: { x: 200, y: 0 },
+              inputs: [
+                port('return-multi-exec-in', 'exec', 'execution', 'input', 0),
+                port('return-multi-left', 'left', 'int32', 'input', 1, 2),
+                port('return-multi-right', 'right', 'int32', 'input', 2, 9),
+              ],
+              outputs: [],
+              properties: { functionId: 'func-multi-output' },
+            },
+          ],
+          edges: [
+            createFuncEdge('entry-multi', 'entry-multi-exec-out', 'return-multi', 'return-multi-exec-in'),
+          ],
+        },
+      });
+
+      const graph = createTestGraph([createNode('Start', { x: 0, y: 0 }, 'start')], []);
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('#include <tuple>');
+      expect(result.code).toContain('using multiOutputResult = std::tuple<int, int>;');
+    });
+
     it('should generate function with return value used in main', () => {
       // Функция возвращающая число
       const func = createTestFunction({
@@ -3605,5 +4310,36 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('void emptyFunc()');
       expect(result.code).toContain('// Пустая функция');
     });
+
+
+    it('should use unified tuple expression style for default returns with multiple outputs', () => {
+      const func = createTestFunction({
+        id: 'func-default-multi',
+        name: 'defaultMulti',
+        nameRu: 'Пустая функция с множественным выходом',
+        parameters: [
+          { id: 'out-int', name: 'resultInt', nameRu: 'целое', dataType: 'int32', direction: 'output' },
+          { id: 'out-bool', name: 'resultBool', nameRu: 'булево', dataType: 'bool', direction: 'output' },
+        ],
+        graph: {
+          nodes: [],
+          edges: [],
+        },
+      });
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start')],
+        []
+      );
+      graph.functions = [func];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('using defaultMultiResult = std::tuple<int, bool>;');
+      expect(result.code).toContain('defaultMultiResult defaultMulti()');
+      expect(result.code).toContain('return defaultMultiResult{0, false};');
+    });
+
   });
 });

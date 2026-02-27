@@ -30,7 +30,7 @@
 - [x] Переключатель Blueprint/Classic режимов
 - [x] MiniMap и Controls
 
-## v0.3 — «Генерируем C++» ✅ ЗАВЕРШЁН
+## v0.3 — «Генерируем C++» 🚧 В РАБОТЕ
 
 - [x] `ICodeGenerator` интерфейс
 - [x] `CppCodeGenerator` реализация:
@@ -38,16 +38,16 @@
   - [x] Последовательность вызовов (execution flow)
   - [x] Переменные (`Variable`, `SetVariable`, `GetVariable`)
   - [x] Условия (`Branch` → if/else)
-  - [x] Циклы (`ForLoop`, `WhileLoop`, `DoWhile`, `ForEach`)
-  - [x] Управление потоком (`Break`, `Continue`, `Switch`, `Sequence`)
-  - [x] Математика (`Add`, `Subtract`, `Multiply`, `Divide`, `Modulo`)
-  - [x] Сравнение (`Equal`, `NotEqual`, `Greater`, `Less`, `GreaterEqual`, `LessEqual`)
-  - [x] Логика (`And`, `Or`, `Not`)
-  - [x] Ввод/вывод (`Print`, `Input`)
-  - [x] Русские комментарии с названиями узлов
-  - [x] Транслитерация русских переменных
-  - [x] Source map (маппинг узлов на строки кода)
-  - [x] Статистика генерации (время, количество узлов/строк)
+  - [ ] Циклы (`WhileLoop`, `DoWhile`, `ForEach`) — пока не реализованы в C++ core
+  - [ ] Управление потоком (`Break`, `Continue`, `Switch`) — пока не реализовано в C++ core
+  - [ ] Математика (`Subtract`, `Multiply`, `Divide`, `Modulo`) — пока не реализована в C++ core
+  - [ ] Сравнение (`Equal`, `NotEqual`, `Greater`, `Less`, `GreaterEqual`, `LessEqual`) — пока не реализовано в C++ core
+  - [ ] Логика (`And`, `Or`, `Not`) — пока не реализована в C++ core
+  - [ ] Ввод (`Input`) — пока не реализован в C++ core
+  - [ ] Русские комментарии с названиями узлов — пока не реализованы в C++ core
+  - [ ] Транслитерация русских переменных — пока не реализована в C++ core
+  - [ ] Source map (маппинг узлов на строки кода) — пока не реализован в C++ core
+  - [ ] Статистика генерации (время, количество узлов/строк) — пока не реализована в C++ core
 - [x] Плагинная архитектура генераторов (`generators/`)
 - [x] Предпросмотр кода в панели (split view с синхронной подсветкой)
 - [x] Binding к исходникам: маркеры `// multicode:begin` / `// multicode:end`

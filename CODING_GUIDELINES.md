@@ -278,6 +278,34 @@ auto graph = serializer.deserialize(json_str);
 
 ---
 
+## TypeScript/React (Webview) — Обязательные Правила
+
+### Типизация
+- Строгий TypeScript без `any` (кроме изолированных адаптеров с явным обоснованием).
+- Типы состояния и IPC берутся из `vscode-extension/src/shared/*`, не дублируются локально.
+
+### IPC и валидация
+- Любое входящее сообщение валидируется через Zod на границе (`messages.ts`).
+- Невалидные сообщения логируются и игнорируются без падения UI.
+
+### Локализация
+- UI строки не хардкодятся: только `getTranslation()` + `TranslationKey`.
+- Для новых ключей добавляются обе локали: `ru` и `en`.
+
+### Редакторы
+- При изменениях webview проверяются оба режима: `BlueprintEditor` и `GraphEditor`.
+- Для сценариев переключения редактора обновляются и тестируются конвертеры форматов.
+
+### Команды проверки
+```bash
+cd vscode-extension
+npm run compile
+npm run lint
+npm test
+```
+
+---
+
 ## Форматирование и Линтеры
 
 ### clang-format
@@ -361,6 +389,9 @@ auto emplaceNode(Args&&... args) -> Node& {
 
 - [ ] Код компилируется без warnings (`-Wall -Wextra -Wpedantic -Werror`)
 - [ ] `ctest --test-dir build` — все тесты зелёные
+- [ ] `cd vscode-extension && npm run compile` — без ошибок
+- [ ] `cd vscode-extension && npm run lint` — без ошибок
+- [ ] `cd vscode-extension && npm test` — тесты зелёные
 - [ ] `clang-format -i` применён ко всем изменённым файлам
 - [ ] Добавлены тесты для нового функционала
 - [ ] Публичные API задокументированы
@@ -430,9 +461,9 @@ if (auto validation = graph.validate(); !validation) {
 
 ---
 
-**Версия:** 1.0
-**Дата:** 2025-12-07
-**Статус:** Актуален для MultiCode v0.2.0+
+**Версия:** 1.1
+**Дата:** 2026-02-07
+**Статус:** Актуален для MultiCode v0.4.0+
 
 ---
 

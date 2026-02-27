@@ -1,0 +1,517 @@
+{
+  "id": "graph-1771846092850",
+  "name": "Untitled Graph",
+  "language": "cpp",
+  "displayLanguage": "ru",
+  "nodes": [
+    {
+      "id": "node-start",
+      "label": "Start",
+      "type": "Start",
+      "position": {
+        "x": -224,
+        "y": 96
+      },
+      "blueprintNode": {
+        "id": "node-start",
+        "label": "Start",
+        "type": "Start",
+        "position": {
+          "x": -224,
+          "y": 96
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "exec-out",
+            "name": "",
+            "dataType": "execution",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-end",
+      "label": "End",
+      "type": "End",
+      "position": {
+        "x": 896,
+        "y": 112
+      },
+      "blueprintNode": {
+        "id": "node-end",
+        "label": "End",
+        "type": "End",
+        "position": {
+          "x": 896,
+          "y": 112
+        },
+        "inputs": [
+          {
+            "id": "exec-in",
+            "name": "",
+            "dataType": "execution",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "outputs": []
+      }
+    },
+    {
+      "id": "node-1771846222279-lr1mv1bot",
+      "label": "",
+      "type": "Variable",
+      "position": {
+        "x": 672,
+        "y": 96
+      },
+      "blueprintNode": {
+        "id": "node-1771846222279-lr1mv1bot",
+        "label": "",
+        "type": "SetVariable",
+        "position": {
+          "x": 672,
+          "y": 96
+        },
+        "inputs": [
+          {
+            "id": "node-1771846222279-lr1mv1bot-exec-in",
+            "name": "",
+            "dataType": "execution",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          },
+          {
+            "id": "node-1771846222279-lr1mv1bot-value-in",
+            "name": "Значение",
+            "dataType": "int32",
+            "direction": "input",
+            "index": 1,
+            "connected": false
+          }
+        ],
+        "outputs": [
+          {
+            "id": "node-1771846222279-lr1mv1bot-exec-out",
+            "name": "",
+            "dataType": "execution",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          },
+          {
+            "id": "node-1771846222279-lr1mv1bot-value-out",
+            "name": "Значение",
+            "dataType": "int32",
+            "direction": "output",
+            "index": 1,
+            "connected": false
+          }
+        ],
+        "properties": {
+          "variableId": "var_1771846213535_gdkg2rowl",
+          "dataType": "int32",
+          "isArray": false,
+          "arrayRank": 0,
+          "defaultValue": 32,
+          "name": "32",
+          "nameRu": "32",
+          "codeName": "var_32",
+          "color": "#00BCD4",
+          "inputValueIsOverride": false,
+          "inputValue": 32
+        }
+      }
+    },
+    {
+      "id": "node-1771846239062-h2oqngo8s",
+      "label": "",
+      "type": "Custom",
+      "position": {
+        "x": 208,
+        "y": 96
+      },
+      "blueprintNode": {
+        "id": "node-1771846239062-h2oqngo8s",
+        "label": "",
+        "type": "Print",
+        "position": {
+          "x": 208,
+          "y": 96
+        },
+        "inputs": [
+          {
+            "id": "node-1771846239062-h2oqngo8s-exec-in",
+            "name": "",
+            "dataType": "execution",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          },
+          {
+            "id": "node-1771846239062-h2oqngo8s-string",
+            "name": "In String",
+            "dataType": "string",
+            "direction": "input",
+            "defaultValue": "",
+            "index": 1,
+            "connected": false
+          }
+        ],
+        "outputs": [
+          {
+            "id": "node-1771846239062-h2oqngo8s-exec-out",
+            "name": "",
+            "dataType": "execution",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-conversion-1771846244982-0z1z23d",
+      "label": "Преобразовать: Int32 → String",
+      "type": "Custom",
+      "position": {
+        "x": 80,
+        "y": 256
+      },
+      "blueprintNode": {
+        "id": "node-conversion-1771846244982-0z1z23d",
+        "label": "Преобразовать: Int32 → String",
+        "type": "TypeConversion",
+        "position": {
+          "x": 80,
+          "y": 256
+        },
+        "inputs": [
+          {
+            "id": "node-conversion-1771846244982-0z1z23d-value-in",
+            "name": "Вход",
+            "dataType": "int32",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "outputs": [
+          {
+            "id": "node-conversion-1771846244982-0z1z23d-value-out",
+            "name": "Выход",
+            "dataType": "string",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "customLabel": "Преобразовать: Int32 → String",
+        "properties": {
+          "conversionId": "int32_to_string",
+          "fromType": "int32",
+          "toType": "string",
+          "autoInserted": true,
+          "meta": {},
+          "name": "Convert: Int32 -> String",
+          "nameRu": "Преобразовать: Int32 → String"
+        }
+      }
+    },
+    {
+      "id": "node-1771846355503-9s6hk5iqg",
+      "label": "",
+      "type": "Variable",
+      "position": {
+        "x": -160,
+        "y": 272
+      },
+      "blueprintNode": {
+        "id": "node-1771846355503-9s6hk5iqg",
+        "label": "",
+        "type": "GetVariable",
+        "position": {
+          "x": -160,
+          "y": 272
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "node-1771846355503-9s6hk5iqg-value-out",
+            "name": "Значение",
+            "dataType": "int32",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "properties": {
+          "variableId": "var_1771846213535_gdkg2rowl",
+          "dataType": "int32",
+          "isArray": false,
+          "arrayRank": 0,
+          "defaultValue": 32,
+          "name": "32",
+          "nameRu": "32",
+          "codeName": "var_32",
+          "color": "#00BCD4"
+        }
+      }
+    },
+    {
+      "id": "node-1771846490774-jeopim2bw",
+      "label": "",
+      "type": "Custom",
+      "position": {
+        "x": 432,
+        "y": 128
+      },
+      "blueprintNode": {
+        "id": "node-1771846490774-jeopim2bw",
+        "label": "",
+        "type": "Input",
+        "position": {
+          "x": 432,
+          "y": 128
+        },
+        "inputs": [
+          {
+            "id": "node-1771846490774-jeopim2bw-exec-in",
+            "name": "",
+            "dataType": "execution",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          },
+          {
+            "id": "node-1771846490774-jeopim2bw-prompt",
+            "name": "Prompt",
+            "dataType": "string",
+            "direction": "input",
+            "defaultValue": "",
+            "index": 1,
+            "connected": false
+          }
+        ],
+        "outputs": [
+          {
+            "id": "node-1771846490774-jeopim2bw-exec-out",
+            "name": "",
+            "dataType": "execution",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          },
+          {
+            "id": "node-1771846490774-jeopim2bw-value",
+            "name": "Value",
+            "dataType": "string",
+            "direction": "output",
+            "index": 1,
+            "connected": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-conversion-1771846500966-e0sf1yd",
+      "label": "Преобразовать: String → Int32",
+      "type": "Custom",
+      "position": {
+        "x": 400,
+        "y": 304
+      },
+      "blueprintNode": {
+        "id": "node-conversion-1771846500966-e0sf1yd",
+        "label": "Преобразовать: String → Int32",
+        "type": "TypeConversion",
+        "position": {
+          "x": 400,
+          "y": 304
+        },
+        "inputs": [
+          {
+            "id": "node-conversion-1771846500966-e0sf1yd-value-in",
+            "name": "Вход",
+            "dataType": "string",
+            "direction": "input",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "outputs": [
+          {
+            "id": "node-conversion-1771846500966-e0sf1yd-value-out",
+            "name": "Выход",
+            "dataType": "int32",
+            "direction": "output",
+            "index": 0,
+            "connected": false
+          }
+        ],
+        "customLabel": "Преобразовать: String → Int32",
+        "properties": {
+          "conversionId": "string_to_int32",
+          "fromType": "string",
+          "toType": "int32",
+          "autoInserted": true,
+          "meta": {},
+          "name": "Convert: String -> Int32",
+          "nameRu": "Преобразовать: String → Int32"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1771846244982-9hbmhg9",
+      "source": "node-conversion-1771846244982-0z1z23d",
+      "target": "node-1771846239062-h2oqngo8s",
+      "label": "data",
+      "kind": "data",
+      "blueprintEdge": {
+        "id": "edge-1771846244982-9hbmhg9",
+        "sourceNode": "node-conversion-1771846244982-0z1z23d",
+        "sourcePort": "node-conversion-1771846244982-0z1z23d-value-out",
+        "targetNode": "node-1771846239062-h2oqngo8s",
+        "targetPort": "node-1771846239062-h2oqngo8s-string",
+        "kind": "data",
+        "dataType": "string"
+      }
+    },
+    {
+      "id": "edge-1771846363495-ogor6nh",
+      "source": "node-1771846355503-9s6hk5iqg",
+      "target": "node-conversion-1771846244982-0z1z23d",
+      "label": "data",
+      "kind": "data",
+      "blueprintEdge": {
+        "id": "edge-1771846363495-ogor6nh",
+        "sourceNode": "node-1771846355503-9s6hk5iqg",
+        "sourcePort": "node-1771846355503-9s6hk5iqg-value-out",
+        "targetNode": "node-conversion-1771846244982-0z1z23d",
+        "targetPort": "node-conversion-1771846244982-0z1z23d-value-in",
+        "kind": "data",
+        "dataType": "int32"
+      }
+    },
+    {
+      "id": "edge-1771846462487-nwfl652",
+      "source": "node-start",
+      "target": "node-1771846239062-h2oqngo8s",
+      "label": "flow",
+      "kind": "execution",
+      "blueprintEdge": {
+        "id": "edge-1771846462487-nwfl652",
+        "sourceNode": "node-start",
+        "sourcePort": "exec-out",
+        "targetNode": "node-1771846239062-h2oqngo8s",
+        "targetPort": "node-1771846239062-h2oqngo8s-exec-in",
+        "kind": "execution"
+      }
+    },
+    {
+      "id": "edge-1771846495766-3xmwhjj",
+      "source": "node-1771846239062-h2oqngo8s",
+      "target": "node-1771846490774-jeopim2bw",
+      "label": "flow",
+      "kind": "execution",
+      "blueprintEdge": {
+        "id": "edge-1771846495766-3xmwhjj",
+        "sourceNode": "node-1771846239062-h2oqngo8s",
+        "sourcePort": "node-1771846239062-h2oqngo8s-exec-out",
+        "targetNode": "node-1771846490774-jeopim2bw",
+        "targetPort": "node-1771846490774-jeopim2bw-exec-in",
+        "kind": "execution"
+      }
+    },
+    {
+      "id": "edge-1771846500966-rbw84s7",
+      "source": "node-1771846490774-jeopim2bw",
+      "target": "node-conversion-1771846500966-e0sf1yd",
+      "label": "data",
+      "kind": "data",
+      "blueprintEdge": {
+        "id": "edge-1771846500966-rbw84s7",
+        "sourceNode": "node-1771846490774-jeopim2bw",
+        "sourcePort": "node-1771846490774-jeopim2bw-value",
+        "targetNode": "node-conversion-1771846500966-e0sf1yd",
+        "targetPort": "node-conversion-1771846500966-e0sf1yd-value-in",
+        "kind": "data",
+        "dataType": "string"
+      }
+    },
+    {
+      "id": "edge-1771846500966-qiclf8k",
+      "source": "node-conversion-1771846500966-e0sf1yd",
+      "target": "node-1771846222279-lr1mv1bot",
+      "label": "data",
+      "kind": "data",
+      "blueprintEdge": {
+        "id": "edge-1771846500966-qiclf8k",
+        "sourceNode": "node-conversion-1771846500966-e0sf1yd",
+        "sourcePort": "node-conversion-1771846500966-e0sf1yd-value-out",
+        "targetNode": "node-1771846222279-lr1mv1bot",
+        "targetPort": "node-1771846222279-lr1mv1bot-value-in",
+        "kind": "data",
+        "dataType": "int32"
+      }
+    },
+    {
+      "id": "edge-1771846506590-a5fae7d",
+      "source": "node-1771846490774-jeopim2bw",
+      "target": "node-1771846222279-lr1mv1bot",
+      "label": "flow",
+      "kind": "execution",
+      "blueprintEdge": {
+        "id": "edge-1771846506590-a5fae7d",
+        "sourceNode": "node-1771846490774-jeopim2bw",
+        "sourcePort": "node-1771846490774-jeopim2bw-exec-out",
+        "targetNode": "node-1771846222279-lr1mv1bot",
+        "targetPort": "node-1771846222279-lr1mv1bot-exec-in",
+        "kind": "execution"
+      }
+    },
+    {
+      "id": "edge-1771846508502-ngycyht",
+      "source": "node-1771846222279-lr1mv1bot",
+      "target": "node-end",
+      "label": "flow",
+      "kind": "execution",
+      "blueprintEdge": {
+        "id": "edge-1771846508502-ngycyht",
+        "sourceNode": "node-1771846222279-lr1mv1bot",
+        "sourcePort": "node-1771846222279-lr1mv1bot-exec-out",
+        "targetNode": "node-end",
+        "targetPort": "exec-in",
+        "kind": "execution"
+      }
+    }
+  ],
+  "updatedAt": "2026-02-23T14:33:50.309Z",
+  "dirty": false,
+  "variables": [
+    {
+      "id": "var_1771846213535_gdkg2rowl",
+      "name": "32",
+      "nameRu": "32",
+      "codeName": "var_32",
+      "dataType": "int32",
+      "defaultValue": 32,
+      "category": "default",
+      "description": "",
+      "isArray": false,
+      "arrayRank": 0,
+      "isPrivate": false,
+      "color": "#00BCD4",
+      "createdAt": "2026-02-23T11:30:13.535Z"
+    }
+  ],
+  "functions": []
+}

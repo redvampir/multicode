@@ -1,6 +1,7 @@
 node_modules/**
 src/**
 .vscode/**
+.vscode-test/**
 **/*.ts
 **/*.map
 tsconfig.json
@@ -12,6 +13,22 @@ schemas/**
 *.vsix
 README.old.md
 .gitignore
+.eslintrc.json
+.husky/**
+coverage/**
+Архив/**
+tmpclaude-*
+vscode-app-*.log
+multicode-debug.vsix
+test.cpp
+*.ps1
+DEBUGGING.md
+CURSOR_INSTALLATION.md
+VARIABLES.md
+КАК_ПРОВЕРИТЬ_РАСШИРЕНИЕ.md
+vitest.config.ts
+vitest.setup.ts
 
 out/**
 !dist/**
+!media/**

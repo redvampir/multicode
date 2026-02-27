@@ -52,7 +52,7 @@ CMake закэшировал путь проекта с кодировкой Win
 
 ### 1. Автоматический Скрипт Сборки
 
-Создан [`scripts/build-cmake-utf8.ps1`](../scripts/build-cmake-utf8.ps1):
+Создан [`scripts/build-cmake-utf8.ps1`](../../scripts/build-cmake-utf8.ps1):
 
 ```powershell
 # Принудительная установка UTF-8
@@ -83,7 +83,7 @@ $env:LC_ALL = "C.UTF-8"
 
 ### 2. Обновлённые VS Code Tasks
 
-Все таски в [`.vscode/tasks.json`](../.vscode/tasks.json) теперь используют защищённый скрипт:
+Все таски в [`.vscode/tasks.json`](../../.vscode/tasks.json) теперь используют защищённый скрипт:
 
 ```json
 {

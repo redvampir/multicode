@@ -25,6 +25,7 @@ export {
   transliterate,
   toValidIdentifier,
   getCppType,
+  getCppVariableType,
   getDefaultValue,
 } from './types';
 

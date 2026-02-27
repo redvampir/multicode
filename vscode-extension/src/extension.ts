@@ -2,13 +2,16 @@ import * as vscode from 'vscode';
 import { GraphPanel } from './panel/GraphPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
+  const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
   console.log('[MultiCode] ========================================');
   console.log('[MultiCode] Extension ACTIVATION started');
+  console.log('[MultiCode] version:', extensionVersion);
   console.log('[MultiCode] extensionPath:', context.extensionPath);
   console.log('[MultiCode] ========================================');
   
   const outputChannel = vscode.window.createOutputChannel('MultiCode');
   outputChannel.appendLine('[MultiCode] Extension activated!');
+  outputChannel.appendLine(`[MultiCode] Version: ${extensionVersion}`);
   outputChannel.appendLine(`[MultiCode] Timestamp: ${new Date().toISOString()}`);
 
   const ensurePanel = (): GraphPanel => GraphPanel.createOrShow(context, outputChannel);
@@ -57,6 +60,12 @@ export function activate(context: vscode.ExtensionContext): void {
     void panel.translateGraphLabels();
   });
 
+  console.log('[MultiCode] Registering command: multicode.compileAndRun');
+  const compileAndRun = vscode.commands.registerCommand('multicode.compileAndRun', () => {
+    const panel = ensurePanel();
+    void panel.handleCompileAndRun();
+  });
+
   context.subscriptions.push(
     openEditor,
     newGraph,
@@ -65,6 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
     generateCode,
     generateCodeBinding,
     translateGraph,
+    compileAndRun,
     outputChannel
   );
   
@@ -75,8 +85,8 @@ export function activate(context: vscode.ExtensionContext): void {
     'multicode.saveGraph',
     'multicode.loadGraph',
     'multicode.generateCode',
-    'multicode.generateCodeBinding',
-    'multicode.translateGraph'
+    'multicode.translateGraph',
+    'multicode.compileAndRun'
   ]);
   outputChannel.appendLine('[MultiCode] Extension activation complete!');
 }

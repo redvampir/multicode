@@ -19,7 +19,7 @@
 ## 📁 Компоненты
 
 ### 1. Скрипт мониторинга
-**Файл:** [`scripts/monitor-errors.ps1`](../scripts/monitor-errors.ps1)
+**Файл:** [`scripts/monitor-errors.ps1`](../../scripts/monitor-errors.ps1)
 
 **Режимы работы:**
 ```powershell
@@ -171,7 +171,7 @@
 
 ### Настройка Tasks
 
-Для изменения интервала мониторинга отредактируйте [`.vscode/tasks.json`](../.vscode/tasks.json):
+Для изменения интервала мониторинга отредактируйте [`.vscode/tasks.json`](../../.vscode/tasks.json):
 
 ```json
 {

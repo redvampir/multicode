@@ -6,7 +6,12 @@
  * CallUserFunction — вызов пользовательской функции
  */
 
-import type { BlueprintNode, BlueprintNodeType, BlueprintFunction } from '../../shared/blueprintTypes';
+import type {
+  BlueprintNode,
+  BlueprintNodeType,
+  BlueprintFunction,
+  FunctionParameter,
+} from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
 import { CodeGenWarningCode, CodeGenErrorCode } from '../types';
 import {
@@ -33,8 +38,7 @@ function portTypeToCpp(dataType: PortDataType): string {
     'double': 'double',
     'string': 'std::string',
     'vector': 'std::vector<float>',
-    'object': 'void*',
-    'pointer': 'void*',
+    'pointer': 'std::shared_ptr<void>',
     'class': 'auto',
     'any': 'auto',
     'array': 'std::vector<int>',
@@ -67,52 +71,38 @@ function transliterate(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
+function sanitizeIdentifierPart(value: string, fallback: string): string {
+  const transliterated = transliterate(value)
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
-
-/**
- * C++ тип возврата для функции с учётом multiple return
- */
-function getFunctionReturnType(func: BlueprintFunction): string {
-  const outputParams = func.parameters.filter(p => p.direction === 'output');
-
-  if (outputParams.length === 0) {
-    return 'void';
+  if (transliterated.length === 0) {
+    return fallback;
   }
 
-  if (outputParams.length === 1) {
-    return portTypeToCpp(outputParams[0].dataType);
+  if (/^\d/.test(transliterated)) {
+    return `${fallback}_${transliterated}`;
   }
 
-  return getFunctionResultTypeName(func);
+  return transliterated;
 }
 
-/**
- * Получить имя C++ типа результата для функции с несколькими output
- */
-function getFunctionResultTypeName(func: BlueprintFunction): string {
-  return `${transliterate(func.name)}Result`;
+function buildCallResultVariableName(
+  node: BlueprintNode,
+  functionName: string,
+  outputName?: string
+): string {
+  const functionToken = sanitizeIdentifierPart(functionName, 'func');
+  const outputToken = sanitizeIdentifierPart(outputName ?? 'result', 'result');
+  const nodeTokenRaw = node.id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const nodeToken = nodeTokenRaw.slice(Math.max(0, nodeTokenRaw.length - 4));
+
+  return nodeToken.length > 0
+    ? `result_${functionToken}_${outputToken}_${nodeToken}`
+    : `result_${functionToken}_${outputToken}`;
 }
 
-/**
- * Сгенерировать объявление именованного типа результата функции
- */
-function generateFunctionResultTypeDeclaration(func: BlueprintFunction): string | null {
-  const outputParams = func.parameters.filter(p => p.direction === 'output');
-  if (outputParams.length <= 1) {
-    return null;
-  }
-
-  const outputTypes = outputParams.map(param => portTypeToCpp(param.dataType));
-  const resultTypeName = getFunctionResultTypeName(func);
-  return `using ${resultTypeName} = std::tuple<${outputTypes.join(', ')}>;`;
-}
-
-/**
- * Сформировать tuple-like выражение в едином стиле для C++ инициализации
- */
-function buildTupleExpression(values: string[]): string {
-  return `{${values.join(', ')}}`;
-}
 // ============================================
 // Интерфейс для получения функций из контекста
 // ============================================
@@ -140,44 +130,61 @@ function getFunctionFromNode(
   return context.functions.find(f => f.id === functionId) ?? null;
 }
 
-function getResultVariableName(node: BlueprintNode): string {
-  return `result_${node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6)}`;
+function matchesPortToken(portId: string, token: string): boolean {
+  if (!portId || !token) {
+    return false;
+  }
+
+  return (
+    portId === token ||
+    portId.endsWith(`-${token}`) ||
+    portId.endsWith(`_${token}`) ||
+    token.endsWith(`-${portId}`) ||
+    token.endsWith(`_${portId}`)
+  );
 }
 
-function getOutputIndexByPort(
+function resolveInputParameterByEntryPort(
   node: BlueprintNode,
   func: BlueprintFunction,
   portId: string
-): number {
-  const outputParams = func.parameters.filter(p => p.direction === 'output');
-  const normalizedPortId = portId.split('-').slice(-1)[0] ?? portId;
-
-  const parameterIndex = outputParams.findIndex(param =>
-    portId === param.id ||
-    normalizedPortId === param.id ||
-    portId.endsWith(`-${param.id}`)
-  );
-  if (parameterIndex >= 0) {
-    return parameterIndex;
+): FunctionParameter | null {
+  const normalizedPortId = portId.trim();
+  if (normalizedPortId.length === 0) {
+    return null;
   }
 
-  const nodeOutputPorts = node.outputs
-    .filter(port => port.dataType !== 'execution')
-    .sort((a, b) => a.index - b.index);
-  const nodePortIndex = nodeOutputPorts.findIndex(port =>
-    port.id === portId ||
-    port.id.endsWith(`-${normalizedPortId}`) ||
-    port.name === normalizedPortId
+  const inputParams = func.parameters.filter((parameter) => parameter.direction === 'input');
+  if (inputParams.length === 0) {
+    return null;
+  }
+
+  const byId = inputParams.find((parameter) => matchesPortToken(normalizedPortId, parameter.id));
+  if (byId) {
+    return byId;
+  }
+
+  const outputPort = node.outputs.find((port) => matchesPortToken(port.id, normalizedPortId));
+  if (!outputPort) {
+    return null;
+  }
+
+  const byName = inputParams.find(
+    (parameter) =>
+      parameter.name === outputPort.name ||
+      parameter.nameRu === outputPort.name ||
+      parameter.id === outputPort.name
   );
+  if (byName) {
+    return byName;
+  }
 
-  return nodePortIndex;
-}
+  const outputIndex = Number.isFinite(outputPort.index) ? outputPort.index : -1;
+  if (outputIndex > 0 && outputIndex - 1 < inputParams.length) {
+    return inputParams[outputIndex - 1];
+  }
 
-function getOutputVariableName(node: BlueprintNode, outputIndex: number, parameterName?: string): string {
-  const baseName = parameterName ? transliterate(parameterName) : `out${outputIndex + 1}`;
-  const sanitizedBaseName = baseName.length > 0 ? baseName : `out${outputIndex + 1}`;
-  const suffix = node.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6);
-  return `${sanitizedBaseName}_${suffix}`;
+  return null;
 }
 
 // ============================================
@@ -214,6 +221,30 @@ export class FunctionEntryNodeGenerator extends BaseNodeGenerator {
     
     // Иначе это orphan FunctionEntry — предупреждение
     return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    portId: string,
+    context: CodeGenContext,
+    _helpers: GeneratorHelpers
+  ): string {
+    if (portId.includes('exec')) {
+      return '';
+    }
+
+    const funcContext = context as FunctionAwareContext;
+    const func = funcContext.currentFunction ?? getFunctionFromNode(node, funcContext);
+    if (!func) {
+      return '0';
+    }
+
+    const parameter = resolveInputParameterByEntryPort(node, func, portId);
+    if (!parameter) {
+      return '0';
+    }
+
+    return transliterate(parameter.name);
   }
   
   /**
@@ -362,7 +393,10 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     
     if (hasOutputs) {
       // Генерируем присваивание результата
-      const resultVar = getResultVariableName(node);
+      const firstOutputName = func?.parameters.find((parameter) => parameter.direction === 'output')?.name
+        ?? node.outputs.find((port) => port.dataType !== 'execution')?.name
+        ?? 'result';
+      const resultVar = buildCallResultVariableName(node, functionName, firstOutputName);
       helpers.declareVariable(`${node.id}-result`, resultVar, 'Result', 'auto', node.id);
 
       const lines = [`${ind}auto ${resultVar} = ${call};`];
@@ -405,24 +439,17 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     if (!func) {
       return resultVar;
     }
-
-    const outputParams = func.parameters.filter(p => p.direction === 'output');
-    if (outputParams.length <= 1) {
-      return resultVar;
-    }
-
-    const outputIndex = getOutputIndexByPort(node, func, portId);
-    if (outputIndex < 0) {
-      return resultVar;
-    }
-
-    const outputParam = outputParams[outputIndex];
-    const outputVarInfo = helpers.getVariable(`${node.id}-result-${outputParam.id}`);
-    if (outputVarInfo) {
-      return outputVarInfo.codeName;
-    }
-
-    return `std::get<${outputIndex}>(${resultVar})`;
+    
+    // Fallback
+    const functionName = typeof node.properties?.functionName === 'string'
+      ? node.properties.functionName
+      : 'func';
+    const outputName = node.outputs.find((port) =>
+      port.id === portId ||
+      port.id.endsWith(`-${portId}`) ||
+      port.name === portId
+    )?.name;
+    return buildCallResultVariableName(node, functionName, outputName);
   }
 }
 
@@ -443,7 +470,6 @@ function getDefaultValue(dataType: PortDataType): string {
     'double': '0.0',
     'string': '""',
     'vector': '{}',
-    'object': 'nullptr',
     'pointer': 'nullptr',
     'class': '{}',
     'any': '{}',

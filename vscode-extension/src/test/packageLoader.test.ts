@@ -213,10 +213,12 @@ describe('PackageLoader', () => {
     it('should preserve port definitions', () => {
       const result = PackageLoader.load(validFullPackage);
       const addNode = result.package?.nodeDefinitions.get('AddNumbers');
+      const printNode = result.package?.nodeDefinitions.get('PrintMessage');
       
       expect(addNode?.inputs[0].id).toBe('a');
       expect(addNode?.inputs[0].dataType).toBe('float');
       expect(addNode?.inputs[0].defaultValue).toBe(0);
+      expect(printNode?.inputs[1].nameRu).toBe('Сообщение');
     });
 
     it('should return errors for invalid package', () => {

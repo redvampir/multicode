@@ -2,7 +2,9 @@ import type {
   BlueprintEdge,
   BlueprintNode,
   BlueprintVariable,
+  NodePort,
 } from '../shared/blueprintTypes';
+import { normalizePointerMeta } from '../shared/blueprintTypes';
 import { getEffectiveSetInputValue } from './variableNodeBinding';
 
 export type ResolvedVariableStatus = 'resolved' | 'ambiguous' | 'unknown';
@@ -26,6 +28,15 @@ interface CandidateValue {
   status: ResolvedVariableStatus;
 }
 
+interface EvaluationContext {
+  nodeById: Map<string, BlueprintNode>;
+  variableById: Map<string, BlueprintVariable>;
+  incomingDataEdges: Map<string, BlueprintEdge[]>;
+  resolvedValues: ResolvedVariableValues;
+  cache: Map<string, CandidateValue>;
+  visiting: Set<string>;
+}
+
 const DEFAULT_SOURCE_NODE_ID = 'default';
 
 const isValueInputPort = (portId: string): boolean =>
@@ -37,11 +48,35 @@ const isDataEdge = (edge: BlueprintEdge): boolean => edge.kind === 'data';
 
 const isSetVariableNode = (node: BlueprintNode): boolean => node.type === 'SetVariable';
 
-const isGetVariableNode = (node: BlueprintNode): boolean => node.type === 'GetVariable';
+type ArithmeticNodeType = 'Add' | 'Subtract' | 'Multiply' | 'Divide' | 'Modulo';
+
+const ARITHMETIC_NODE_TYPES = new Set<ArithmeticNodeType>([
+  'Add',
+  'Subtract',
+  'Multiply',
+  'Divide',
+  'Modulo',
+]);
+
+const isArithmeticNode = (node: BlueprintNode): node is BlueprintNode & { type: ArithmeticNodeType } =>
+  ARITHMETIC_NODE_TYPES.has(node.type as ArithmeticNodeType);
 
 const getVariableId = (node: BlueprintNode): string | undefined => {
   const variableId = node.properties?.variableId;
   return typeof variableId === 'string' && variableId.length > 0 ? variableId : undefined;
+};
+
+const matchesPortId = (edgePortId: string, nodePortId: string): boolean => {
+  if (edgePortId === nodePortId) {
+    return true;
+  }
+  if (edgePortId.endsWith(`-${nodePortId}`)) {
+    return true;
+  }
+  if (nodePortId.endsWith(`-${edgePortId}`)) {
+    return true;
+  }
+  return false;
 };
 
 const areSameValue = (left: unknown, right: unknown): boolean => {
@@ -119,12 +154,30 @@ const hasExecutionCycle = (
 
 const getInitialResolvedValues = (
   variables: BlueprintVariable[],
-  status: ResolvedVariableStatus
+  status: ResolvedVariableStatus,
+  variableById: ReadonlyMap<string, BlueprintVariable>
 ): ResolvedVariableValues => {
   const initialValues: ResolvedVariableValues = {};
   for (const variable of variables) {
+    let currentValue = variable.defaultValue;
+
+    if (variable.dataType === 'pointer' && variable.pointerMeta) {
+      const meta = normalizePointerMeta(variable.pointerMeta);
+      if (
+        meta.targetVariableId &&
+        meta.mode !== 'weak'
+      ) {
+        const target = variableById.get(meta.targetVariableId);
+        if (target && target.dataType !== 'pointer') {
+          // Для всех режимов кроме weak отображаем значение через pointee (в UI оно показывается как "значение"),
+          // а не как "nullptr". Для shared/unique это копия при инициализации, для raw/reference — alias к цели.
+          currentValue = target.defaultValue;
+        }
+      }
+    }
+
     initialValues[variable.id] = {
-      currentValue: variable.defaultValue,
+      currentValue,
       sourceNodeId: DEFAULT_SOURCE_NODE_ID,
       status,
     };
@@ -132,67 +185,244 @@ const getInitialResolvedValues = (
   return initialValues;
 };
 
-const resolveInputFromDataEdge = (
-  incomingDataEdge: BlueprintEdge,
-  nodeById: Map<string, BlueprintNode>,
-  resolvedValues: ResolvedVariableValues,
-  variableById: Map<string, BlueprintVariable>
+const resolvePortFallbackValue = (port: NodePort): CandidateValue => {
+  if (port.value !== undefined) {
+    return { value: port.value, status: 'resolved' };
+  }
+
+  if (port.defaultValue !== undefined) {
+    return { value: port.defaultValue, status: 'resolved' };
+  }
+
+  return { value: undefined, status: 'unknown' };
+};
+
+const toNumericValue = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(',', '.');
+    if (normalized.length === 0) {
+      return null;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+const evaluateArithmeticOperation = (
+  nodeType: ArithmeticNodeType,
+  left: number,
+  right: number,
+): number | null => {
+  if (nodeType === 'Add') {
+    return left + right;
+  }
+  if (nodeType === 'Subtract') {
+    return left - right;
+  }
+  if (nodeType === 'Multiply') {
+    return left * right;
+  }
+  if (nodeType === 'Divide') {
+    if (right === 0) {
+      return null;
+    }
+    return left / right;
+  }
+  if (right === 0 || !Number.isInteger(left) || !Number.isInteger(right)) {
+    return null;
+  }
+  return left % right;
+};
+
+const resolveNodeOutputCandidate = (
+  node: BlueprintNode,
+  sourcePortId: string,
+  context: EvaluationContext
 ): CandidateValue => {
-  const sourceNode = nodeById.get(incomingDataEdge.sourceNode);
-  if (!sourceNode) {
+  const cacheKey = `${node.id}:${sourcePortId}`;
+  const cached = context.cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  if (context.visiting.has(cacheKey)) {
     return { value: undefined, status: 'unknown' };
   }
+  context.visiting.add(cacheKey);
 
-  const sourceVariableId = getVariableId(sourceNode);
-  if (!sourceVariableId) {
-    return { value: undefined, status: 'unknown' };
-  }
+  const resolveInputPortCandidate = (inputNode: BlueprintNode, inputPort: NodePort): CandidateValue => {
+    const incomingForNode = context.incomingDataEdges.get(inputNode.id) ?? [];
+    const incomingForPort = incomingForNode.filter((edge) => matchesPortId(edge.targetPort, inputPort.id));
 
-  const sourceResolved = resolvedValues[sourceVariableId];
-  if (sourceResolved) {
-    return {
-      value: sourceResolved.currentValue,
-      status: sourceResolved.status,
-    };
-  }
+    if (incomingForPort.length === 0) {
+      return resolvePortFallbackValue(inputPort);
+    }
 
-  const fallbackVariable = variableById.get(sourceVariableId);
-  return {
-    value: fallbackVariable?.defaultValue,
-    status: 'unknown',
+    if (incomingForPort.length > 1) {
+      return { value: undefined, status: 'ambiguous' };
+    }
+
+    const [incomingEdge] = incomingForPort;
+    const sourceNode = context.nodeById.get(incomingEdge.sourceNode);
+    if (!sourceNode) {
+      return { value: undefined, status: 'unknown' };
+    }
+
+    return resolveNodeOutputCandidate(sourceNode, incomingEdge.sourcePort, context);
   };
+
+  let resolved: CandidateValue;
+
+  if (node.type === 'GetVariable') {
+    const variableId = getVariableId(node);
+    if (!variableId) {
+      resolved = { value: undefined, status: 'unknown' };
+    } else if (context.resolvedValues[variableId]) {
+      const current = context.resolvedValues[variableId];
+      resolved = { value: current.currentValue, status: current.status };
+    } else {
+      const fallback = context.variableById.get(variableId);
+      resolved = fallback
+        ? { value: fallback.defaultValue, status: 'resolved' }
+        : { value: undefined, status: 'unknown' };
+    }
+  } else if (isSetVariableNode(node)) {
+    const variableId = getVariableId(node);
+    const variableDefault = variableId ? context.variableById.get(variableId)?.defaultValue : undefined;
+    const valueInputPort = node.inputs.find((port) => isValueInputPort(port.id));
+
+    if (valueInputPort) {
+      const candidate = resolveInputPortCandidate(node, valueInputPort);
+      if (candidate.status !== 'unknown') {
+        resolved = candidate;
+      } else {
+        const fallbackValue = getEffectiveSetInputValue(node, variableDefault);
+        resolved = {
+          value: fallbackValue,
+          status: fallbackValue === undefined ? 'unknown' : 'resolved',
+        };
+      }
+    } else {
+      const fallbackValue = getEffectiveSetInputValue(node, variableDefault);
+      resolved = {
+        value: fallbackValue,
+        status: fallbackValue === undefined ? 'unknown' : 'resolved',
+      };
+    }
+  } else if (isArithmeticNode(node)) {
+    const operandPorts = node.inputs
+      .filter((port) => port.dataType !== 'execution')
+      .sort((left, right) => left.index - right.index);
+
+    if (operandPorts.length === 0) {
+      resolved = { value: undefined, status: 'unknown' };
+    } else {
+      let resultValue: number | null = null;
+      let status: ResolvedVariableStatus = 'resolved';
+
+      for (let index = 0; index < operandPorts.length; index += 1) {
+        const operandPort = operandPorts[index];
+        const operand = resolveInputPortCandidate(node, operandPort);
+        if (operand.status === 'ambiguous') {
+          status = 'ambiguous';
+          break;
+        }
+        if (operand.status === 'unknown') {
+          status = 'unknown';
+          break;
+        }
+
+        const numeric = toNumericValue(operand.value);
+        if (numeric === null) {
+          status = 'unknown';
+          break;
+        }
+
+        if (index === 0) {
+          resultValue = numeric;
+          continue;
+        }
+
+        if (resultValue === null) {
+          status = 'unknown';
+          break;
+        }
+
+        resultValue = evaluateArithmeticOperation(node.type, resultValue, numeric);
+        if (resultValue === null || !Number.isFinite(resultValue)) {
+          status = 'unknown';
+          break;
+        }
+      }
+
+      resolved = status === 'resolved'
+        ? { value: resultValue, status }
+        : { value: undefined, status };
+    }
+  } else {
+    resolved = { value: undefined, status: 'unknown' };
+  }
+
+  context.cache.set(cacheKey, resolved);
+  context.visiting.delete(cacheKey);
+  return resolved;
 };
 
 const getCandidateValue = (
   setNode: BlueprintNode,
-  incomingDataEdges: Map<string, BlueprintEdge[]>,
-  nodeById: Map<string, BlueprintNode>,
-  resolvedValues: ResolvedVariableValues,
-  variableById: Map<string, BlueprintVariable>
+  contextBase: Omit<EvaluationContext, 'cache' | 'visiting'>
 ): CandidateValue => {
   const variableId = getVariableId(setNode);
-  const variableDefault = variableId ? variableById.get(variableId)?.defaultValue : undefined;
-  const incomingValueEdges = (incomingDataEdges.get(setNode.id) ?? []).filter((edge) =>
-    isValueInputPort(edge.targetPort)
-  );
+  const variableDefault = variableId ? contextBase.variableById.get(variableId)?.defaultValue : undefined;
+  const valueInputPort = setNode.inputs.find((port) => isValueInputPort(port.id));
 
-  if (incomingValueEdges.length > 1) {
-    return { value: variableDefault, status: 'ambiguous' };
+  if (!valueInputPort) {
+    const fallbackValue = getEffectiveSetInputValue(setNode, variableDefault);
+    return {
+      value: fallbackValue,
+      status: fallbackValue === undefined ? 'unknown' : 'resolved',
+    };
   }
 
-  if (incomingValueEdges.length === 1) {
-    return resolveInputFromDataEdge(
-      incomingValueEdges[0],
-      nodeById,
-      resolvedValues,
-      variableById
-    );
+  const localContext: EvaluationContext = {
+    ...contextBase,
+    cache: new Map<string, CandidateValue>(),
+    visiting: new Set<string>(),
+  };
+
+  const incomingForNode = localContext.incomingDataEdges.get(setNode.id) ?? [];
+  const incomingForValuePort = incomingForNode.filter((edge) => matchesPortId(edge.targetPort, valueInputPort.id));
+
+  if (incomingForValuePort.length > 1) {
+    return { value: undefined, status: 'ambiguous' };
   }
 
-  const effectiveValue = getEffectiveSetInputValue(setNode, variableDefault);
+  if (incomingForValuePort.length === 1) {
+    const sourceNode = localContext.nodeById.get(incomingForValuePort[0].sourceNode);
+    if (!sourceNode) {
+      return { value: undefined, status: 'unknown' };
+    }
+
+    const candidate = resolveNodeOutputCandidate(sourceNode, incomingForValuePort[0].sourcePort, localContext);
+    if (candidate.status !== 'unknown') {
+      return candidate;
+    }
+  }
+
+  const fallbackValue = getEffectiveSetInputValue(setNode, variableDefault);
   return {
-    value: effectiveValue,
-    status: effectiveValue === undefined ? 'unknown' : 'resolved',
+    value: fallbackValue,
+    status: fallbackValue === undefined ? 'unknown' : 'resolved',
   };
 };
 
@@ -254,14 +484,14 @@ export const resolveVariableValuesPreview = ({
 
   const nodeById = new Map(safeNodes.map((node) => [node.id, node]));
   const variableById = new Map(safeVariables.map((variable) => [variable.id, variable]));
-  const resolvedValues = getInitialResolvedValues(safeVariables, 'resolved');
+  const resolvedValues = getInitialResolvedValues(safeVariables, 'resolved', variableById);
 
   const startNodeIds = safeNodes
     .filter((node) => node.type === 'Start')
     .map((node) => node.id);
 
   if (startNodeIds.length === 0) {
-    return getInitialResolvedValues(safeVariables, 'unknown');
+    return getInitialResolvedValues(safeVariables, 'unknown', variableById);
   }
 
   const outgoingExecutionEdges = new Map<string, BlueprintEdge[]>();
@@ -283,7 +513,7 @@ export const resolveVariableValuesPreview = ({
   }
 
   if (hasExecutionCycle(startNodeIds, outgoingExecutionEdges)) {
-    return getInitialResolvedValues(safeVariables, 'unknown');
+    return getInitialResolvedValues(safeVariables, 'unknown', variableById);
   }
 
   const { visited: reachableNodes, order: executionOrder } = collectReachableExecutionNodes(
@@ -306,10 +536,17 @@ export const resolveVariableValuesPreview = ({
       resolvedValues[variable.id] = {
         currentValue: variable.defaultValue,
         sourceNodeId: DEFAULT_SOURCE_NODE_ID,
-        status: 'unknown',
+        status: 'resolved',
       };
     }
   }
+
+  const contextBase: Omit<EvaluationContext, 'cache' | 'visiting'> = {
+    nodeById,
+    variableById,
+    incomingDataEdges,
+    resolvedValues,
+  };
 
   for (const nodeId of executionOrder) {
     const node = nodeById.get(nodeId);
@@ -322,37 +559,13 @@ export const resolveVariableValuesPreview = ({
       continue;
     }
 
-    const candidate = getCandidateValue(
-      node,
-      incomingDataEdges,
-      nodeById,
-      resolvedValues,
-      variableById
-    );
+    const candidate = getCandidateValue(node, contextBase);
 
     resolvedValues[variableId] = applyCandidateValue(
       resolvedValues[variableId],
       candidate,
       node.id
     );
-  }
-
-  // Если значение запрашивается через GetVariable без reachable Set, оставляем default,
-  // но для unreachable-only графов метка остаётся unknown.
-  for (const node of safeNodes) {
-    if (!isGetVariableNode(node)) {
-      continue;
-    }
-    const variableId = getVariableId(node);
-    if (!variableId || !resolvedValues[variableId]) {
-      continue;
-    }
-    if (!reachableNodes.has(node.id) && resolvedValues[variableId].sourceNodeId === DEFAULT_SOURCE_NODE_ID) {
-      resolvedValues[variableId] = {
-        ...resolvedValues[variableId],
-        status: 'unknown',
-      };
-    }
   }
 
   return resolvedValues;

@@ -172,7 +172,8 @@ describe('Утилиты functions.ts', () => {
 
     it('преобразует специальные типы', () => {
       expect(portTypeToCpp('execution')).toBe('void');
-      expect(portTypeToCpp('object')).toBe('void*');
+      expect(portTypeToCpp('pointer')).toBe('std::shared_ptr<void>');
+      expect(portTypeToCpp('class')).toBe('auto');
       expect(portTypeToCpp('any')).toBe('auto');
     });
   });
@@ -225,7 +226,8 @@ describe('Утилиты functions.ts', () => {
     it('возвращает значения для других типов', () => {
       expect(getDefaultValue('bool')).toBe('false');
       expect(getDefaultValue('string')).toBe('""');
-      expect(getDefaultValue('object')).toBe('nullptr');
+      expect(getDefaultValue('pointer')).toBe('nullptr');
+      expect(getDefaultValue('class')).toBe('{}');
     });
 
     it('возвращает {} для контейнеров', () => {
@@ -309,6 +311,50 @@ describe('FunctionEntryNodeGenerator', () => {
       const result = generator.generate(node, context, helpers);
 
       expect(result.lines).toHaveLength(0);
+    });
+  });
+
+  describe('getOutputExpression', () => {
+    it('возвращает имя входного параметра для data-порта FunctionEntry', () => {
+      const func = createTestFunction({
+        id: 'func-params',
+        parameters: [
+          { id: 'param-1', name: 'Summa_1', nameRu: 'Сумма_1', dataType: 'int32', direction: 'input' },
+          { id: 'param-2', name: 'Summ_2', nameRu: 'Сумма_2', dataType: 'int32', direction: 'input' },
+        ],
+      });
+
+      const node = createFunctionEntryNode(func.id);
+      node.outputs.push(
+        { id: 'entry-1-param-1', name: 'Summa_1', dataType: 'int32', direction: 'output', index: 1 },
+        { id: 'entry-1-param-2', name: 'Summ_2', dataType: 'int32', direction: 'output', index: 2 }
+      );
+
+      const context = createMockContext({ currentFunction: func });
+      const helpers = createMockHelpers(context);
+
+      const firstExpr = generator.getOutputExpression?.(node, 'entry-1-param-1', context, helpers);
+      const secondExpr = generator.getOutputExpression?.(node, 'entry-1-param-2', context, helpers);
+
+      expect(firstExpr).toBe('Summa_1');
+      expect(secondExpr).toBe('Summ_2');
+    });
+
+    it('возвращает 0 для неизвестного data-порта', () => {
+      const func = createTestFunction({
+        id: 'func-params',
+        parameters: [
+          { id: 'param-1', name: 'value', nameRu: 'значение', dataType: 'int32', direction: 'input' },
+        ],
+      });
+
+      const node = createFunctionEntryNode(func.id);
+      const context = createMockContext({ currentFunction: func });
+      const helpers = createMockHelpers(context);
+
+      const expression = generator.getOutputExpression?.(node, 'unknown-port', context, helpers);
+
+      expect(expression).toBe('0');
     });
   });
 

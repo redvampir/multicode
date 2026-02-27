@@ -19,7 +19,8 @@ export const PortDataTypeSchema = z.enum([
   'double',
   'string',
   'vector',
-  'object',
+  'pointer',
+  'class',
   'array',
   'any',
 ]);
@@ -37,7 +38,8 @@ export const NodeCategorySchema = z.enum([
   'io',
   'string',
   'array',
-  'object',
+  'pointer',
+  'class',
   'other',
 ]);
 

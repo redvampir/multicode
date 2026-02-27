@@ -8,13 +8,12 @@ export type PortDataType =
   | 'bool'        // Логический (красный)
   | 'int32'       // 32-бит целое (cyan)
   | 'int64'       // 64-бит целое (cyan)
-  | 'float'       // Вещественное (зелёный)
+  | 'float'       // Дробное (32) (зелёный)
   | 'double'      // Двойная точность (зелёный)
   | 'string'      // Строка (пурпурный/розовый)
   | 'vector'      // Вектор (жёлтый)
-  | 'object'      // Объект (синий, legacy)
-  | 'pointer'     // Указатель/ссылка на объект
-  | 'class'       // Класс/экземпляр по значению
+  | 'pointer'     // Указатель (умный) (синий)
+  | 'class'       // Класс/экземпляр (индиго)
   | 'array'       // Массив (оранжевый)
   | 'any';        // Wildcard (серый)
 
@@ -23,6 +22,8 @@ export type PortDirection = 'input' | 'output';
 export interface PortDefinition {
   id: string;
   name: string;
+  /** Локализованное имя порта для RU-интерфейса */
+  nameRu?: string;
   dataType: PortDataType;
   direction: PortDirection;
   /** Для сложных типов: "Vector<int>", "MyClass*" */
@@ -43,8 +44,7 @@ export const PORT_TYPE_COLORS: Record<PortDataType, { main: string; light: strin
   double:    { main: '#689F38', light: '#7CB342', dark: '#558B2F' },
   string:    { main: '#E91E63', light: '#EC407A', dark: '#D81B60' },
   vector:    { main: '#FFC107', light: '#FFCA28', dark: '#FFB300' },
-  object:    { main: '#2196F3', light: '#42A5F5', dark: '#1E88E5' },
-  pointer:   { main: '#1E88E5', light: '#42A5F5', dark: '#1565C0' },
+  pointer:   { main: '#2196F3', light: '#42A5F5', dark: '#1E88E5' },
   class:     { main: '#3F51B5', light: '#5C6BC0', dark: '#303F9F' },
   array:     { main: '#FF9800', light: '#FFA726', dark: '#FB8C00' },
   any:       { main: '#9E9E9E', light: '#BDBDBD', dark: '#757575' },
@@ -60,9 +60,8 @@ export const PORT_TYPE_ICONS: Record<PortDataType, string> = {
   double:    '~~',
   string:    '"',
   vector:    '↗',
-  object:    '◆',
-  pointer:   '🔗',
-  class:     '🏷',
+  pointer:   '◆',
+  class:     '■',
   array:     '[]',
   any:       '*',
 };
@@ -118,7 +117,6 @@ export function getTypeDisplayName(type: PortDataType): string {
     double:    'Double',
     string:    'String',
     vector:    'Vector',
-    object:    'Object',
     pointer:   'Pointer',
     class:     'Class',
     array:     'Array',

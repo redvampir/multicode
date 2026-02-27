@@ -12,7 +12,7 @@ import type {
   BlueprintFunction, 
   BlueprintGraphState,
 } from '../shared/blueprintTypes';
-import { removeFunctionParameter } from '../shared/blueprintTypes';
+import { createUserFunction, removeFunctionParameter } from '../shared/blueprintTypes';
 import { FunctionEditor } from './FunctionEditor';
 
 interface FunctionListPanelProps {
@@ -26,10 +26,12 @@ interface FunctionListPanelProps {
   activeFunctionId: string | null;
   /** Язык отображения */
   displayLanguage: 'ru' | 'en';
+  /** Добавить узел вызова функции в EventGraph */
+  onCreateFunctionCallNode?: (functionId: string) => void;
   /** Свернута ли секция */
-  collapsed?: boolean;
+  collapsed: boolean;
   /** Переключить состояние сворачивания */
-  onToggleCollapsed?: () => void;
+  onToggleCollapsed: () => void;
 }
 
 export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
@@ -38,7 +40,8 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   onSelectFunction,
   activeFunctionId,
   displayLanguage,
-  collapsed = false,
+  onCreateFunctionCallNode,
+  collapsed,
   onToggleCollapsed,
 }) => {
   const isRu = displayLanguage === 'ru';
@@ -47,35 +50,35 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   // Обернём functions в useMemo для оптимизации
   const functions = useMemo(() => graphState.functions || [], [graphState.functions]);
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [funcDialog, setFuncDialog] = useState({ 
-    isOpen: false, 
-    mode: 'create' as 'create' | 'edit', 
-    name: '', 
-    nameRu: '', 
-    description: '' 
-  });
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [paramDialog, setParamDialog] = useState({ 
-    isOpen: false, 
-    functionId: '', 
-    direction: 'input' as 'input' | 'output',
-    name: '',
-    nameRu: '',
-    dataType: 'int32' as const
-  });
   
   // === Обработчики для функций ===
   
   const handleCreateFunction = useCallback(() => {
-    setFuncDialog({
-      isOpen: true,
-      mode: 'create',
-      name: '',
-      nameRu: '',
-      description: '',
-    });
-  }, []);
+    const usedNames = new Set<string>();
+    for (const func of functions) {
+      if (func.name) {
+        usedNames.add(func.name);
+      }
+      if (func.nameRu) {
+        usedNames.add(func.nameRu);
+      }
+    }
+
+    let suffix = functions.length + 1;
+    // Делаем имя предсказуемым и гарантированно уникальным в пределах графа.
+    // `name` используется как "кодовое" (и в EN режиме UI), `nameRu` — для RU режима.
+    while (
+      usedNames.has(`newFunction${suffix}`) ||
+      usedNames.has(`Новая функция ${suffix}`)
+    ) {
+      suffix += 1;
+    }
+
+    const newFunc = createUserFunction(`newFunction${suffix}`, `Новая функция ${suffix}`);
+    onFunctionsChange([...functions, newFunc]);
+    setExpandedFunctions((prev) => new Set(prev).add(newFunc.id));
+    onSelectFunction(newFunc.id);
+  }, [functions, onFunctionsChange, onSelectFunction]);
   
   const handleEditFunction = useCallback((func: BlueprintFunction) => {
     // Open the visual FunctionEditor for this function
@@ -98,20 +101,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
     onFunctionsChange(updatedFunctions);
   }, [functions, activeFunctionId, onFunctionsChange, onSelectFunction]);
   
-  // === Обработчики для параметров ===
-  
-  const handleOpenAddParameter = useCallback((funcId: string, direction: 'input' | 'output') => {
-    setParamDialog({
-      isOpen: true,
-      functionId: funcId,
-      name: '',
-      nameRu: '',
-      dataType: 'int32',
-      direction,
-    });
-  }, []);
-  
-  // handleSaveParameter removed - parameter management moved to FunctionEditor
+  // Управление параметрами делаем через FunctionEditor (как отдельное окно).
   
   const handleDeleteParameter = useCallback((funcId: string, paramId: string) => {
     const func = functions.find(f => f.id === funcId);
@@ -143,18 +133,15 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
     <div className="function-list-panel">
       <div className="function-list-header">
         <div className="panel-header-title">
-          {onToggleCollapsed && (
-            <button
-              type="button"
-              className="panel-collapse-btn"
-              onClick={onToggleCollapsed}
-              title={collapsed
-                ? (isRu ? 'Развернуть секцию функций' : 'Expand functions section')
-                : (isRu ? 'Свернуть секцию функций' : 'Collapse functions section')}
-            >
-              {collapsed ? '▶' : '▼'}
-            </button>
-          )}
+          <button
+            className="panel-collapse-btn"
+            onClick={onToggleCollapsed}
+            title={isRu ? 'Свернуть или развернуть секцию' : 'Collapse or expand section'}
+            data-testid="functions-section-toggle"
+            aria-label={isRu ? 'Переключить секцию функций' : 'Toggle functions section'}
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
           <h3>{isRu ? 'Функции' : 'Functions'}</h3>
         </div>
         <button 
@@ -165,9 +152,9 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
           + {isRu ? 'Функция' : 'Function'}
         </button>
       </div>
-      
+
       {!collapsed && (
-      <div className="function-list">
+        <div className="function-list">
         {/* EventGraph — всегда первый */}
         <div 
           className={`function-item ${activeFunctionId === null ? 'active' : ''}`}
@@ -201,6 +188,19 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                   {isRu ? func.nameRu : func.name}
                 </span>
                 <div className="function-actions">
+                  {onCreateFunctionCallNode && (
+                    <button
+                      className="btn-icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateFunctionCallNode(func.id);
+                      }}
+                      title={isRu ? 'Добавить вызов в EventGraph' : 'Add call node to EventGraph'}
+                      data-testid={`function-call-add-${func.id}`}
+                    >
+                      ↗
+                    </button>
+                  )}
                   <button
                     className="btn-icon"
                     onClick={(e) => { e.stopPropagation(); handleEditFunction(func); }}
@@ -227,7 +227,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                       <span>{isRu ? 'Входы' : 'Inputs'}</span>
                       <button
                         className="btn-add-param"
-                        onClick={() => handleOpenAddParameter(func.id, 'input')}
+                        onClick={(e) => { e.stopPropagation(); handleEditFunction(func); }}
                         title={isRu ? 'Добавить вход' : 'Add Input'}
                       >
                         +
@@ -260,7 +260,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                       <span>{isRu ? 'Выходы' : 'Outputs'}</span>
                       <button
                         className="btn-add-param"
-                        onClick={() => handleOpenAddParameter(func.id, 'output')}
+                        onClick={(e) => { e.stopPropagation(); handleEditFunction(func); }}
                         title={isRu ? 'Добавить выход' : 'Add Output'}
                       >
                         +
@@ -292,7 +292,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
           );
         })}
 
-      </div>
+        </div>
       )}
       
       {/* Редактор функции */}

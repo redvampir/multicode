@@ -1,120 +1,76 @@
-# Правила Агента для Visual Programming Plugin (C++ Prototype)
+# Правила для MultiCode — Visual Programming Plugin
 
-## 🎯 Миссия Проекта
-Разработка плагина для VS Code, реализующего визуальное программирование (аналог Blueprint в Unreal Engine) для низкоуровневых языков: C++, Rust, Assembly. Код должен быть на уровне божественного мастерства программирования.
+## Проект
 
----
-
-## 📐 Архитектурные Принципы
-
-### 1. SOLID Принципы - Святые Законы
-- **S** - Single Responsibility: Каждый класс/модуль решает ОДНУ задачу
-- **O** - Open/Closed: Открыт для расширения, закрыт для модификации
-- **L** - Liskov Substitution: Наследники должны быть взаимозаменяемы
-- **I** - Interface Segregation: Много узких интерфейсов > один широкий
-- **D** - Dependency Inversion: Зависимость от абстракций, не от конкретики
-
-### 2. Паттерны Проектирования
-- **Factory/Abstract Factory** - для создания узлов графа
-- **Command** - для undo/redo операций
-- **Observer/Event System** - для реактивности графа
-- **Visitor** - для обхода и трансформации графа
-- **Strategy** - для различных кодогенераторов (C++/Rust/ASM)
-- **Composite** - для иерархии узлов
-- **Memento** - для сохранения состояния
-
-### 3. Модульная Архитектура
-```
-visual-programming-plugin/
-├── core/              # Ядро - граф, узлы, связи
-├── codegen/           # Генераторы кода для разных языков
-├── vscode-extension/  # Интеграция с VS Code
-├── ui/                # Визуальный редактор
-├── parser/            # Парсеры языков
-├── optimizer/         # Оптимизация графа
-└── runtime/           # Runtime-компоненты
-```
+VS Code расширение для визуального программирования (Blueprint-стиль) с генерацией кода на C++, Rust, Assembly. Два языка реализации: C++20 (ядро) и TypeScript (расширение + UI).
 
 ---
 
-## 💎 C++ Best Practices - Божественный Уровень
+## Архитектурные Принципы
 
-### 1. Modern C++ (C++20/23)
+### SOLID
+- **S** — Single Responsibility: каждый класс/модуль решает одну задачу
+- **O** — Open/Closed: открыт для расширения, закрыт для модификации
+- **L** — Liskov Substitution: наследники взаимозаменяемы
+- **I** — Interface Segregation: много узких интерфейсов лучше одного широкого
+- **D** — Dependency Inversion: зависимость от абстракций, не от конкретики
+
+### Паттерны проекта
+- **Factory** — создание узлов графа (`NodeFactory`)
+- **Command** — undo/redo операции (`GraphCommand`)
+- **Observer** — реактивность графа (Zustand store)
+- **Visitor** — обход и трансформация графа, кодогенерация
+- **Strategy** — различные кодогенераторы (C++/Rust/ASM)
+- **Composite** — иерархия узлов
+
+---
+
+## C++ (C++20)
+
+### Управление ресурсами
 ```cpp
-// ✅ ПРАВИЛЬНО: Используй современный C++
+// RAII — единственный способ управления ресурсами
 auto node = std::make_unique<Node>();
 std::vector<std::unique_ptr<Node>> nodes;
-std::string_view name = "NodeName";
-std::span<const int> data = getData();
 
-// ❌ НЕПРАВИЛЬНО: Избегай устаревшего стиля
-Node* node = new Node();  // NO!
-char* name = "NodeName";  // NO!
+// Raw new/delete запрещены
+// unique_ptr — эксклюзивное владение
+// shared_ptr — разделяемое (использовать редко)
+// weak_ptr — наблюдатель без владения
+// const Node& или Node* — не владеющие ссылки в параметрах
 ```
 
-### 2. RAII и Управление Ресурсами
+### Типы и константность
 ```cpp
-// ✅ Всегда RAII
-class NodeGraph {
-    std::unique_ptr<GraphData> data_;  // Автоматическая очистка
-    std::vector<Connection> connections_;
-    
-public:
-    // Rule of Zero или Rule of Five
-    NodeGraph() = default;
-    ~NodeGraph() = default;
-    NodeGraph(const NodeGraph&) = delete;
-    NodeGraph& operator=(const NodeGraph&) = delete;
-    NodeGraph(NodeGraph&&) noexcept = default;
-    NodeGraph& operator=(NodeGraph&&) noexcept = default;
-};
-```
-
-### 3. Константность и Неизменяемость
-```cpp
-// ✅ const everywhere
+// const everywhere, trailing return type
 class Node {
 public:
     [[nodiscard]] auto getName() const noexcept -> std::string_view;
     [[nodiscard]] auto getConnections() const noexcept -> std::span<const Connection>;
-    
-    void setName(std::string_view name);  // Только необходимые мутации
+    void setName(std::string_view name);
 };
 
-// ✅ constexpr для compile-time вычислений
+// Strong types вместо примитивов
+struct NodeId {
+    std::uint64_t value;
+    auto operator<=>(const NodeId&) const = default;
+};
+
+// constexpr для compile-time
 constexpr auto MAX_CONNECTIONS = 256;
-constexpr auto isValidNodeType(NodeType type) -> bool;
 ```
 
-### 4. Умные Указатели - Только Правильно
+### Обработка ошибок
 ```cpp
-// ✅ Владение и время жизни
-std::unique_ptr<Node> - эксклюзивное владение
-std::shared_ptr<Node> - разделяемое владение (используй редко!)
-std::weak_ptr<Node> - наблюдатель без владения
-Node* - не владеющая ссылка (параметры функций)
-const Node& - передача по константной ссылке
-
-// ❌ НИКОГДА не используй raw new/delete напрямую
-```
-
-### 5. Обработка Ошибок
-```cpp
-// ✅ std::expected (C++23) или Result<T, Error>
+// std::expected для ожидаемых ошибок
 auto parseNode(std::string_view json) -> std::expected<Node, ParseError>;
 
-// ✅ Исключения только для исключительных ситуаций
-class NodeException : public std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
-// ✅ noexcept где возможно
-auto swap(Node& a, Node& b) noexcept -> void;
+// Исключения — только для исключительных ситуаций
+// noexcept — где гарантировано безопасно
 ```
 
-### 6. Шаблоны и Концепты (C++20)
+### Концепты (вместо SFINAE)
 ```cpp
-// ✅ Концепты вместо SFINAE
 template<typename T>
 concept Serializable = requires(T t) {
     { t.serialize() } -> std::convertible_to<std::string>;
@@ -125,188 +81,124 @@ template<Serializable T>
 auto save(const T& obj) -> void;
 ```
 
-### 7. Оптимизация и Производительность
+### Производительность
 ```cpp
-// ✅ Move семантика
+// Move семантика, perfect forwarding
 auto createNode(std::string name) -> std::unique_ptr<Node> {
     return std::make_unique<Node>(std::move(name));
 }
 
-// ✅ Reserve для контейнеров
-std::vector<Node> nodes;
+// Reserve для контейнеров
 nodes.reserve(expectedSize);
 
-// ✅ Perfect forwarding
-template<typename... Args>
-auto emplaceNode(Args&&... args) -> Node& {
-    return nodes.emplace_back(std::forward<Args>(args)...);
-}
-
-// ✅ [[likely]] / [[unlikely]] для branch prediction
-if (error) [[unlikely]] {
-    handleError();
-}
+// [[likely]] / [[unlikely]] для branch prediction
+if (error) [[unlikely]] { handleError(); }
 ```
 
-### 8. Безопасность Типов
+### Именование
 ```cpp
-// ✅ Strong types вместо примитивов
-struct NodeId {
-    std::uint64_t value;
-    auto operator<=>(const NodeId&) const = default;
-};
-
-struct ConnectionId {
-    std::uint64_t value;
-    auto operator<=>(const ConnectionId&) const = default;
-};
-
-// Теперь невозможно перепутать ID узла и ID связи
+class NodeFactory {};           // PascalCase — типы
+void processNode();             // camelCase — функции/методы
+constexpr auto MAX_SIZE = 100;  // UPPER_SNAKE — константы
+NodeId node_id_;                // snake_case — переменные/поля (поля с суффиксом _)
+namespace visprog::core {}      // snake_case — namespaces
 ```
 
----
-
-## 🏗️ Структура Кода
-
-### 1. Заголовочные Файлы
+### Заголовочные файлы
 ```cpp
-// node.hpp
 #pragma once
 
-#include <concepts>
 #include <memory>
 #include <string_view>
-#include <vector>
 
 namespace visprog::core {
 
-/// @brief Represents a single node in the visual programming graph
-/// @details Thread-safe for reading, mutations require external synchronization
+/// @brief Краткое описание (одна строка)
+/// @param node Узел для обработки
+/// @return Результат обработки
 class Node {
 public:
-    // Public interface first
-    
     [[nodiscard]] auto getId() const noexcept -> NodeId;
-    [[nodiscard]] auto getType() const noexcept -> NodeType;
-    
 private:
-    // Implementation details last
-    
     NodeId id_;
-    NodeType type_;
 };
 
 } // namespace visprog::core
 ```
 
-### 2. Именование
+### Граф — главная структура
 ```cpp
-// ✅ ПРАВИЛЬНО
-class NodeFactory {};           // PascalCase для типов
-void processNode();             // camelCase для функций
-constexpr auto MAX_SIZE = 100;  // UPPER_SNAKE для констант
-auto node_count = 0;            // snake_case для переменных
+class VisualGraph {
+    std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
+    std::unordered_map<NodeId, std::vector<ConnectionId>> adjacency_;
 
-namespace visprog::core {}      // snake_case для namespace
-```
-
-### 3. Комментарии и Документация
-```cpp
-/// @brief Краткое описание (одна строка)
-/// @details Детальное описание функционала
-/// @param node Узел для обработки
-/// @return Результат обработки
-/// @throws NodeException Если узел невалиден
-/// @note Thread-safety информация
-/// @example
-///   auto result = process(myNode);
-[[nodiscard]] auto process(const Node& node) -> Result<ProcessedData>;
+    [[nodiscard]] auto topologicalSort() const -> std::vector<NodeId>;
+};
 ```
 
 ---
 
-## 🧪 Тестирование
+## TypeScript
 
-### 1. TDD - Test Driven Development
+### Типизация
+- `strict: true`, запрет `any`
+- Zod-схемы для IPC-сообщений и внешних данных
+- Интерфейсы для контрактов, типы для union/intersection
+
+### React
+- Функциональные компоненты, хуки
+- `React.memo` для тяжёлых компонентов
+- Zustand для стейта (`store.ts`)
+- React Flow (`@xyflow/react`) для Blueprint-редактора
+
+### Именование
+- `PascalCase` — компоненты, типы, интерфейсы
+- `camelCase` — функции, переменные, хуки
+- `UPPER_SNAKE` — константы
+
+---
+
+## Тестирование
+
+### C++
 ```cpp
-// Пиши тесты ПЕРВЫМИ
 TEST_CASE("Node creation with valid data", "[node]") {
     auto node = Node::create("TestNode", NodeType::Function);
-    
     REQUIRE(node.has_value());
     CHECK(node->getName() == "TestNode");
-    CHECK(node->getType() == NodeType::Function);
 }
 ```
 
-### 2. Покрытие
-- Unit тесты для всех публичных API
-- Integration тесты для модулей
-- Performance тесты для критических путей
-- Fuzzing для парсеров
+### TypeScript
+- Vitest для unit-тестов
+- Mocha для интеграционных тестов VS Code
+
+### Покрытие
+- Unit-тесты для всех публичных API
+- Integration-тесты для модулей
+- Граничные случаи (null, empty, network fail)
 
 ---
 
-## 🔒 Безопасность и Надежность
+## Безопасность
 
-### 1. Defensive Programming
-```cpp
-auto connect(NodeId from, NodeId to) -> std::expected<Connection, Error> {
-    // Валидация входных данных
-    if (!isValidNodeId(from) || !isValidNodeId(to)) {
-        return std::unexpected(Error::InvalidNodeId);
-    }
-    
-    // Проверка предусловий
-    if (from == to) {
-        return std::unexpected(Error::SelfConnection);
-    }
-    
-    // Основная логика
-    // ...
-}
-```
-
-### 2. Static Analysis
-- clang-tidy со всеми проверками
-- cppcheck для дополнительных проверок
-- AddressSanitizer, UndefinedBehaviorSanitizer
-- ThreadSanitizer для многопоточного кода
+- Defensive programming: валидация на границах системы
+- IPC-сообщения проходят Zod-парсинг
+- Экранирование пользовательского ввода
+- Проверка предусловий: `std::expected` вместо UB
+- Static analysis: clang-tidy, AddressSanitizer, UBSan
 
 ---
 
-## 📊 Производительность
+## Инструментарий
 
-### 1. Профилирование
-- Измеряй ПЕРЕД оптимизацией
-- Оптимизируй горячие пути
-- Benchmark критичные операции
+### Сборка
+- **CMake** (>=3.25) + vcpkg — C++ ядро
+- **Webpack** — VS Code расширение
+- **clang-format** — форматирование C++
+- **ESLint** — линтинг TypeScript
 
-### 2. Memory Layout
-```cpp
-// ✅ Cache-friendly структуры
-struct Node {
-    NodeId id;              // 8 bytes
-    NodeType type;          // 4 bytes
-    uint32_t padding;       // 4 bytes (выравнивание)
-    std::vector<Connection> connections;  // Храним отдельно
-};
-
-static_assert(sizeof(Node) % 16 == 0);  // Выравнивание
-```
-
----
-
-## 🔧 Инструментарий
-
-### 1. Обязательные Инструменты
-- **CMake** (≥3.25) - сборка проекта
-- **clang-format** - форматирование
-- **clang-tidy** - статический анализ
-- **Catch2/GoogleTest** - тестирование
-- **vcpkg/Conan** - управление зависимостями
-
-### 2. Флаги Компиляции
+### Флаги компиляции
 ```cmake
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -321,87 +213,25 @@ add_compile_options(
 
 ---
 
-## 🌟 Код-Ревью Чеклист
+## Чек-лист перед коммитом
 
-### Перед Коммитом Проверь:
-- [ ] Код компилируется без warnings
+- [ ] Код компилируется без warnings (C++ и TypeScript)
 - [ ] Все тесты проходят
-- [ ] Static analysis чист
-- [ ] Документация обновлена
-- [ ] API review пройден
-- [ ] Performance regression тесты пройдены
-- [ ] Memory leaks отсутствуют (valgrind/ASAN)
-- [ ] Code coverage > 80%
+- [ ] Static analysis / линтер чист
+- [ ] Документация обновлена при изменении API
+- [ ] Локализация добавлена для новых строк (RU/EN)
+- [ ] IPC валидируется через Zod
+- [ ] Memory leaks отсутствуют (ASAN)
 
 ---
 
-## 🚀 Итоговые Заповеди
+## Ключевые правила
 
-1. **Пиши код для людей, не для компиляторов**
-2. **Простота > Умность**
-3. **Измеряй, не гадай**
-4. **Fail fast, fail loud**
-5. **Zero-cost abstractions - святой грааль**
-6. **const correctness - не просто слова**
-7. **RAII - твой лучший друг**
-8. **Тесты - не опционально**
-9. **Документируй намерения, не реализацию**
-10. **Code review - обязателен для всего**
-
----
-
-## 📚 Обязательное Чтение
-
-- "Effective Modern C++" - Scott Meyers
-- "C++ Core Guidelines" - Bjarne Stroustrup, Herb Sutter
-- "API Design for C++" - Martin Reddy
-- "Software Architecture in Practice" - Len Bass
-- "Clean Architecture" - Robert Martin
-
----
-
-## 🎨 Особенности Visual Programming Plugin
-
-### 1. Граф - Главная Структура
-```cpp
-class VisualGraph {
-    // Efficient node storage
-    std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
-    
-    // Connection adjacency list
-    std::unordered_map<NodeId, std::vector<ConnectionId>> adjacency_;
-    
-    // Топологическая сортировка для кодогенерации
-    [[nodiscard]] auto topologicalSort() const -> std::vector<NodeId>;
-};
-```
-
-### 2. Кодогенерация - Visitor Pattern
-```cpp
-class CodeGenerator {
-public:
-    virtual ~CodeGenerator() = default;
-    virtual auto generate(const VisualGraph& graph) -> std::string = 0;
-};
-
-class CppCodeGenerator : public CodeGenerator {
-    auto generate(const VisualGraph& graph) -> std::string override;
-};
-```
-
-### 3. Undo/Redo - Command Pattern
-```cpp
-class GraphCommand {
-public:
-    virtual ~GraphCommand() = default;
-    virtual auto execute() -> void = 0;
-    virtual auto undo() -> void = 0;
-};
-```
-
----
-
-**Версия**: 1.0  
-**Дата**: 2025-11-06  
-**Статус**: Прототип для C++  
-**Следующие этапы**: Rust, Assembly поддержка
+1. Простота важнее хитроумности
+2. Измеряй, не гадай (профилирование перед оптимизацией)
+3. Fail fast, fail loud
+4. RAII для всех ресурсов
+5. const correctness — не опционально
+6. Тесты — не опционально
+7. Документируй намерения, не реализацию
+8. Код для людей, не для компилятора

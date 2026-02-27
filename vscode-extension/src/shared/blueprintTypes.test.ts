@@ -14,6 +14,7 @@ import {
   getActiveGraph,
   setActiveGraph,
   createNode,
+  createNodeFromDefinition,
   createEdge,
   createDefaultBlueprintState,
   migrateToBlueprintFormat,
@@ -34,6 +35,7 @@ describe('blueprintTypes - User Functions', () => {
       expect(func.nameRu).toBe('Моя функция');
       expect(func.description).toBe('Test description');
       expect(func.parameters).toEqual([]);
+      expect(func.variables).toEqual([]);
       expect(func.isPure).toBe(false);
       expect(func.id).toMatch(/^func-/);
       expect(func.createdAt).toBeDefined();
@@ -103,7 +105,7 @@ describe('blueprintTypes - User Functions', () => {
       // Entry node has exec-out + new parameter output
       expect(entryNode!.outputs.length).toBeGreaterThan(1);
       
-      const paramPort = entryNode!.outputs.find(p => p.name === 'Значение');
+      const paramPort = entryNode!.outputs.find((p) => p.name === 'value' && p.nameRu === 'Значение');
       expect(paramPort).toBeDefined();
       expect(paramPort!.dataType).toBe('float');
     });
@@ -155,7 +157,7 @@ describe('blueprintTypes - User Functions', () => {
       // Return node has exec-in + new parameter input
       expect(returnNode!.inputs.length).toBeGreaterThan(1);
       
-      const paramPort = returnNode!.inputs.find(p => p.name === 'Выход');
+      const paramPort = returnNode!.inputs.find((p) => p.name === 'out' && p.nameRu === 'Выход');
       expect(paramPort).toBeDefined();
       expect(paramPort!.dataType).toBe('bool');
     });
@@ -264,8 +266,8 @@ describe('blueprintTypes - User Functions', () => {
       // exec-in + 2 input params
       expect(node.inputs.length).toBe(3);
       
-      const paramA = node.inputs.find(p => p.name === 'A');
-      const paramB = node.inputs.find(p => p.name === 'B');
+      const paramA = node.inputs.find((p) => p.name === 'a' && p.nameRu === 'A');
+      const paramB = node.inputs.find((p) => p.name === 'b' && p.nameRu === 'B');
       
       expect(paramA).toBeDefined();
       expect(paramA!.dataType).toBe('int32');
@@ -282,7 +284,7 @@ describe('blueprintTypes - User Functions', () => {
       // exec-out + 1 output param
       expect(node.outputs.length).toBe(2);
       
-      const resultPort = node.outputs.find(p => p.name === 'Результат');
+      const resultPort = node.outputs.find((p) => p.name === 'result' && p.nameRu === 'Результат');
       expect(resultPort).toBeDefined();
       expect(resultPort!.dataType).toBe('bool');
     });
@@ -319,7 +321,7 @@ describe('blueprintTypes - User Functions', () => {
       const updatedCallNode = updatedState.nodes[0];
       
       // Should have new input port
-      const newPort = updatedCallNode.inputs.find(p => p.name === 'Новый');
+      const newPort = updatedCallNode.inputs.find((p) => p.name === 'newParam' && p.nameRu === 'Новый');
       expect(newPort).toBeDefined();
     });
 
@@ -586,6 +588,19 @@ describe('blueprintTypes - Node Creation', () => {
       node.outputs.forEach(output => {
         expect(output.id).toContain('print-1');
       });
+    });
+
+    it('should create node from explicit definition and preserve localized port labels', () => {
+      const definition = NODE_TYPE_DEFINITIONS.Print;
+      const node = createNodeFromDefinition(definition, { x: 24, y: 48 }, 'node-print-localized');
+
+      expect(node.type).toBe('Print');
+      expect(node.label).toBe('');
+      expect(node.position).toEqual({ x: 24, y: 48 });
+      const stringInput = node.inputs.find((input) => input.id.endsWith('string'));
+      expect(stringInput).toBeDefined();
+      expect(stringInput?.name).toBe('Value');
+      expect(stringInput?.nameRu).toBe('Значение');
     });
   });
 
@@ -960,6 +975,156 @@ describe('blueprintTypes - Migration', () => {
     expect(migrated.edges).toHaveLength(1);
     expect(migrated.edges[0].id).toBe('dup-1');
   });
+
+  it('should auto-insert TypeConversion node for legacy incompatible data edge', () => {
+    const oldState: GraphState = {
+      id: 'legacy-conversion-edge',
+      name: 'Legacy Conversion',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        {
+          id: 'get-value',
+          label: 'Get',
+          type: 'Variable',
+          position: { x: 0, y: 120 },
+          blueprintNode: {
+            id: 'get-value',
+            label: 'Get',
+            type: 'GetVariable',
+            position: { x: 0, y: 120 },
+            inputs: [],
+            outputs: [{ id: 'value-out', name: 'Value', dataType: 'int32', direction: 'output', index: 0 }],
+            properties: { variableId: 'var-a', dataType: 'int32' },
+          },
+        },
+        {
+          id: 'set-value',
+          label: 'Set',
+          type: 'Variable',
+          position: { x: 420, y: 120 },
+          blueprintNode: {
+            id: 'set-value',
+            label: 'Set',
+            type: 'SetVariable',
+            position: { x: 420, y: 120 },
+            inputs: [
+              { id: 'exec-in', name: '', dataType: 'execution', direction: 'input', index: 0 },
+              { id: 'value-in', name: 'Value', dataType: 'string', direction: 'input', index: 1 },
+            ],
+            outputs: [
+              { id: 'exec-out', name: '', dataType: 'execution', direction: 'output', index: 0 },
+              { id: 'value-out', name: 'Value', dataType: 'string', direction: 'output', index: 1 },
+            ],
+            properties: { variableId: 'var-b', dataType: 'string' },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'legacy-data-edge',
+          source: 'get-value',
+          target: 'set-value',
+          kind: 'data',
+          blueprintEdge: {
+            id: 'legacy-data-edge',
+            sourceNode: 'get-value',
+            sourcePort: 'value-out',
+            targetNode: 'set-value',
+            targetPort: 'value-in',
+            kind: 'data',
+            dataType: 'int32',
+          },
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+
+    const conversionNodes = migrated.nodes.filter((node) => node.type === 'TypeConversion');
+    expect(conversionNodes).toHaveLength(1);
+    expect(conversionNodes[0].properties).toMatchObject({
+      conversionId: 'int32_to_string',
+      fromType: 'int32',
+      toType: 'string',
+      autoInserted: true,
+    });
+    expect(migrated.edges.filter((edge) => edge.kind === 'data')).toHaveLength(2);
+    expect(migrated.dirty).toBe(true);
+  });
+
+  it('should keep conversion migration idempotent on repeated load', () => {
+    const oldState: GraphState = {
+      id: 'legacy-idempotent',
+      name: 'Legacy Idempotent',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [
+        {
+          id: 'get-value',
+          label: 'Get',
+          type: 'Variable',
+          position: { x: 0, y: 120 },
+          blueprintNode: {
+            id: 'get-value',
+            label: 'Get',
+            type: 'GetVariable',
+            position: { x: 0, y: 120 },
+            inputs: [],
+            outputs: [{ id: 'value-out', name: 'Value', dataType: 'int32', direction: 'output', index: 0 }],
+            properties: { variableId: 'var-a', dataType: 'int32' },
+          },
+        },
+        {
+          id: 'set-value',
+          label: 'Set',
+          type: 'Variable',
+          position: { x: 420, y: 120 },
+          blueprintNode: {
+            id: 'set-value',
+            label: 'Set',
+            type: 'SetVariable',
+            position: { x: 420, y: 120 },
+            inputs: [
+              { id: 'exec-in', name: '', dataType: 'execution', direction: 'input', index: 0 },
+              { id: 'value-in', name: 'Value', dataType: 'string', direction: 'input', index: 1 },
+            ],
+            outputs: [
+              { id: 'exec-out', name: '', dataType: 'execution', direction: 'output', index: 0 },
+              { id: 'value-out', name: 'Value', dataType: 'string', direction: 'output', index: 1 },
+            ],
+            properties: { variableId: 'var-b', dataType: 'string' },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'legacy-data-edge',
+          source: 'get-value',
+          target: 'set-value',
+          kind: 'data',
+          blueprintEdge: {
+            id: 'legacy-data-edge',
+            sourceNode: 'get-value',
+            sourcePort: 'value-out',
+            targetNode: 'set-value',
+            targetPort: 'value-in',
+            kind: 'data',
+            dataType: 'int32',
+          },
+        },
+      ],
+      updatedAt: '2024-01-01',
+    };
+
+    const firstMigration = migrateToBlueprintFormat(oldState);
+    const secondMigration = migrateToBlueprintFormat(migrateFromBlueprintFormat(firstMigration));
+
+    expect(firstMigration.nodes.filter((node) => node.type === 'TypeConversion')).toHaveLength(1);
+    expect(secondMigration.nodes.filter((node) => node.type === 'TypeConversion')).toHaveLength(1);
+    expect(secondMigration.edges.filter((edge) => edge.kind === 'data')).toHaveLength(2);
+  });
 });
 
 describe('blueprintTypes - Node Definitions', () => {
@@ -968,8 +1133,8 @@ describe('blueprintTypes - Node Definitions', () => {
       const expectedTypes = [
         'Start', 'End', 'Branch', 'ForLoop', 'WhileLoop', 'Sequence',
         'Function', 'FunctionCall', 'Event',
-        'Variable', 'GetVariable', 'SetVariable',
-        'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
+        'Variable', 'GetVariable', 'SetVariable', 'TypeConversion',
+        'ConstNumber', 'ConstString', 'ConstBool', 'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
         'Equal', 'NotEqual', 'Greater', 'Less', 'GreaterEqual', 'LessEqual',
         'And', 'Or', 'Not',
         'Print', 'Input',
@@ -994,6 +1159,22 @@ describe('blueprintTypes - Node Definitions', () => {
       Object.values(NODE_TYPE_DEFINITIONS).forEach(def => {
         expect(validCategories).toContain(def.category);
       });
+    });
+
+    it('should provide Russian port labels for calculator-critical nodes', () => {
+      const branchCondition = NODE_TYPE_DEFINITIONS.Branch.inputs.find((port) => port.id === 'condition');
+      const branchTrue = NODE_TYPE_DEFINITIONS.Branch.outputs.find((port) => port.id === 'true');
+      const branchFalse = NODE_TYPE_DEFINITIONS.Branch.outputs.find((port) => port.id === 'false');
+      const switchSelection = NODE_TYPE_DEFINITIONS.Switch.inputs.find((port) => port.id === 'selection');
+      const printValue = NODE_TYPE_DEFINITIONS.Print.inputs.find((port) => port.id === 'string');
+      const constNumberValue = NODE_TYPE_DEFINITIONS.ConstNumber.outputs.find((port) => port.id === 'result');
+
+      expect(branchCondition?.nameRu).toBe('Условие');
+      expect(branchTrue?.nameRu).toBe('Истина');
+      expect(branchFalse?.nameRu).toBe('Ложь');
+      expect(switchSelection?.nameRu).toBe('Значение');
+      expect(printValue?.nameRu).toBe('Значение');
+      expect(constNumberValue?.nameRu).toBe('Значение');
     });
   });
 

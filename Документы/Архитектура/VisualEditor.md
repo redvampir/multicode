@@ -1,6 +1,6 @@
 # Visual Editor (VS Code Webview)
 
-> **Дата обновления:** 2025-12-24
+> **Дата обновления:** 2026-02-16
 > **Статус:** Реализовано (v0.2)
 
 ---
@@ -21,6 +21,8 @@
 ## Обзор
 
 Visual Editor — React-приложение внутри VS Code Webview, предоставляющее Blueprint-style редактор визуальных графов. Поддерживает два режима работы: **Blueprint** (основной, на React Flow) и **Classic** (legacy, на Cytoscape).
+
+Внутри документа и UI линии между узлами именуются как **связи** (техническое поле состояния остаётся `edges` для совместимости API/формата).
 
 ## Архитектура
 
@@ -56,6 +58,12 @@ vscode-extension/
 - **Кастомные узлы:** `BlueprintNode.tsx` — узлы с exec/data портами
 - **Палитра узлов:** категоризированная, с поиском (клавиша `A`)
 - **Drag-to-connect:** валидация совместимости типов портов
+- **Редактирование связей:** двойной клик по связи создаёт контрольную точку (`Reroute`) для ручной прокладки пути
+- **Быстрое удаление связи:** `Alt + двойной клик` по связи
+- **Сравнение без лишних конвертеров:** `Greater/Less/...` и `Equal/NotEqual` подстраивают входной тип при первом подключении (для `Equal/NotEqual`: `bool/string/int32/int64/float/double/pointer/class`)
+- **Inline-константы в операторах:** для математических и сравнительных входов доступны поля `Константа` без создания отдельных literal-узлов
+- **For Loop параметры:** у узла `ForLoop` настраиваются `Шаг`, режим границы (`inclusive/exclusive`) и направление (`up/down/auto`) с inline превью C++ цикла
+- **Sequence шаги:** у узла `Sequence` выходы `Then` локализованы (`Затем N`) и новые шаги добавляются кнопкой `+` в заголовке узла
 
 **Ключевые компоненты:**
 
@@ -130,6 +138,90 @@ const NODE_TYPE_DEFINITIONS: Record<string, NodeTypeDefinition> = {
   'multiply': { category: 'math', inputs: [float, float], outputs: [float] },
 };
 ```
+
+## Переменные в Get/Set узлах
+
+**Файлы:** `BlueprintEditor.tsx`, `nodes/BlueprintNode.tsx`, `variableNodeBinding.ts`
+
+Для узлов `GetVariable` и `SetVariable` используется явная привязка к переменной по `properties.variableId`.
+
+Правила:
+
+1. При создании узла в `properties` записываются:
+- `variableId`
+- `dataType`
+- `defaultValue`
+- `name`
+- `nameRu`
+- `color`
+
+2. Заголовок variable-узла формируется как:
+- RU: `Получить: <Имя>` / `Установить: <Имя>`
+- EN: `Get: <Name>` / `Set: <Name>`
+
+3. Цвет шапки variable-узла берётся по приоритету:
+- `variable.color`
+- `VARIABLE_TYPE_COLORS[variable.dataType]`
+- fallback из `NODE_TYPE_DEFINITIONS`
+
+4. Синхронизация default value для `SetVariable`:
+- если `properties.inputValueIsOverride !== true`, узел показывает актуальный `variable.defaultValue`
+- если `properties.inputValueIsOverride === true`, используется локальный `properties.inputValue`
+
+5. Поведение `vector<T>`:
+- `vector` трактуется как динамический контейнер `std::vector<T>` произвольной длины (не фиксированный `X/Y/Z`)
+- значение по умолчанию вводится как JSON-массив (`[1, 2, 3]`, `["a", "b"]`)
+- для старых графов поддерживается миграционный fallback CSV (`"1,2,3"` -> `[1, 2, 3]`)
+
+6. Модель коллекций в редакторе переменных:
+- источник истины: `arrayRank` (`0` = скаляр, `1` = `T[]`, `2` = `T[][]`, `3` = `T[][][]`)
+- legacy-флаг `isArray` сохраняется только для обратной совместимости (`true` трактуется как `arrayRank = 1`)
+- для поддерживаемых типов (`bool/int32/int64/float/double/string/vector`) включается контейнерный режим с ранговой вложенностью
+- значение по умолчанию вводится JSON-массивом с глубиной, соответствующей `arrayRank`
+- в codegen тип оборачивается в `std::vector<...>` по числу уровней `arrayRank`
+
+7. При удалении переменной каскадно удаляются связанные `GetVariable`/`SetVariable` узлы и их связи:
+- в основном графе
+- во всех `functions[*].graph`
+
+8. Анти-склейка при добавлении узлов кликом:
+- используется каскадный offset (`findNonOverlappingPosition`)
+- для drag&drop от курсора сдвиг применяется только при полном совпадении позиции
+
+## Указатели и ссылки
+
+**Файлы:** `PointerReferencePanel.tsx`, `BlueprintEditor.tsx`, `variableNodeBinding.ts`, `codegen/pointerCodegen.ts`
+
+В редакторе добавлена отдельная левая секция `Указатели и ссылки` (с собственным collapse и scroll).
+
+Базовые правила:
+
+1. Pointer-переменная хранится как `dataType = "pointer"` + `pointerMeta`:
+- `mode`: `shared | unique | weak | raw | reference | const_reference`
+- `pointeeDataType`
+- `pointeeVectorElementType` (для `vector<T>`)
+- `targetVariableId` (если есть привязка)
+
+2. Legacy-совместимость:
+- если в старом графе `pointerMeta` отсутствует, применяется lazy-normalization:
+  `mode = shared`, `pointeeDataType = double`
+
+3. Для `reference` и `const_reference`:
+- `targetVariableId` обязателен
+- data-порты `Get/Set` узлов типизируются как `pointeeDataType`
+
+4. Для `weak`:
+- `targetVariableId` обязателен
+- target должен быть pointer-переменной с `mode = shared`
+
+5. Codegen C++:
+- `shared`: `std::shared_ptr<T>`
+- `unique`: `std::unique_ptr<T>`
+- `weak`: `std::weak_ptr<T>`
+- `raw`: `T*`
+- `reference`: `T&`
+- `const_reference`: `const T&`
+- при наличии pointer/reference переменных автоматически добавляется `#include <memory>`
 
 ## IPC Протокол
 
@@ -221,6 +313,13 @@ migrateFromBlueprintFormat(blueprintState): GraphState
 | `Ctrl+Shift+Z` | Повторить |
 | `Ctrl+F` | Поиск |
 | `Escape` | Сбросить выделение |
+
+## Редактирование связей
+
+- Основной термин в интерфейсе: **связь**.
+- Двойной клик по связи: вставить контрольную точку (`Reroute`).
+- Контрольную точку можно перемещать, изменяя трассировку связи без изменения логики узлов.
+- `Alt + двойной клик` по связи: удалить связь.
 
 ## Сборка и разработка
 

@@ -43,3 +43,7 @@ export {
   getLanguageSupportInfo,
   isLanguageSupported,
 } from './languageSupport';
+
+export {
+  validateExternalSymbols,
+} from './externalSymbolResolver';

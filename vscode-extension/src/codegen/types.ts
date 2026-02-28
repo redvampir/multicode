@@ -51,6 +51,10 @@ export enum CodeGenErrorCode {
   UNREACHABLE_NODE = 'UNREACHABLE_NODE',
   /** Язык кодогенерации не поддерживается */
   UNSUPPORTED_LANGUAGE = 'UNSUPPORTED_LANGUAGE',
+  /** Внешний символ не найден в индексе */
+  EXTERNAL_SYMBOL_NOT_FOUND = 'EXTERNAL_SYMBOL_NOT_FOUND',
+  /** Хэш сигнатуры внешнего символа не совпадает */
+  EXTERNAL_SYMBOL_SIGNATURE_MISMATCH = 'EXTERNAL_SYMBOL_SIGNATURE_MISMATCH',
 }
 
 /** Коды предупреждений */

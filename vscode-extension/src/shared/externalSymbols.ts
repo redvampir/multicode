@@ -1,6 +1,12 @@
 export type IntegrationKind = 'library' | 'framework' | 'file';
 export type IntegrationMode = 'explicit' | 'implicit';
+export type IntegrationLocationType = 'npm' | 'vcpkg' | 'local_file' | 'local_folder' | 'git';
 export type SymbolKind = 'function' | 'variable' | 'class' | 'struct' | 'method' | 'enum';
+
+export interface IntegrationLocation {
+  type: IntegrationLocationType;
+  value: string;
+}
 
 export interface SourceIntegration {
   integrationId: string;
@@ -9,6 +15,7 @@ export interface SourceIntegration {
   kind?: IntegrationKind;
   displayName?: string;
   version?: string;
+  location?: IntegrationLocation;
 }
 
 export interface SymbolDescriptor {

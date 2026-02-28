@@ -15,6 +15,7 @@ import { serializeGraphState, deserializeGraphState, parseSerializedGraph } from
 import { validateGraphState, type ValidationResult } from '../shared/validator';
 import { migrateToBlueprintFormat, normalizePointerMeta } from '../shared/blueprintTypes';
 import { CppCodeGenerator, createGenerator, UnsupportedLanguageError } from '../codegen';
+import { validateExternalSymbols } from '../codegen/externalSymbolResolver';
 import { compileCpp, getTempOutputPath, cleanupTempFiles, type CppStandard } from '../compilation/CppCompiler';
 import { ensureCppToolchain, ToolchainError, type ToolchainUi } from '../compilation/ToolchainManager';
 import { getTranslation, type TranslationKey } from '../shared/translations';
@@ -84,11 +85,11 @@ import {
   patchBindingBlock,
   type ParsedBindingBlock
 } from './codeBinding';
+import { SymbolIndexerRegistry } from './symbol-indexer';
 import {
   handleDependencyMapGet as orchestrateDependencyMapGet,
   handleIntegrationAdd as orchestrateIntegrationAdd,
   handleIntegrationReindex as orchestrateIntegrationReindex,
-  handleSymbolsQuery as orchestrateSymbolsQuery,
   mapToIpcError,
   safeExternalIpcResponse,
 } from './ipcOrchestration';
@@ -172,6 +173,7 @@ export class GraphPanel {
   private graphBindingLoadSeq = 0;
   private graphBindingAutoSaveTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly extensionUri: vscode.Uri;
+  private readonly symbolIndexerRegistry: SymbolIndexerRegistry;
   private reindexIntegrationSymbols: (integrationId: string | undefined, force: boolean) => Promise<number>;
 
   private readonly GRAPH_BINDING_AUTOSAVE_DELAY_MS = 450;
@@ -202,13 +204,10 @@ export class GraphPanel {
     this.translator = undefined;
     this.boundCodeDocumentUri = this.resolveWritableEditorUri(vscode.window.activeTextEditor);
     this.boundGraphBinding = undefined;
-    this.reindexIntegrationSymbols = async (integrationId: string | undefined) => {
+    this.symbolIndexerRegistry = new SymbolIndexerRegistry();
+    this.reindexIntegrationSymbols = async (integrationId: string | undefined, force: boolean) => {
       const bindings = this.graphState.integrationBindings ?? [];
-      if (integrationId) {
-        const target = bindings.find((item) => item.integrationId === integrationId);
-        return target ? target.attachedFiles.length : 0;
-      }
-      return bindings.reduce((sum, item) => sum + item.attachedFiles.length, 0);
+      return this.symbolIndexerRegistry.reindexIntegrations(bindings, integrationId, force);
     };
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -597,15 +596,27 @@ export class GraphPanel {
       }
     }
 
+    await this.reindexIntegrationSymbols(undefined, false);
+    const externalValidation = this.validateExternalSymbolsForCodegen(blueprintState);
+    if (externalValidation.errors.length > 0) {
+      this.outputChannel.appendLine('[CodeGen] Внешние символы невалидны. Генерация остановлена.');
+      for (const error of externalValidation.errors) {
+        this.outputChannel.appendLine(`[CodeGen]   ✗ ${error.message}`);
+      }
+      this.postToast('error', 'Внешние символы устарели. Запустите integration/reindex.');
+      return;
+    }
+
     const result = generator.generate(blueprintState, codegenOptions);
     
     if (result.success) {
       const targetUri =
         this.boundCodeDocumentUri ?? this.resolveWritableEditorUri(vscode.window.activeTextEditor);
 
+      const codeWithIntegrationIncludes = this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes);
       const prepared = targetUri
-        ? await this.prepareGeneratedCodeForWrite(result.code, targetUri, outputProfile)
-        : { code: result.code };
+        ? await this.prepareGeneratedCodeForWrite(codeWithIntegrationIncludes, targetUri, outputProfile)
+        : { code: codeWithIntegrationIncludes };
 
       this.outputChannel.appendLine('');
       this.outputChannel.appendLine('═'.repeat(60));
@@ -704,6 +715,18 @@ export class GraphPanel {
     // Сначала генерируем код
     const generator = new CppCodeGenerator();
     const blueprintState = migrateToBlueprintFormat(this.graphState);
+    await this.reindexIntegrationSymbols(undefined, false);
+    const externalValidation = this.validateExternalSymbolsForCodegen(blueprintState);
+    if (externalValidation.errors.length > 0) {
+      this.outputChannel.appendLine('[Compile & Run] ✗ Внешние символы устарели.');
+      for (const error of externalValidation.errors) {
+        this.outputChannel.appendLine(`  - ${error.message}`);
+      }
+      this.postToast('error', 'Внешние символы устарели. Выполните integration/reindex');
+      this.outputChannel.show(true);
+      return;
+    }
+
     const result = generator.generate(blueprintState, this.resolveCodegenOptionsForProfile('clean'));
 
     if (!result.success) {
@@ -740,7 +763,8 @@ export class GraphPanel {
     const tempExe = getTempOutputPath(tempSourceFile);
 
     try {
-      fs.writeFileSync(tempSourceFile, result.code, 'utf8');
+      const compileCode = this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes);
+      fs.writeFileSync(tempSourceFile, compileCode, 'utf8');
       this.outputChannel.appendLine(`[Compile & Run] Источник: ${tempSourceFile}`);
 
       this.outputChannel.appendLine('[Compile & Run] Поиск компилятора...');
@@ -1356,7 +1380,7 @@ export class GraphPanel {
     void this.panel.webview.postMessage(parsed.data);
   }
 
-  private handleIntegrationAdd(payload: { integration: { integrationId: string; attachedFiles: string[]; mode: 'explicit' | 'implicit'; kind?: 'library' | 'framework' | 'file'; displayName?: string; version?: string } }): Promise<Extract<ExternalIpcResponse, { type: 'integration/add' }>> {
+  private handleIntegrationAdd(payload: { integration: { integrationId: string; attachedFiles: string[]; mode: 'explicit' | 'implicit'; kind?: 'library' | 'framework' | 'file'; displayName?: string; version?: string; location?: { type: 'npm' | 'vcpkg' | 'local_file' | 'local_folder' | 'git'; value: string } } }): Promise<Extract<ExternalIpcResponse, { type: 'integration/add' }>> {
     return orchestrateIntegrationAdd(this.graphState, payload, (patch) => {
       this.markState(patch);
       this.postState();
@@ -1367,8 +1391,15 @@ export class GraphPanel {
     return orchestrateIntegrationReindex(payload, (integrationId, force) => this.reindexIntegrationSymbols(integrationId, force));
   }
 
-  private handleSymbolsQuery(payload: { query: string; integrationId?: string; limit?: number }): Promise<Extract<ExternalIpcResponse, { type: 'symbols/query' }>> {
-    return orchestrateSymbolsQuery(this.graphState, payload);
+  private async handleSymbolsQuery(payload: { query: string; integrationId?: string; limit?: number }): Promise<Extract<ExternalIpcResponse, { type: 'symbols/query' }>> {
+    await this.reindexIntegrationSymbols(payload.integrationId, false);
+    return {
+      type: 'symbols/query',
+      ok: true,
+      payload: {
+        symbols: this.symbolIndexerRegistry.querySymbols(payload.query, payload.integrationId, payload.limit ?? 50),
+      },
+    };
   }
 
   private handleDependencyMapGet(payload?: { rootFile?: string; includeSystem?: boolean }): Promise<Extract<ExternalIpcResponse, { type: 'dependency-map/get' }>> {
@@ -1377,6 +1408,52 @@ export class GraphPanel {
       payload,
       this.boundCodeDocumentUri?.fsPath ?? 'graph-root'
     );
+  }
+
+  private validateExternalSymbolsForCodegen(blueprintState: ReturnType<typeof migrateToBlueprintFormat>) {
+    const integrations = this.graphState.integrationBindings ?? [];
+    const symbols = this.symbolIndexerRegistry.querySymbols('', undefined, Number.MAX_SAFE_INTEGER);
+    const validation = validateExternalSymbols(
+      blueprintState,
+      symbols,
+      integrations,
+      (integrationId, symbolId) => this.symbolIndexerRegistry.getSignatureHash(integrationId, symbolId)
+    );
+
+    if (validation.brokenNodeIds.length > 0) {
+      const brokenSet = new Set(validation.brokenNodeIds);
+      this.markState({
+        nodes: this.graphState.nodes.map((node) => {
+          if (!brokenSet.has(node.id)) {
+            return node;
+          }
+          const blueprintNode = isRecord(node.blueprintNode) ? node.blueprintNode : {};
+          return {
+            ...node,
+            blueprintNode: {
+              ...blueprintNode,
+              broken: true,
+            },
+          };
+        }),
+      });
+      this.postState();
+    }
+
+    return validation;
+  }
+
+  private prependRequiredIncludes(code: string, includes: string[]): string {
+    if (includes.length === 0) {
+      return code;
+    }
+    const includeLines = includes.map((item) => `#include ${item}`);
+    const existingIncludes = new Set(code.split('\n').filter((line) => line.startsWith('#include ')));
+    const toInsert = includeLines.filter((line) => !existingIncludes.has(line));
+    if (toInsert.length === 0) {
+      return code;
+    }
+    return `${toInsert.join('\n')}\n${code}`;
   }
 
   private handleMessage(message: WebviewToExtensionMessage): void {
@@ -1512,7 +1589,31 @@ export class GraphPanel {
 
     try {
       const generator = createGenerator(this.graphState.language);
-      return generator.generate(blueprintState);
+      const externalValidation = this.validateExternalSymbolsForCodegen(blueprintState);
+      if (externalValidation.errors.length > 0) {
+        return {
+          success: false,
+          code: '',
+          errors: externalValidation.errors,
+          warnings: [],
+          sourceMap: [],
+          stats: {
+            nodesProcessed: 0,
+            linesOfCode: 0,
+            generationTimeMs: 0,
+          },
+        };
+      }
+
+      const result = generator.generate(blueprintState);
+      if (!result.success) {
+        return result;
+      }
+
+      return {
+        ...result,
+        code: this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes),
+      };
     } catch (error) {
       if (error instanceof UnsupportedLanguageError) {
         this.postToast(

@@ -1,5 +1,4 @@
 import type {
-  BlueprintClass,
   BlueprintFunction,
   BlueprintGraphState,
   BlueprintNode,
@@ -7,6 +6,7 @@ import type {
 } from '../../shared/blueprintTypes';
 import { CodeGenErrorCode, type CodeGenError } from '../types';
 import { toValidIdentifier } from '../types';
+import { buildClassModelFromGraph } from '../model/classModel';
 
 const UE_UNSUPPORTED_NODE_TYPES = new Set([
   'Parallel',
@@ -83,9 +83,8 @@ const collectNamedValidationErrors = (
     }
   }
 
-  for (const cls of graph.classes ?? []) {
-    const classEntity = cls as BlueprintClass;
-    const error = validateNamedEntity(classEntity.name, 'Имя класса');
+  for (const classModel of buildClassModelFromGraph(graph, 'ue')) {
+    const error = validateNamedEntity(classModel.name, 'Имя класса');
     if (error) {
       errors.push(error);
     }
@@ -117,9 +116,16 @@ export class UeCodegenStrategy {
   }
 
   render(graph: BlueprintGraphState, generatedBody: string): string {
+    const classes = buildClassModelFromGraph(graph, 'ue');
     const graphBaseName = toUeIdentifier(graph.name);
-    const className = `U${graphBaseName}Generated`;
+    const className = classes[0]?.name?.trim().length
+      ? `U${toUeIdentifier(classes[0].name)}Generated`
+      : `U${graphBaseName}Generated`;
     const generatedHeaderName = `${graphBaseName}Generated.generated.h`;
+    const ueMeta = classes[0]?.extensions?.ue;
+    const classMacro = ueMeta?.classMacro ?? 'UCLASS(BlueprintType)';
+    const generatedBodyMacro = ueMeta?.generatedBodyMacro ?? 'GENERATED_BODY()';
+    const methodMacro = ueMeta?.methodMacro ?? 'UFUNCTION(BlueprintCallable, Category = "MultiCode")';
 
     const bodyLines = generatedBody
       .split('\n')
@@ -134,11 +140,11 @@ export class UeCodegenStrategy {
       '#include "UObject/NoExportTypes.h"',
       `#include "${generatedHeaderName}"`,
       '',
-      'UCLASS(BlueprintType)',
+      classMacro,
       `class ${className} : public UObject {`,
-      '    GENERATED_BODY()',
+      `    ${generatedBodyMacro}`,
       'public:',
-      '    UFUNCTION(BlueprintCallable, Category = "MultiCode")',
+      `    ${methodMacro}`,
       '    void ExecuteGraph();',
       '};',
       '',

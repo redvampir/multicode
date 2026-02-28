@@ -4,6 +4,7 @@ import { CppCodeGenerator } from './CppCodeGenerator';
 import { UeCodeGenerator } from './UeCodeGenerator';
 import { CodeGenErrorCode } from './types';
 import {
+  createClassPipelineGraphFixture,
   createCommonTargetGraphFixture,
   createUeUnsupportedGraphFixture,
 } from './__fixtures__/targetGraphFixtures';
@@ -46,5 +47,22 @@ describe('UeCodeGenerator', () => {
     expect(cppResult.code).toContain('int main() {');
     expect(ueResult.code).toContain('UCLASS(BlueprintType)');
     expect(ueResult.code).not.toContain('int main() {');
+  });
+
+  it('использует общий class-пайплайн и различает только target strategy', () => {
+    const cppGenerator = new CppCodeGenerator();
+    const ueGenerator = new UeCodeGenerator();
+    const cppGraph = createClassPipelineGraphFixture('cpp');
+    const ueGraph = createClassPipelineGraphFixture('ue');
+
+    const cppResult = cppGenerator.generate(cppGraph);
+    const ueResult = ueGenerator.generate(ueGraph);
+
+    expect(cppResult.success).toBe(true);
+    expect(ueResult.success).toBe(true);
+    expect(cppResult.code).toContain('class playerstate {');
+    expect(cppResult.code).toContain('int gethealth();');
+    expect(ueResult.code).toContain('UCLASS(BlueprintType)');
+    expect(ueResult.code).toContain('class UPlayerstateGenerated : public UObject {');
   });
 });

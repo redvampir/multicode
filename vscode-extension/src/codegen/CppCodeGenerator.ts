@@ -25,9 +25,6 @@ import type {
   BlueprintNodeType,
   BlueprintFunction,
   BlueprintVariable,
-  BlueprintClass,
-  BlueprintClassMember,
-  BlueprintClassMethod,
   VectorElementType,
 } from '../shared/blueprintTypes';
 import { NODE_TYPE_DEFINITIONS, normalizePointerMeta } from '../shared/blueprintTypes';
@@ -68,6 +65,12 @@ import {
   getFunctionResultTypeName,
   buildTupleExpression,
 } from './generators';
+import {
+  buildClassModelFromGraph,
+  type ClassModel,
+  type ClassModelField,
+  type ClassModelMethod,
+} from './model/classModel';
 
 const VECTOR_ELEMENT_TYPES: VectorElementType[] = [
   'int32',
@@ -674,7 +677,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     return getCppType(dataType);
   }
 
-  private formatClassMemberDefault(member: BlueprintClassMember): string {
+  private formatClassMemberDefault(member: ClassModelField): string {
     if (member.defaultValue === undefined || member.defaultValue === null) {
       return '';
     }
@@ -694,7 +697,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     return '';
   }
 
-  private formatMethodSignature(method: BlueprintClassMethod, className: string, withClassScope: boolean): string {
+  private formatMethodSignature(method: ClassModelMethod, className: string, withClassScope: boolean): string {
     const returnType = this.resolveCppType(method.returnType, method.returnTypeName);
     const methodName = toValidIdentifier(method.name);
     const params = method.params
@@ -717,7 +720,7 @@ export class CppCodeGenerator implements ICodeGenerator {
   }
 
   private generateClassDeclarationsAndDefinitions(graph: BlueprintGraphState): string[] {
-    const classes: BlueprintClass[] = Array.isArray(graph.classes) ? graph.classes : [];
+    const classes: ClassModel[] = buildClassModelFromGraph(graph, 'cpp');
     if (classes.length === 0) {
       return [];
     }
@@ -727,10 +730,10 @@ export class CppCodeGenerator implements ICodeGenerator {
       const className = toValidIdentifier(blueprintClass.name || 'UnnamedClass');
       lines.push(`class ${className} {`);
 
-      const membersByAccess = new Map<string, BlueprintClassMember[]>();
-      const methodsByAccess = new Map<string, BlueprintClassMethod[]>();
+      const membersByAccess = new Map<string, ClassModelField[]>();
+      const methodsByAccess = new Map<string, ClassModelMethod[]>();
 
-      for (const member of blueprintClass.members) {
+      for (const member of blueprintClass.fields) {
         const access = member.access || 'private';
         const list = membersByAccess.get(access) ?? [];
         list.push(member);

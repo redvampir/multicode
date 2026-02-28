@@ -21,6 +21,12 @@
 3. **Serialization** — `GraphSerializer` (C++/nlohmann-json) экспортирует/импортирует графы. Codegen остаётся в статусе планов.
 4. **VS Code Extension** — есть `package.json` и список npm-зависимостей, но исходники отсутствуют.
 
+### Model layer для codegen (TS extension)
+
+- Для классов используется единая внутренняя модель `Class/Field/Method` (single-source-model) для всех C++-подобных target-ов.
+- `ue` target не дублирует модель, а добавляет extension-метаданные (`extensions.ue`) композиционно.
+- Архитектурно это фиксирует один источник истины для `graph -> model` и оставляет target-специфику на уровне strategy/render.
+
 ## Ядро
 ### Основные объекты
 - `NodeId`, `PortId`, `ConnectionId`, `GraphId` (`Types.hpp`) — строгие типы поверх `uint64_t` + сравнение и хеши.

@@ -4,8 +4,9 @@ import type {
   BlueprintNode,
   BlueprintVariable,
 } from '../../shared/blueprintTypes';
+import { getCppType, getDefaultValue, toValidIdentifier } from '../types';
 import { CodeGenErrorCode, type CodeGenError } from '../types';
-import { buildClassModelFromGraph } from '../model/classModel';
+import { buildClassModelFromGraph, type ClassModelMethod, type ClassModelField } from '../model/classModel';
 import { UeMacroStrategy } from './ueMacroStrategy';
 
 const UE_UNSUPPORTED_NODE_TYPES = new Set([
@@ -88,6 +89,69 @@ const collectNamedValidationErrors = (
   return errors;
 };
 
+const resolveCppType = (dataType: ClassModelField['dataType'] | ClassModelMethod['returnType'], typeName?: string): string => {
+  const resolvedTypeName = typeof typeName === 'string' ? typeName.trim() : '';
+  if ((dataType === 'class' || dataType === 'pointer') && resolvedTypeName.length > 0) {
+    return resolvedTypeName;
+  }
+
+  return getCppType(dataType);
+};
+
+const formatField = (field: ClassModelField): string[] => {
+  const lines: string[] = [];
+  const propertyMacro = field.extensions?.ue?.propertyMacro;
+  if (propertyMacro) {
+    lines.push(`    ${propertyMacro}`);
+  }
+
+  const fieldType = resolveCppType(field.dataType, field.typeName);
+  const fieldName = toValidIdentifier(field.name || 'member');
+  lines.push(`    ${fieldType} ${fieldName};`);
+  return lines;
+};
+
+const formatMethodDeclaration = (method: ClassModelMethod): string[] => {
+  const lines: string[] = [];
+  const functionMacro = method.extensions?.ue?.functionMacro;
+  if (functionMacro) {
+    lines.push(`    ${functionMacro}`);
+  }
+
+  const methodName = toValidIdentifier(method.name || 'Execute');
+  const returnType = resolveCppType(method.returnType, method.returnTypeName);
+  const params = method.params
+    .map((param, index) => {
+      const paramType = resolveCppType(param.dataType, param.typeName);
+      const paramName = toValidIdentifier(param.name || `arg_${index}`);
+      return `${paramType} ${paramName}`;
+    })
+    .join(', ');
+
+  lines.push(`    ${returnType} ${methodName}(${params});`);
+  return lines;
+};
+
+const formatMethodDefinition = (className: string, method: ClassModelMethod): string[] => {
+  const methodName = toValidIdentifier(method.name || 'Execute');
+  const returnType = resolveCppType(method.returnType, method.returnTypeName);
+  const params = method.params
+    .map((param, index) => {
+      const paramType = resolveCppType(param.dataType, param.typeName);
+      const paramName = toValidIdentifier(param.name || `arg_${index}`);
+      return `${paramType} ${paramName}`;
+    })
+    .join(', ');
+
+  const lines = [`${returnType} ${className}::${methodName}(${params}) {`];
+  if (returnType !== 'void') {
+    lines.push(`    return ${getDefaultValue(method.returnType)};`);
+  }
+  lines.push('}');
+  lines.push('');
+  return lines;
+};
+
 export class UeCodegenStrategy {
   constructor(private readonly macroStrategy: UeMacroStrategy = new UeMacroStrategy()) {}
 
@@ -114,11 +178,18 @@ export class UeCodegenStrategy {
 
   render(graph: BlueprintGraphState, generatedBody: string): string {
     const macroLayout = this.macroStrategy.resolve(graph);
+    const classModel = buildClassModelFromGraph(graph, 'ue')[0];
 
     const bodyLines = generatedBody
       .split('\n')
       .map((line) => line.trimEnd())
       .filter((line) => line.length > 0);
+
+    const ueClassName = macroLayout.className;
+
+    const reflectedMembers = classModel?.fields.flatMap(formatField) ?? [];
+    const reflectedMethods = classModel?.methods.flatMap(formatMethodDeclaration) ?? [];
+    const reflectedMethodDefinitions = classModel?.methods.flatMap((method) => formatMethodDefinition(ueClassName, method)) ?? [];
 
     return [
       '// Сгенерировано MultiCode (target: ue)',
@@ -126,17 +197,21 @@ export class UeCodegenStrategy {
       '#pragma once',
       '#include "CoreMinimal.h"',
       '#include "UObject/NoExportTypes.h"',
+      '#include <iostream>',
       `#include "${macroLayout.generatedHeaderName}"`,
       '',
       macroLayout.classMacro,
-      `class ${macroLayout.className} : public UObject {`,
+      `class ${ueClassName} : public UObject {`,
       `    ${macroLayout.generatedBodyMacro}`,
       'public:',
-      `    ${macroLayout.methodMacro}`,
+      ...reflectedMembers,
+      ...reflectedMethods,
+      `    ${macroLayout.executeMethodMacro}`,
       '    void ExecuteGraph();',
       '};',
       '',
-      `void ${macroLayout.className}::ExecuteGraph() {`,
+      ...reflectedMethodDefinitions,
+      `void ${ueClassName}::ExecuteGraph() {`,
       ...bodyLines.map((line) => `    ${line}`),
       '}',
       '',

@@ -122,6 +122,8 @@ export interface CodeGenOptions {
   includeHeaders: boolean;
   /** Генерировать main() обёртку */
   generateMainWrapper: boolean;
+  /** Генерировать объявления/определения классов из IR */
+  generateClassDeclarations?: boolean;
 }
 
 /** Опции по умолчанию */
@@ -131,6 +133,7 @@ export const DEFAULT_CODEGEN_OPTIONS: CodeGenOptions = {
   indentSize: 4,
   includeHeaders: true,
   generateMainWrapper: true,
+  generateClassDeclarations: true,
 };
 
 /** Контекст генерации (передаётся между узлами) */

@@ -459,9 +459,11 @@ export class CppCodeGenerator implements ICodeGenerator {
 
     // Объявления и определения классов должны появиться до тела графа,
     // чтобы вызовы узлов Class* могли ссылаться на корректные C++ типы.
-    bodyLines.push(...this.generateClassDeclarationsAndDefinitions(graph));
-    if (bodyLines.length > 0) {
-      bodyLines.push('');
+    if (opts.generateClassDeclarations) {
+      bodyLines.push(...this.generateClassDeclarationsAndDefinitions(graph));
+      if (bodyLines.length > 0) {
+        bodyLines.push('');
+      }
     }
     
     // Генерируем пользовательские функции перед main()

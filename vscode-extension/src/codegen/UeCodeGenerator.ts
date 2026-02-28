@@ -66,6 +66,7 @@ export class UeCodeGenerator implements ICodeGenerator {
       ...options,
       includeHeaders: false,
       generateMainWrapper: false,
+      generateClassDeclarations: false,
     });
 
     if (!cppResult.success) {

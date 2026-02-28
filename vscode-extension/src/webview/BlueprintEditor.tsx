@@ -47,8 +47,9 @@ import { PORT_TYPE_COLORS, type PortDataType } from '../shared/portTypes';
 import {
   canDirectlyConnectDataPorts,
   findTypeConversionRule,
-  formatIncompatibleTypeMessage,
+  formatIncompatiblePortMessage,
   formatTypeConversionLabel,
+  validateDataPortCompatibility,
 } from '../shared/typeConversions';
 import { CodePreviewPanel } from './CodePreviewPanel';
 import { PackageManagerPanel } from './PackageManagerPanel';
@@ -790,6 +791,8 @@ const toAvailableVariableBinding = (variable: BlueprintVariable): AvailableVaria
   nameRu: variable.nameRu ?? variable.name ?? '',
   codeName: variable.codeName,
   dataType: variable.dataType,
+  typeName: variable.typeName,
+  classId: variable.classId,
   isArray: variable.isArray === true,
   arrayRank:
     typeof variable.arrayRank === 'number' && Number.isFinite(variable.arrayRank)
@@ -2505,7 +2508,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
     if (sourcePort.dataType === 'execution' || targetPort.dataType === 'execution') {
       if (sourcePort.dataType !== 'execution' || targetPort.dataType !== 'execution') {
-        const message = formatIncompatibleTypeMessage(sourcePort.dataType, targetPort.dataType, displayLanguage);
+        const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
         setNormalizationToast(message);
         return;
       }
@@ -2536,6 +2539,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       }
       setEdges(nextEdges);
       setTimeout(() => notifyGraphChange(workingNodes, nextEdges), 0);
+      return;
+    }
+
+    const dataPortCompatibility = validateDataPortCompatibility(sourcePort, targetPort);
+    if (!dataPortCompatibility.compatible) {
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
+      setNormalizationToast(message);
       return;
     }
 
@@ -2574,7 +2584,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
     const conversionRule = findTypeConversionRule(sourcePort.dataType, targetPort.dataType);
     if (!conversionRule) {
-      const message = formatIncompatibleTypeMessage(sourcePort.dataType, targetPort.dataType, displayLanguage);
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
       setNormalizationToast(message);
       return;
     }
@@ -2666,7 +2676,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
 
     if (!conversionInputPortId || !conversionOutputPortId) {
-      const message = formatIncompatibleTypeMessage(sourcePort.dataType, targetPort.dataType, displayLanguage);
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
       setNormalizationToast(message);
       return;
     }

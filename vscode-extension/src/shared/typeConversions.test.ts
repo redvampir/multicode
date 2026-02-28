@@ -6,9 +6,11 @@ import {
   canDirectlyConnectDataPorts,
   findTypeConversionRule,
   findTypeConversionRuleById,
+  formatIncompatiblePortMessage,
   formatIncompatibleTypeMessage,
   formatTypeConversionLabel,
   getTypeLabelForMessage,
+  validateDataPortCompatibility,
 } from './typeConversions';
 
 describe('typeConversions', () => {
@@ -79,4 +81,38 @@ describe('typeConversions', () => {
     expect(getTypeLabelForMessage('int32', 'ru')).toBe('int32');
     expect(getTypeLabelForMessage('string', 'en')).toBe('string');
   });
+
+
+  it('validates class ports compatibility by class identity', () => {
+    expect(validateDataPortCompatibility(
+      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' },
+      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' }
+    )).toEqual({ compatible: true, reason: 'ok' });
+
+    expect(validateDataPortCompatibility(
+      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' },
+      { dataType: 'class', classId: 'cls.enemy', typeName: 'Gameplay::Enemy' }
+    )).toEqual({ compatible: false, reason: 'class-mismatch' });
+  });
+
+  it('supports migration fallback for class metadata when identity is missing', () => {
+    expect(validateDataPortCompatibility(
+      { dataType: 'pointer', typeName: 'Gameplay::Player' },
+      { dataType: 'pointer' }
+    )).toEqual({ compatible: true, reason: 'ok' });
+  });
+
+  it('formats class mismatch message in ru/en', () => {
+    expect(formatIncompatiblePortMessage(
+      { dataType: 'class', typeName: 'Gameplay::Player' },
+      { dataType: 'class', typeName: 'Gameplay::Enemy' },
+      'ru'
+    )).toBe('Классы несовместимы: Gameplay::Player → Gameplay::Enemy');
+    expect(formatIncompatiblePortMessage(
+      { dataType: 'class', typeName: 'Gameplay::Player' },
+      { dataType: 'class', typeName: 'Gameplay::Enemy' },
+      'en'
+    )).toBe('Class types are incompatible: Gameplay::Player -> Gameplay::Enemy');
+  });
+
 });

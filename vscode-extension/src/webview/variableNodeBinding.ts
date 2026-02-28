@@ -41,6 +41,9 @@ interface VariableNodeProperties extends Record<string, unknown> {
   arrayRank?: number;
   vectorElementType?: BlueprintVariable['vectorElementType'];
   pointerMeta?: PointerMeta;
+  typeName?: string;
+  classId?: string;
+  targetClassId?: string;
   targetVariableId?: string;
   defaultValue?: BlueprintVariable['defaultValue'];
   inputValue?: unknown;
@@ -58,6 +61,8 @@ export type AvailableVariableBinding = Pick<
   | 'nameRu'
   | 'codeName'
   | 'dataType'
+  | 'typeName'
+  | 'classId'
   | 'vectorElementType'
   | 'defaultValue'
   | 'color'
@@ -149,7 +154,8 @@ const updateValuePortDataType = (
   nodeType: VariableNodeType,
   ports: NodePort[],
   targetSuffix: 'value-in' | 'value-out',
-  dataType: PortDataType
+  dataType: PortDataType,
+  metadata?: Pick<NodePort, 'typeName' | 'classId' | 'targetClassId'>
 ): NodePort[] => {
   const shouldUpdatePort = (port: NodePort): boolean => {
     if (nodeType === 'Variable') {
@@ -167,14 +173,19 @@ const updateValuePortDataType = (
     return isValueOutputPortId(port.id);
   };
 
-  return ports.map((port) =>
-    shouldUpdatePort(port)
-      ? {
-          ...port,
-          dataType,
-        }
-      : port
-  );
+  return ports.map((port) => {
+    if (!shouldUpdatePort(port)) {
+      return port;
+    }
+
+    return {
+      ...port,
+      dataType,
+      typeName: metadata?.typeName,
+      classId: metadata?.classId,
+      targetClassId: metadata?.targetClassId,
+    };
+  });
 };
 
 export const getDefaultValueForDataType = (
@@ -327,6 +338,11 @@ export const bindVariableToNode = (
       ? pointerMeta.pointeeDataType
       : undefined;
   const portDataType: PortDataType = arrayRank > 0 ? 'array' : (pointerValueDataType ?? dataType);
+  const portTypeMetadata: Pick<NodePort, 'typeName' | 'classId' | 'targetClassId'> = {
+    typeName: variable.typeName ?? pointerMeta?.typeName,
+    classId: variable.classId,
+    targetClassId: pointerMeta?.targetClassId,
+  };
   const properties = asVariableNodeProperties(node.properties);
   const nextProperties: VariableNodeProperties = {
     ...properties,
@@ -336,6 +352,9 @@ export const bindVariableToNode = (
     arrayRank,
     vectorElementType: variable.vectorElementType,
     pointerMeta,
+    typeName: variable.typeName,
+    classId: variable.classId,
+    targetClassId: pointerMeta?.targetClassId,
     targetVariableId: pointerMeta?.targetVariableId,
     defaultValue: variable.defaultValue,
     name: variable.name,
@@ -358,9 +377,9 @@ export const bindVariableToNode = (
 
   const nextInputs =
     node.type === 'SetVariable'
-      ? updateValuePortDataType(node.type, node.inputs, 'value-in', portDataType)
+      ? updateValuePortDataType(node.type, node.inputs, 'value-in', portDataType, portTypeMetadata)
       : node.inputs;
-  const nextOutputs = updateValuePortDataType(node.type, node.outputs, 'value-out', portDataType);
+  const nextOutputs = updateValuePortDataType(node.type, node.outputs, 'value-out', portDataType, portTypeMetadata);
 
   return {
     ...node,

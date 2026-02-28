@@ -289,6 +289,93 @@ export const applyTypeConversionTemplate = (
   return rule.cppTemplate.replace('{value}', expression);
 };
 
+
+
+export interface DataPortTypeDescriptor {
+  dataType: PortDataType;
+  typeName?: string;
+  classId?: string;
+  targetClassId?: string;
+}
+
+export interface DataPortCompatibilityResult {
+  compatible: boolean;
+  reason: 'ok' | 'base-type-mismatch' | 'class-mismatch';
+}
+
+const normalizeTypeIdentity = (value: string | undefined): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const resolveClassIdentity = (port: DataPortTypeDescriptor): string | undefined => {
+  if (port.dataType === 'class') {
+    return normalizeTypeIdentity(port.classId) ?? normalizeTypeIdentity(port.typeName);
+  }
+  if (port.dataType === 'pointer') {
+    return normalizeTypeIdentity(port.targetClassId) ?? normalizeTypeIdentity(port.typeName);
+  }
+  return undefined;
+};
+
+export const validateDataPortCompatibility = (
+  sourcePort: DataPortTypeDescriptor,
+  targetPort: DataPortTypeDescriptor
+): DataPortCompatibilityResult => {
+  const directCompatible = canDirectlyConnectDataPorts(sourcePort.dataType, targetPort.dataType);
+  if (!directCompatible) {
+    return { compatible: false, reason: 'base-type-mismatch' };
+  }
+
+  const involvesClassData =
+    sourcePort.dataType === 'class' ||
+    sourcePort.dataType === 'pointer' ||
+    targetPort.dataType === 'class' ||
+    targetPort.dataType === 'pointer';
+
+  if (!involvesClassData) {
+    return { compatible: true, reason: 'ok' };
+  }
+
+  const sourceClassIdentity = resolveClassIdentity(sourcePort);
+  const targetClassIdentity = resolveClassIdentity(targetPort);
+
+  // Миграционный fallback: если идентификаторы типа ещё не сохранены, пропускаем как совместимые.
+  if (!sourceClassIdentity || !targetClassIdentity) {
+    return { compatible: true, reason: 'ok' };
+  }
+
+  if (sourceClassIdentity !== targetClassIdentity) {
+    return { compatible: false, reason: 'class-mismatch' };
+  }
+
+  return { compatible: true, reason: 'ok' };
+};
+
+const getClassIdentityForMessage = (port: DataPortTypeDescriptor): string => {
+  return resolveClassIdentity(port) ?? getTypeLabelForMessage(port.dataType, 'en');
+};
+
+export const formatIncompatiblePortMessage = (
+  sourcePort: DataPortTypeDescriptor,
+  targetPort: DataPortTypeDescriptor,
+  locale: 'ru' | 'en'
+): string => {
+  const compatibility = validateDataPortCompatibility(sourcePort, targetPort);
+  if (compatibility.reason === 'class-mismatch') {
+    const sourceClass = getClassIdentityForMessage(sourcePort);
+    const targetClass = getClassIdentityForMessage(targetPort);
+    if (locale === 'ru') {
+      return `Классы несовместимы: ${sourceClass} → ${targetClass}`;
+    }
+    return `Class types are incompatible: ${sourceClass} -> ${targetClass}`;
+  }
+
+  return formatIncompatibleTypeMessage(sourcePort.dataType, targetPort.dataType, locale);
+};
 export const formatIncompatibleTypeMessage = (
   sourceType: PortDataType,
   targetType: PortDataType,

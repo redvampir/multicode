@@ -1,13 +1,13 @@
 import type { GraphState } from './graphState';
 import { parseGraphState } from './messages';
-import { parseSerializedGraph, serializeGraphState } from './serializer';
+import { deserializeGraphState, serializeGraphState } from './serializer';
 
 const GRAPH_MARKER_REGEX = /^\/\/\s*@multicode:graph\b/i;
 const SNAPSHOT_BEGIN_REGEX = /^\/\/\s*@multicode:snapshot\s+begin\b/i;
 const SNAPSHOT_END_REGEX = /^\/\/\s*@multicode:snapshot\s+end\b/i;
 const SNAPSHOT_CHUNK_REGEX = /^\/\/\s*@multicode:snapshot\s+chunk\s+([A-Za-z0-9+/=]+)\s*$/;
 const SNAPSHOT_CHUNK_SIZE = 120;
-const SNAPSHOT_HEADER = '// @multicode:snapshot begin format=graph-state-v1 encoding=base64';
+const SNAPSHOT_HEADER = '// @multicode:snapshot begin format=graph-state-v2 encoding=base64';
 const SNAPSHOT_FOOTER = '// @multicode:snapshot end';
 
 const detectEol = (text: string): string => (text.includes('\r\n') ? '\r\n' : '\n');
@@ -24,6 +24,8 @@ const joinLines = (lines: string[], eol: string, hadTrailingEol: boolean): strin
 
 const normalizeSnapshotGraphState = (state: GraphState): GraphState => ({
   ...state,
+  integrationBindings: state.integrationBindings ?? [],
+  symbolLocalization: state.symbolLocalization ?? {},
   dirty: false,
 });
 
@@ -37,9 +39,10 @@ const decodeSnapshotPayload = (base64Payload: string): GraphState | null => {
   try {
     const decodedText = Buffer.from(base64Payload, 'base64').toString('utf8');
     const parsed = JSON.parse(decodedText);
-    const serializedParsed = parseSerializedGraph(parsed);
-    if (serializedParsed.success) {
-      return normalizeSnapshotGraphState(serializedParsed.data.data);
+    try {
+      return normalizeSnapshotGraphState(deserializeGraphState(parsed));
+    } catch {
+      // Фолбэк для legacy snapshot, где лежит только GraphState.
     }
 
     const graphParsed = parseGraphState(parsed);

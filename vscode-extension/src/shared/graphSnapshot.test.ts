@@ -113,6 +113,28 @@ describe('graphSnapshot', () => {
     expect(restored?.id).toBe('graph-test');
     expect(restored?.nodes.length).toBe(2);
     expect(restored?.dirty).toBe(false);
+    expect(restored?.integrationBindings).toEqual([]);
+    expect(restored?.symbolLocalization).toEqual({});
+  });
+
+  it('нормализует legacy snapshot v1 без новых полей', () => {
+    const legacySerialized = {
+      version: 1,
+      savedAt: '2026-02-20T00:00:00.000Z',
+      data: makeGraphState(),
+    };
+    const payload = Buffer.from(JSON.stringify(legacySerialized), 'utf8').toString('base64');
+    const code = [
+      '// @multicode:snapshot begin format=graph-state-v1 encoding=base64',
+      `// @multicode:snapshot chunk ${payload}`,
+      '// @multicode:snapshot end',
+    ].join('\n');
+
+    const restored = tryExtractMulticodeGraphSnapshot(code);
+    expect(restored).not.toBeNull();
+    expect(restored?.graphVersion).toBe(2);
+    expect(restored?.integrationBindings).toEqual([]);
+    expect(restored?.symbolLocalization).toEqual({});
   });
 
   it('возвращает null для невалидного snapshot', () => {

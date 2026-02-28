@@ -94,7 +94,7 @@ describe('serializer', () => {
       const state = createValidGraphState();
       const result = serializeGraphState(state);
 
-      expect(result.version).toBe(1);
+      expect(result.version).toBe(2);
       expect(result.data).toEqual(state);
       expect(result.savedAt).toBe('2025-01-15T12:00:00.000Z');
     });
@@ -103,7 +103,7 @@ describe('serializer', () => {
       const state = createComplexGraphState();
       const result = serializeGraphState(state);
 
-      expect(result.version).toBe(1);
+      expect(result.version).toBe(2);
       expect(result.data.nodes).toHaveLength(3);
       expect(result.data.edges).toHaveLength(2);
       expect(result.data.language).toBe('rust');
@@ -122,7 +122,7 @@ describe('serializer', () => {
 
       const result = serializeGraphState(emptyState);
 
-      expect(result.version).toBe(1);
+      expect(result.version).toBe(2);
       expect(result.data.nodes).toHaveLength(0);
       expect(result.data.edges).toHaveLength(0);
     });
@@ -255,6 +255,9 @@ describe('serializer', () => {
       expect(result.nodes).toHaveLength(1);
       expect(result.edges).toHaveLength(0);
       expect(result.id).toBe('graph-1');
+      expect(result.graphVersion).toBe(2);
+      expect(result.integrationBindings).toEqual([]);
+      expect(result.symbolLocalization).toEqual({});
     });
 
     it('должен десериализовать сложный граф', () => {
@@ -328,7 +331,10 @@ describe('serializer', () => {
       const serialized = serializeGraphState(originalState);
       const deserialized = deserializeGraphState(serialized);
 
-      expect(deserialized).toEqual(originalState);
+      expect(deserialized).toMatchObject(originalState);
+      expect(deserialized.graphVersion).toBe(2);
+      expect(deserialized.integrationBindings).toEqual([]);
+      expect(deserialized.symbolLocalization).toEqual({});
     });
 
     it('должен работать с русскими символами', () => {

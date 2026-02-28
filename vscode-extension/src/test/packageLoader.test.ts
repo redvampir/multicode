@@ -76,6 +76,10 @@ const validFullPackage = {
           template: 'std::cout << {{input.message}} << std::endl;',
           includes: ['<iostream>'],
         },
+        ue: {
+          template: 'UE_LOG(LogTemp, Display, TEXT("%s"), *{{input.message}});',
+          includes: ['"Logging/LogMacros.h"'],
+        },
       },
     },
     {
@@ -230,6 +234,7 @@ describe('PackageLoader', () => {
       expect(printNode?.label).toBe('Print Message');
       expect(printNode?.labelRu).toBe('Вывод сообщения');
       expect(printNode?.category).toBe('io');
+      expect((printNode as { _codegen?: { ue?: { template?: string } } } | undefined)?._codegen?.ue?.template).toContain('UE_LOG');
       expect(printNode?.inputs).toHaveLength(2);
       expect(printNode?.outputs).toHaveLength(1);
     });

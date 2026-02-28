@@ -70,6 +70,8 @@ export function createDefaultRegistry(): NodeGeneratorRegistry {
 import type { BlueprintNodeType } from '../../shared/blueprintTypes';
 import { createPackageGenerators, NodeDefinitionGetter } from './template';
 
+type RegistryTargetLanguage = 'cpp' | 'ue';
+
 /**
  * Создать реестр с генераторами из пакетов
  * 
@@ -81,7 +83,8 @@ import { createPackageGenerators, NodeDefinitionGetter } from './template';
  */
 export function createRegistryWithPackages(
   getNodeDefinition: NodeDefinitionGetter,
-  packageNodeTypes: BlueprintNodeType[]
+  packageNodeTypes: BlueprintNodeType[],
+  targetLanguage: RegistryTargetLanguage = 'cpp'
 ): NodeGeneratorRegistry {
   const registry = new NodeGeneratorRegistry();
   
@@ -100,7 +103,7 @@ export function createRegistryWithPackages(
   }
   
   // Затем генераторы из пакетов (перезаписывают стандартные при наличии шаблона)
-  const packageGenerators = createPackageGenerators(getNodeDefinition, packageNodeTypes);
+  const packageGenerators = createPackageGenerators(getNodeDefinition, packageNodeTypes, targetLanguage);
   
   for (const generator of packageGenerators) {
     registry.register(generator);

@@ -348,7 +348,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     getNodeDefinition: NodeDefinitionGetter,
     packageNodeTypes: BlueprintNodeType[]
   ): CppCodeGenerator {
-    const registry = createRegistryWithPackages(getNodeDefinition, packageNodeTypes);
+    const registry = createRegistryWithPackages(getNodeDefinition, packageNodeTypes, 'cpp');
     return new CppCodeGenerator(registry);
   }
   

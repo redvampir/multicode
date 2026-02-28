@@ -86,6 +86,7 @@ export type CodegenTarget = z.infer<typeof CodegenTargetSchema>;
 /** Шаблоны кодогенерации для всех языков */
 export const CodegenSchema = z.object({
   cpp: CodegenTargetSchema.optional(),
+  ue: CodegenTargetSchema.optional(),
   rust: CodegenTargetSchema.optional(),
   python: CodegenTargetSchema.optional(),
 });

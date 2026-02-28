@@ -1,7 +1,7 @@
 /**
  * TemplateNodeGenerator — Генератор кода на основе шаблонов из пакетов
  * 
- * Использует шаблоны `codegen.cpp.template` из определений узлов пакетов.
+ * Использует шаблоны `codegen.<target>.template` (с fallback на `codegen.cpp.template`) из определений узлов пакетов.
  * 
  * Плейсхолдеры:
  * - {{input.portId}} — значение входного порта
@@ -18,6 +18,8 @@ import {
   GeneratorHelpers,
   NodeGenerationResult,
 } from './base';
+
+type TemplateCodegenTarget = 'cpp' | 'ue';
 
 /** Определение порта для шаблонного генератора */
 interface PortDef {
@@ -39,6 +41,12 @@ export interface NodeDefinitionWithCodegen {
   headerColor?: string;
   _codegen?: {
     cpp?: {
+      template?: string;
+      includes?: string[];
+      before?: string;
+      after?: string;
+    };
+    ue?: {
       template?: string;
       includes?: string[];
       before?: string;
@@ -69,13 +77,18 @@ export class TemplateNodeGenerator implements INodeGenerator {
   
   /** Кеш includes для сбора в конце */
   private static collectedIncludes = new Set<string>();
+
+  /** Язык target для шаблонного кодогенератора */
+  private readonly targetLanguage: TemplateCodegenTarget;
   
   constructor(
     nodeTypes: BlueprintNodeType[],
-    getNodeDefinition: NodeDefinitionGetter
+    getNodeDefinition: NodeDefinitionGetter,
+    targetLanguage: TemplateCodegenTarget = 'cpp'
   ) {
     this.nodeTypes = nodeTypes;
     this.getNodeDefinition = getNodeDefinition;
+    this.targetLanguage = targetLanguage;
   }
   
   /**
@@ -83,9 +96,10 @@ export class TemplateNodeGenerator implements INodeGenerator {
    */
   static createForType(
     nodeType: BlueprintNodeType,
-    getNodeDefinition: NodeDefinitionGetter
+    getNodeDefinition: NodeDefinitionGetter,
+    targetLanguage: TemplateCodegenTarget = 'cpp'
   ): TemplateNodeGenerator {
-    return new TemplateNodeGenerator([nodeType], getNodeDefinition);
+    return new TemplateNodeGenerator([nodeType], getNodeDefinition, targetLanguage);
   }
   
   /**
@@ -108,7 +122,7 @@ export class TemplateNodeGenerator implements INodeGenerator {
     helpers: GeneratorHelpers
   ): NodeGenerationResult {
     const def = this.getNodeDefinition(node.type);
-    const codegen = def?._codegen?.cpp;
+    const codegen = def?._codegen?.[this.targetLanguage] ?? def?._codegen?.cpp;
     
     // Если нет шаблона — возвращаем пустой результат
     if (!codegen?.template) {
@@ -161,7 +175,7 @@ export class TemplateNodeGenerator implements INodeGenerator {
     helpers: GeneratorHelpers
   ): string {
     const def = this.getNodeDefinition(node.type);
-    const codegen = def?._codegen?.cpp;
+    const codegen = def?._codegen?.[this.targetLanguage] ?? def?._codegen?.cpp;
     
     // Для pure nodes (математика, логика) шаблон — это само выражение
     if (codegen?.template) {
@@ -233,17 +247,19 @@ export class TemplateNodeGenerator implements INodeGenerator {
  */
 export function createPackageGenerators(
   getNodeDefinition: NodeDefinitionGetter,
-  nodeTypes: BlueprintNodeType[]
+  nodeTypes: BlueprintNodeType[],
+  targetLanguage: TemplateCodegenTarget = 'cpp'
 ): INodeGenerator[] {
   const generators: INodeGenerator[] = [];
   
   for (const nodeType of nodeTypes) {
     const def = getNodeDefinition(nodeType) as NodeDefinitionWithCodegen | undefined;
+    const targetCodegen = def?._codegen?.[targetLanguage] ?? def?._codegen?.cpp;
     
     // Если у узла есть шаблон кодогенерации — создаём генератор
-    if (def?._codegen?.cpp?.template) {
+    if (targetCodegen?.template) {
       generators.push(
-        TemplateNodeGenerator.createForType(nodeType, getNodeDefinition)
+        TemplateNodeGenerator.createForType(nodeType, getNodeDefinition, targetLanguage)
       );
     }
   }

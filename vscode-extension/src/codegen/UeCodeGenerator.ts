@@ -7,6 +7,7 @@ import type {
 } from './types';
 import type { BlueprintGraphState, BlueprintNodeType } from '../shared/blueprintTypes';
 import type { NodeDefinitionGetter } from './generators/template';
+import { createRegistryWithPackages } from './generators';
 import { UeCodegenStrategy } from './targets/ueStrategy';
 
 export class UeCodeGenerator implements ICodeGenerator {
@@ -23,7 +24,8 @@ export class UeCodeGenerator implements ICodeGenerator {
     getNodeDefinition: NodeDefinitionGetter,
     packageNodeTypes: BlueprintNodeType[]
   ): UeCodeGenerator {
-    return new UeCodeGenerator(CppCodeGenerator.withPackages(getNodeDefinition, packageNodeTypes));
+    const registry = createRegistryWithPackages(getNodeDefinition, packageNodeTypes, 'ue');
+    return new UeCodeGenerator(new CppCodeGenerator(registry));
   }
 
   getLanguage() {

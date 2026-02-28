@@ -284,6 +284,10 @@
           "$ref": "#/$defs/codegenTarget",
           "description": "Шаблон для C++"
         },
+        "ue": {
+          "$ref": "#/$defs/codegenTarget",
+          "description": "Шаблон для Unreal Engine target"
+        },
         "rust": {
           "$ref": "#/$defs/codegenTarget",
           "description": "Шаблон для Rust"

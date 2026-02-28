@@ -5,8 +5,8 @@ import type {
   BlueprintVariable,
 } from '../../shared/blueprintTypes';
 import { CodeGenErrorCode, type CodeGenError } from '../types';
-import { toValidIdentifier } from '../types';
 import { buildClassModelFromGraph } from '../model/classModel';
+import { UeMacroStrategy } from './ueMacroStrategy';
 
 const UE_UNSUPPORTED_NODE_TYPES = new Set([
   'Parallel',
@@ -17,11 +17,6 @@ const UE_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const UE_RESERVED_KEYWORDS = new Set([
   'class', 'struct', 'enum', 'template', 'typename', 'this', 'new', 'delete', 'virtual', 'override',
 ]);
-
-const toUeIdentifier = (name: string): string => {
-  const sanitized = toValidIdentifier(name).replace(/^[a-z]/, (ch) => ch.toUpperCase());
-  return sanitized.length > 0 ? sanitized : 'MulticodeGraph';
-};
 
 const isUeIdentifier = (name: string): boolean =>
   UE_IDENTIFIER_PATTERN.test(name) && !UE_RESERVED_KEYWORDS.has(name.toLowerCase());
@@ -94,6 +89,8 @@ const collectNamedValidationErrors = (
 };
 
 export class UeCodegenStrategy {
+  constructor(private readonly macroStrategy: UeMacroStrategy = new UeMacroStrategy()) {}
+
   validate(graph: BlueprintGraphState): CodeGenError[] {
     const errors: CodeGenError[] = [];
 
@@ -116,16 +113,7 @@ export class UeCodegenStrategy {
   }
 
   render(graph: BlueprintGraphState, generatedBody: string): string {
-    const classes = buildClassModelFromGraph(graph, 'ue');
-    const graphBaseName = toUeIdentifier(graph.name);
-    const className = classes[0]?.name?.trim().length
-      ? `U${toUeIdentifier(classes[0].name)}Generated`
-      : `U${graphBaseName}Generated`;
-    const generatedHeaderName = `${graphBaseName}Generated.generated.h`;
-    const ueMeta = classes[0]?.extensions?.ue;
-    const classMacro = ueMeta?.classMacro ?? 'UCLASS(BlueprintType)';
-    const generatedBodyMacro = ueMeta?.generatedBodyMacro ?? 'GENERATED_BODY()';
-    const methodMacro = ueMeta?.methodMacro ?? 'UFUNCTION(BlueprintCallable, Category = "MultiCode")';
+    const macroLayout = this.macroStrategy.resolve(graph);
 
     const bodyLines = generatedBody
       .split('\n')
@@ -138,17 +126,17 @@ export class UeCodegenStrategy {
       '#pragma once',
       '#include "CoreMinimal.h"',
       '#include "UObject/NoExportTypes.h"',
-      `#include "${generatedHeaderName}"`,
+      `#include "${macroLayout.generatedHeaderName}"`,
       '',
-      classMacro,
-      `class ${className} : public UObject {`,
-      `    ${generatedBodyMacro}`,
+      macroLayout.classMacro,
+      `class ${macroLayout.className} : public UObject {`,
+      `    ${macroLayout.generatedBodyMacro}`,
       'public:',
-      `    ${methodMacro}`,
+      `    ${macroLayout.methodMacro}`,
       '    void ExecuteGraph();',
       '};',
       '',
-      `void ${className}::ExecuteGraph() {`,
+      `void ${macroLayout.className}::ExecuteGraph() {`,
       ...bodyLines.map((line) => `    ${line}`),
       '}',
       '',

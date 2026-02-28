@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type GraphState } from './graphState';
-import type { SourceIntegration, SymbolLocalizationEntry } from './externalSymbols';
+import type { SourceIntegration, SymbolDescriptor, SymbolLocalizationEntry } from './externalSymbols';
 
 const positionSchema = z.object({
   x: z.number(),
@@ -46,6 +46,21 @@ const symbolLocalizationEntrySchema: z.ZodType<SymbolLocalizationEntry> = z.obje
   signatureHash: z.string().optional(),
   localizedNameRu: z.string().optional(),
   localizedNameEn: z.string().optional(),
+});
+
+const symbolDescriptorSchema: z.ZodType<SymbolDescriptor> = z.object({
+  id: z.string(),
+  integrationId: z.string(),
+  symbolKind: z.enum(['function', 'variable', 'class', 'struct', 'method', 'enum']),
+  name: z.string(),
+  signatureHash: z.string().optional(),
+  namespacePath: z.array(z.string()).optional(),
+});
+
+export const ipcErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: z.unknown().optional(),
 });
 
 export const graphStateSchema: z.ZodType<GraphState> = z.object({
@@ -123,6 +138,146 @@ export const validationResultSchema = z.object({
   warnings: z.array(z.string()),
   issues: z.array(validationIssueSchema).optional()
 });
+
+const makeIpcResponseSchema = <TType extends string, TPayload extends z.ZodTypeAny>(
+  type: TType,
+  payloadSchema: TPayload
+) =>
+  z.discriminatedUnion('ok', [
+    z.object({
+      type: z.literal(type),
+      ok: z.literal(true),
+      payload: payloadSchema,
+    }),
+    z.object({
+      type: z.literal(type),
+      ok: z.literal(false),
+      error: ipcErrorSchema,
+    }),
+  ]);
+
+const integrationAddRequestSchema = z.object({
+  type: z.literal('integration/add'),
+  payload: z.object({
+    integration: sourceIntegrationSchema,
+  }),
+});
+
+const integrationRemoveRequestSchema = z.object({
+  type: z.literal('integration/remove'),
+  payload: z.object({
+    integrationId: z.string(),
+  }),
+});
+
+const integrationListRequestSchema = z.object({
+  type: z.literal('integration/list'),
+  payload: z.object({
+    includeImplicit: z.boolean().optional(),
+  }).optional(),
+});
+
+const integrationReindexRequestSchema = z.object({
+  type: z.literal('integration/reindex'),
+  payload: z.object({
+    integrationId: z.string().optional(),
+    force: z.boolean().optional(),
+  }).optional(),
+});
+
+const integrationDiagnosticsRequestSchema = z.object({
+  type: z.literal('integration/diagnostics'),
+  payload: z.object({
+    integrationId: z.string().optional(),
+  }).optional(),
+});
+
+const symbolsQueryRequestSchema = z.object({
+  type: z.literal('symbols/query'),
+  payload: z.object({
+    query: z.string(),
+    integrationId: z.string().optional(),
+    limit: z.number().int().positive().max(500).optional(),
+  }),
+});
+
+const dependencyMapGetRequestSchema = z.object({
+  type: z.literal('dependency-map/get'),
+  payload: z.object({
+    rootFile: z.string().optional(),
+    includeSystem: z.boolean().optional(),
+  }).optional(),
+});
+
+const integrationAddResponseSchema = makeIpcResponseSchema(
+  'integration/add',
+  z.object({ integration: sourceIntegrationSchema })
+);
+const integrationRemoveResponseSchema = makeIpcResponseSchema(
+  'integration/remove',
+  z.object({ integrationId: z.string(), removed: z.boolean() })
+);
+const integrationListResponseSchema = makeIpcResponseSchema(
+  'integration/list',
+  z.object({ integrations: z.array(sourceIntegrationSchema) })
+);
+const integrationReindexResponseSchema = makeIpcResponseSchema(
+  'integration/reindex',
+  z.object({ integrationId: z.string().nullable(), indexedSymbols: z.number().int().nonnegative() })
+);
+const integrationDiagnosticsResponseSchema = makeIpcResponseSchema(
+  'integration/diagnostics',
+  z.object({
+    diagnostics: z.array(
+      z.object({
+        integrationId: z.string(),
+        level: z.enum(['info', 'warning', 'error']),
+        message: z.string(),
+      })
+    ),
+  })
+);
+const symbolsQueryResponseSchema = makeIpcResponseSchema(
+  'symbols/query',
+  z.object({ symbols: z.array(symbolDescriptorSchema) })
+);
+const dependencyMapGetResponseSchema = makeIpcResponseSchema(
+  'dependency-map/get',
+  z.object({
+    nodes: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(['file', 'library', 'framework']),
+      })
+    ),
+    edges: z.array(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+      })
+    ),
+  })
+);
+
+export const externalIpcRequestSchema = z.discriminatedUnion('type', [
+  integrationAddRequestSchema,
+  integrationRemoveRequestSchema,
+  integrationListRequestSchema,
+  integrationReindexRequestSchema,
+  integrationDiagnosticsRequestSchema,
+  symbolsQueryRequestSchema,
+  dependencyMapGetRequestSchema,
+]);
+
+export const externalIpcResponseSchema = z.union([
+  integrationAddResponseSchema,
+  integrationRemoveResponseSchema,
+  integrationListResponseSchema,
+  integrationReindexResponseSchema,
+  integrationDiagnosticsResponseSchema,
+  symbolsQueryResponseSchema,
+  dependencyMapGetResponseSchema,
+]);
 
 export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setState'), payload: graphStateSchema }),
@@ -206,6 +361,28 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
 
 export type ExtensionToWebviewMessage = z.infer<typeof extensionToWebviewMessageSchema>;
 export type WebviewToExtensionMessage = z.infer<typeof webviewToExtensionMessageSchema>;
+export type IpcError = z.infer<typeof ipcErrorSchema>;
+export type ExternalIpcRequest = z.infer<typeof externalIpcRequestSchema>;
+export type ExternalIpcResponse = z.infer<typeof externalIpcResponseSchema>;
+
+export type IpcSuccessResponse<TType extends string, TPayload> = {
+  type: TType;
+  ok: true;
+  payload: TPayload;
+};
+
+export type IpcErrorResponse<TType extends string> = {
+  type: TType;
+  ok: false;
+  error: IpcError;
+};
+
+export type TypedIpcResponse<TType extends string, TPayload> =
+  | IpcSuccessResponse<TType, TPayload>
+  | IpcErrorResponse<TType>;
+
+export type ExtractIpcSuccess<TResponse extends { ok: boolean }> = Extract<TResponse, { ok: true }>;
+export type ExtractIpcError<TResponse extends { ok: boolean }> = Extract<TResponse, { ok: false }>;
 
 export type ThemeMessage = z.infer<typeof themeMessageSchema>;
 export type TranslationDirection = z.infer<typeof translationDirectionSchema>;
@@ -251,3 +428,13 @@ export const parseGraphNode = (data: unknown): ReturnType<typeof graphNodeSchema
 
 export const parseThemeMessage = (data: unknown): ReturnType<typeof themeMessageSchema.safeParse> =>
   themeMessageSchema.safeParse(data);
+
+export const parseExternalIpcRequest = (
+  data: unknown
+): ReturnType<typeof externalIpcRequestSchema.safeParse> =>
+  externalIpcRequestSchema.safeParse(data);
+
+export const parseExternalIpcResponse = (
+  data: unknown
+): ReturnType<typeof externalIpcResponseSchema.safeParse> =>
+  externalIpcResponseSchema.safeParse(data);

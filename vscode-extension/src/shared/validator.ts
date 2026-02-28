@@ -2,7 +2,8 @@ import type { GraphEdge, GraphEdgeKind, GraphNode, GraphState } from './graphSta
 import type { ValidationIssue, ValidationResult } from './messages';
 import type { BlueprintVariable, VectorElementType } from './blueprintTypes';
 import { normalizePointerMeta } from './blueprintTypes';
-import type { PortDataType } from './portTypes';
+import type { PortDataType } from './portTypeContract';
+import { isPortDataType } from './portTypeContract';
 import {
   canDirectlyConnectDataPorts,
   findTypeConversionRule,
@@ -195,25 +196,7 @@ const getEdgeHandleSignature = (edge: GraphEdge): { sourceHandle: string; target
   return { sourceHandle, targetHandle };
 };
 
-const PORT_DATA_TYPES = new Set([
-  'execution',
-  'bool',
-  'int32',
-  'int64',
-  'float',
-  'double',
-  'string',
-  'vector',
-  'pointer',
-  'class',
-  'array',
-  'any',
-]);
-
 const VECTOR_ELEMENT_TYPES = new Set(['int32', 'int64', 'float', 'double', 'bool', 'string']);
-
-const isPortDataType = (value: unknown): value is PortDataType =>
-  typeof value === 'string' && PORT_DATA_TYPES.has(value);
 
 const matchHandleToPortId = (portId: string, handle: string): boolean => {
   if (portId === handle) {
@@ -292,9 +275,7 @@ const normalizeGraphVariables = (state: GraphState): NormalizedGraphVariable[] =
         : `legacy_pointer_${index + 1}`;
       const name = typeof raw.name === 'string' ? raw.name : '';
       const nameRu = typeof raw.nameRu === 'string' ? raw.nameRu : name;
-      const dataType = typeof raw.dataType === 'string' && PORT_DATA_TYPES.has(raw.dataType)
-        ? raw.dataType
-        : 'any';
+      const dataType = isPortDataType(raw.dataType) ? raw.dataType : 'any';
       const vectorElementType =
         typeof raw.vectorElementType === 'string' && VECTOR_ELEMENT_TYPES.has(raw.vectorElementType)
           ? (raw.vectorElementType as VectorElementType)

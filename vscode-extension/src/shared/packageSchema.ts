@@ -4,44 +4,19 @@
  */
 
 import { z } from 'zod';
+import { NODE_CATEGORIES, PORT_DATA_TYPES } from './portTypeContract';
 
 // ============================================
 // Базовые типы
 // ============================================
 
 /** Типы данных портов */
-export const PortDataTypeSchema = z.enum([
-  'execution',
-  'bool',
-  'int32',
-  'int64',
-  'float',
-  'double',
-  'string',
-  'vector',
-  'pointer',
-  'class',
-  'array',
-  'any',
-]);
+export const PortDataTypeSchema = z.enum(PORT_DATA_TYPES);
 
 export type PortDataType = z.infer<typeof PortDataTypeSchema>;
 
 /** Категории узлов */
-export const NodeCategorySchema = z.enum([
-  'flow',
-  'function',
-  'variable',
-  'math',
-  'comparison',
-  'logic',
-  'io',
-  'string',
-  'array',
-  'pointer',
-  'class',
-  'other',
-]);
+export const NodeCategorySchema = z.enum(NODE_CATEGORIES);
 
 export type NodeCategory = z.infer<typeof NodeCategorySchema>;
 

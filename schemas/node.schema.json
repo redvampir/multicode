@@ -4,7 +4,14 @@
   "title": "MultiCode Node Definition",
   "description": "Схема определения узла для пакетов MultiCode",
   "type": "object",
-  "required": ["type", "label", "labelRu", "category", "inputs", "outputs"],
+  "required": [
+    "type",
+    "label",
+    "labelRu",
+    "category",
+    "inputs",
+    "outputs"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -28,7 +35,21 @@
     },
     "category": {
       "type": "string",
-      "enum": ["flow", "function", "variable", "math", "comparison", "logic", "io", "string", "array", "object", "other"],
+      "enum": [
+        "flow",
+        "function",
+        "variable",
+        "math",
+        "comparison",
+        "logic",
+        "io",
+        "string",
+        "array",
+        "pointer",
+        "class",
+        "collection",
+        "other"
+      ],
       "description": "Категория узла для группировки в палитре"
     },
     "description": {
@@ -65,17 +86,23 @@
     "inputs": {
       "type": "array",
       "description": "Входные порты узла (отображаются слева)",
-      "items": { "$ref": "#/$defs/port" }
+      "items": {
+        "$ref": "#/$defs/port"
+      }
     },
     "outputs": {
       "type": "array",
       "description": "Выходные порты узла (отображаются справа)",
-      "items": { "$ref": "#/$defs/port" }
+      "items": {
+        "$ref": "#/$defs/port"
+      }
     },
     "properties": {
       "type": "array",
       "description": "Редактируемые свойства узла (отображаются в инспекторе)",
-      "items": { "$ref": "#/$defs/property" }
+      "items": {
+        "$ref": "#/$defs/property"
+      }
     },
     "codegen": {
       "$ref": "#/$defs/codegen",
@@ -85,7 +112,11 @@
   "$defs": {
     "port": {
       "type": "object",
-      "required": ["id", "name", "dataType"],
+      "required": [
+        "id",
+        "name",
+        "dataType"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -103,7 +134,20 @@
         },
         "dataType": {
           "type": "string",
-          "enum": ["execution", "bool", "int32", "int64", "float", "double", "string", "vector", "object", "array", "any"],
+          "enum": [
+            "execution",
+            "bool",
+            "int32",
+            "int64",
+            "float",
+            "double",
+            "string",
+            "vector",
+            "pointer",
+            "class",
+            "array",
+            "any"
+          ],
           "description": "Тип данных порта"
         },
         "typeName": {
@@ -112,10 +156,18 @@
         },
         "defaultValue": {
           "oneOf": [
-            { "type": "string" },
-            { "type": "number" },
-            { "type": "boolean" },
-            { "type": "null" }
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
           ],
           "description": "Значение по умолчанию для input-порта"
         },
@@ -133,7 +185,11 @@
     },
     "property": {
       "type": "object",
-      "required": ["id", "name", "type"],
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -151,7 +207,14 @@
         },
         "type": {
           "type": "string",
-          "enum": ["string", "number", "boolean", "enum", "color", "code"],
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "enum",
+            "color",
+            "code"
+          ],
           "description": "Тип редактора свойства"
         },
         "default": {
@@ -161,11 +224,20 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["value", "label"],
+            "required": [
+              "value",
+              "label"
+            ],
             "properties": {
-              "value": { "type": "string" },
-              "label": { "type": "string" },
-              "labelRu": { "type": "string" }
+              "value": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "labelRu": {
+                "type": "string"
+              }
             }
           },
           "description": "Варианты для enum-свойства"
@@ -221,12 +293,16 @@
         },
         "includes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Необходимые #include заголовки"
         },
         "dependencies": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Зависимости (библиотеки)"
         },
         "before": {

@@ -684,7 +684,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     }
 
     if (member.dataType === 'bool') {
-      return ` = ${Boolean(member.defaultValue) ? 'true' : 'false'}`;
+      return ` = ${member.defaultValue ? 'true' : 'false'}`;
     }
 
     if (typeof member.defaultValue === 'number') {

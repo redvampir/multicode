@@ -67,7 +67,7 @@
 | `type` | Уникальный идентификатор (PascalCase) |
 | `label` | Название на английском |
 | `labelRu` | Название на русском |
-| `category` | Категория: `flow`, `function`, `variable`, `math`, `comparison`, `logic`, `io`, `other` |
+| `category` | Категория: `flow`, `function`, `variable`, `math`, `comparison`, `logic`, `io`, `string`, `array`, `pointer`, `class`, `collection`, `other` |
 | `inputs` | Массив входных портов |
 | `outputs` | Массив выходных портов |
 
@@ -108,9 +108,22 @@
 | `double` | Двойная точность | Зелёный |
 | `string` | Строка | Розовый |
 | `vector` | Вектор | Жёлтый |
-| `object` | Объект | Синий |
+| `pointer` | Указатель/ссылка на объект | Синий |
+| `class` | Экземпляр класса | Индиго |
 | `array` | Массив | Оранжевый |
 | `any` | Любой тип | Серый |
+
+## Контракт типовой системы и владение изменениями
+
+- **Единый источник истины:** `vscode-extension/src/shared/portTypeContract.ts`.
+  В этом файле задаются канонические списки `PORT_DATA_TYPES` и `NODE_CATEGORIES`.
+- **Runtime-валидация (Zod):** `vscode-extension/src/shared/packageSchema.ts` использует эти же списки через `z.enum(...)`.
+- **JSON Schema:** `schemas/node.schema.json` должен оставаться синхронным с контрактом.
+- **Проверка консистентности:** `vscode-extension/src/shared/portTypeContractConsistency.test.ts` проверяет соответствие TS ↔ Zod ↔ JSON Schema,
+  включая UE-кейсы (`pointer`, `class`) и расширенные категории.
+
+Любое изменение допустимых `dataType/category` выполняется **одним изменением** во всех трёх слоях
+(TS контракт, Zod, JSON Schema) с обязательным обновлением этого раздела.
 
 ## Кодогенерация
 

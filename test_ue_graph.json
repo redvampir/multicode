@@ -1,0 +1,43 @@
+{
+  "name": "UE pointer/class mixed categories",
+  "description": "Фикстура для проверки pointer/class портов и расширенных категорий",
+  "nodes": [
+    {
+      "id": "resolve-pointer",
+      "type": "ResolvePointer",
+      "label": "Resolve Pointer",
+      "category": "pointer",
+      "position": { "x": 140, "y": 120 },
+      "inputs": [
+        { "id": "ptr", "name": "Ptr", "dataType": "pointer", "typeName": "Gameplay::Player*", "direction": "input" }
+      ],
+      "outputs": [
+        { "id": "player", "name": "Player", "dataType": "class", "typeName": "Gameplay::Player", "direction": "output" }
+      ]
+    },
+    {
+      "id": "make-party",
+      "type": "BuildParty",
+      "label": "Build Party",
+      "category": "collection",
+      "position": { "x": 420, "y": 120 },
+      "inputs": [
+        { "id": "leader", "name": "Leader", "dataType": "class", "typeName": "Gameplay::Player", "direction": "input" }
+      ],
+      "outputs": [
+        { "id": "party", "name": "Party", "dataType": "array", "typeName": "std::vector<Gameplay::Player>", "direction": "output" }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-pointer-class",
+      "sourceNode": "resolve-pointer",
+      "sourcePort": "player",
+      "targetNode": "make-party",
+      "targetPort": "leader",
+      "kind": "data",
+      "dataType": "class"
+    }
+  ]
+}

@@ -177,6 +177,10 @@
       },
       "description": "Зависимости от других пакетов MultiCode"
     },
+    "metadata": {
+      "$ref": "#/$defs/packageMetadata",
+      "description": "Дополнительные метаданные пакета"
+    },
     "categories": {
       "type": "array",
       "items": {
@@ -421,6 +425,35 @@
           },
           "default": [],
           "description": "Реестр наследования UE-типов"
+        }
+      }
+    },
+    "ueMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "typeHierarchyVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Версия иерархии UE-типов"
+        },
+        "typeHierarchy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typeHierarchyEntry"
+          },
+          "default": [],
+          "description": "Иерархия UE-типов из метаданных пакета"
+        }
+      }
+    },
+    "packageMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ue": {
+          "$ref": "#/$defs/ueMetadata",
+          "description": "UE-специфичные метаданные"
         }
       }
     }

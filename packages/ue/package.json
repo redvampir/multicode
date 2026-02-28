@@ -96,8 +96,37 @@
   ],
   "contributes": {
     "typeCompatibilityPolicy": {
-      "version": "2.0.0",
+      "version": "2.1.0",
       "hierarchy": [
+        {
+          "typeId": "UE.Object",
+          "parents": []
+        },
+        {
+          "typeId": "UE.Actor",
+          "parents": [
+            "UE.Object"
+          ]
+        },
+        {
+          "typeId": "UE.Pawn",
+          "parents": [
+            "UE.Actor"
+          ]
+        },
+        {
+          "typeId": "UE.Character",
+          "parents": [
+            "UE.Pawn"
+          ]
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "ue": {
+      "typeHierarchyVersion": "2.1.0",
+      "typeHierarchy": [
         {
           "typeId": "UE.Object",
           "parents": []

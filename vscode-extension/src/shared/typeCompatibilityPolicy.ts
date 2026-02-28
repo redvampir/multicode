@@ -221,8 +221,8 @@ export const evaluateTypeCompatibility = (
       reason: 'class-mismatch',
       diagnostic: makeDiagnostic(
         'class-mismatch',
-        `Типы object-reference несовместимы: ${sourceTypeId} → ${targetTypeId}`,
-        `Object-reference types are incompatible: ${sourceTypeId} -> ${targetTypeId}`,
+        `Типы object-reference несовместимы: ${sourceTypeId} → ${targetTypeId}. Нет связи наследования и отсутствует реестр иерархии.`,
+        `Object-reference types are incompatible: ${sourceTypeId} -> ${targetTypeId}. No inheritance link and no hierarchy registry.`,
         { sourceTypeId, targetTypeId }
       ),
     };
@@ -236,8 +236,8 @@ export const evaluateTypeCompatibility = (
       reason: 'unknown-type',
       diagnostic: makeDiagnostic(
         'unknown-type',
-        `Тип не найден в реестре иерархии: ${!sourceKnown ? sourceTypeId : targetTypeId}`,
-        `Type is missing in hierarchy registry: ${!sourceKnown ? sourceTypeId : targetTypeId}`,
+        `Тип не найден в реестре иерархии: ${!sourceKnown ? sourceTypeId : targetTypeId}. Проверьте metadata.ue.typeHierarchy UE-пакета.`,
+        `Type is missing in hierarchy registry: ${!sourceKnown ? sourceTypeId : targetTypeId}. Check UE package metadata.ue.typeHierarchy.`,
         { sourceTypeId, targetTypeId, policyVersion: hierarchy.policyVersion }
       ),
     };
@@ -276,8 +276,8 @@ export const evaluateTypeCompatibility = (
       reason: 'unsafe-downcast',
       diagnostic: makeDiagnostic(
         'unsafe-downcast',
-        `Запрещён downcast: ${sourceTypeId} не наследуется от ${targetTypeId}`,
-        `Downcast is not allowed: ${sourceTypeId} is not derived from ${targetTypeId}`,
+        `Запрещён downcast: ${sourceTypeId} не наследуется от ${targetTypeId}. Разрешён только upcast к базовому типу.`,
+        `Downcast is not allowed: ${sourceTypeId} is not derived from ${targetTypeId}. Only upcast to base type is allowed.`,
         { sourceTypeId, targetTypeId, policyVersion: hierarchy.policyVersion }
       ),
     };

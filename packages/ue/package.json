@@ -1,0 +1,93 @@
+{
+  "$schema": "../../schemas/multicode-ue-package.schema.json",
+  "name": "@multicode/ue",
+  "version": "0.1.0",
+  "displayName": "Unreal Engine Nodes",
+  "displayNameRu": "Узлы Unreal Engine",
+  "description": "UE-specific nodes for Blueprint-like workflows in MultiCode",
+  "descriptionRu": "UE-специфичные узлы для Blueprint-подобных графов в MultiCode",
+  "author": {
+    "name": "MultiCode Team"
+  },
+  "license": "MIT",
+  "keywords": [
+    "multicode",
+    "nodes",
+    "unreal-engine",
+    "blueprint"
+  ],
+  "engines": {
+    "multicode": ">=0.6.0"
+  },
+  "categories": [
+    {
+      "id": "ue",
+      "label": "Unreal Engine",
+      "labelRu": "Unreal Engine",
+      "icon": "🧩",
+      "color": "#3949AB"
+    }
+  ],
+  "nodes": [
+    {
+      "type": "Start",
+      "label": "Event Begin Play",
+      "labelRu": "Начало",
+      "category": "flow",
+      "description": "Entry point of the graph",
+      "descriptionRu": "Точка входа в граф",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "// {{node.labelRu}}\nint main() {",
+          "after": "    return 0;\n}"
+        }
+      }
+    },
+    {
+      "type": "SpawnActor",
+      "label": "Spawn Actor",
+      "labelRu": "Создать Actor",
+      "category": "function",
+      "description": "Spawn an actor by class",
+      "descriptionRu": "Создать actor по классу",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "class",
+          "name": "Class",
+          "nameRu": "Класс",
+          "dataType": "class",
+          "typeName": "UClass*"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "actor",
+          "name": "Actor",
+          "nameRu": "Actor",
+          "dataType": "pointer",
+          "typeName": "AActor*"
+        }
+      ]
+    }
+  ]
+}

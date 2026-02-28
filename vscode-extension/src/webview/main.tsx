@@ -45,6 +45,7 @@ import {
 } from '../shared/messages';
 import HelpPanel from './HelpPanel';
 import { globalRegistry } from '../shared/packageLoader';
+import type { BundledPackageSettings } from '../shared/bundledPackages';
 
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape' | 'dependency';
@@ -166,6 +167,7 @@ const bootLocale: GraphDisplayLanguage =
   'ru';
 const useGraphStore: GraphStoreHook = createGraphStore(bootGraph, bootLayout);
 const initialThemeMessage: ThemeMessage = normalizeThemeMessage(initialTheme);
+const bootPackageSettings: Partial<BundledPackageSettings> = (globalThis as { initialPackageSettings?: Partial<BundledPackageSettings> }).initialPackageSettings ?? {};
 
 const applyUiTheme = (tokens: ThemeTokens, effective: EffectiveTheme): void => {
   const style = document.documentElement.style;
@@ -1388,6 +1390,7 @@ const App: React.FC = () => {
           integrations={integrations}
           activeFilePath={boundFile.filePath}
           resolveLocalizedSymbolName={(symbol) => resolveLocalizedSymbol(symbol, locale)}
+          packageSettings={bootPackageSettings}
         />
       );
     }

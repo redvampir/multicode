@@ -273,3 +273,25 @@ npx ajv validate -s schemas/multicode-package.schema.json -d packages/my-package
 - [node.schema.json](../../schemas/node.schema.json) — схема узла
 - [multicode-package.schema.json](../../schemas/multicode-package.schema.json) — схема пакета
 - [packages/std](../../packages/std) — стандартная библиотека
+
+
+## Разделение std и ue (v0.6)
+
+### Пакеты и ответственность
+
+- `@multicode/std` — кросс-доменные узлы, обязательная базовая библиотека.
+- `@multicode/ue` — UE-специфичные узлы, подключаются только по флагу `multicode.packages.enableUe`.
+- Сканирование встроенных пакетов выполняется в фиксированном порядке (`std` -> `ue`) через `vscode-extension/src/shared/bundledPackages.ts`.
+
+### Политика релизов и совместимости
+
+- `std` и `ue` версионируются независимо (SemVer).
+- Манифест `ue` использует отдельную схему `schemas/multicode-ue-package.schema.json`.
+- Если UE-пакет выключен, графы с UE-узлами открываются без падения; UE-узел рассматривается как внешний/неизвестный до подключения пакета.
+
+### Smoke-проверка
+
+Покрытие smoke-сценария реализовано в `vscode-extension/src/webview/hooks/usePackageRegistry.test.ts`:
+
+1. `SpawnActor` отсутствует при `enableUePackage = false`.
+2. `SpawnActor` доступен при `enableUePackage = true`.

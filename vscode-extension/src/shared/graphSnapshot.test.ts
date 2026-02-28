@@ -133,7 +133,7 @@ describe('graphSnapshot', () => {
 
     const restored = tryExtractMulticodeGraphSnapshot(code);
     expect(restored).not.toBeNull();
-    expect(restored?.graphVersion).toBe(2);
+    expect(restored?.graphVersion).toBe(3);
     expect(restored?.integrationBindings).toEqual([]);
     expect(restored?.symbolLocalization).toEqual({});
   });

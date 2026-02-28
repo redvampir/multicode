@@ -56,4 +56,5 @@
 - Архитектурные ограничения портов: [Архитектура/README.md](../Архитектура/README.md)
 - Главная оглавление документации: [Документация MultiCode](../README.md)
 - Статус отключённых/legacy тестов: [LEGACY_TESTS_STATUS.md](./LEGACY_TESTS_STATUS.md)
+- UE pre-release проверки: [UE_PRE_RELEASE_CHECKLIST.md](./UE_PRE_RELEASE_CHECKLIST.md)
 - Официальная документация Renovate: <https://docs.renovatebot.com>

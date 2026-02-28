@@ -407,7 +407,7 @@ describe('serializer', () => {
     });
 
     it('должен работать со всеми поддерживаемыми языками', () => {
-      const languages: GraphState['language'][] = ['cpp', 'rust', 'asm'];
+      const languages: GraphState['language'][] = ['cpp', 'ue', 'rust', 'asm'];
 
       for (const lang of languages) {
         const state: GraphState = {

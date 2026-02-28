@@ -13,7 +13,7 @@ import {
   formatTypeConversionLabel,
 } from './typeConversions';
 
-export type GraphLanguage = 'cpp' | 'rust' | 'asm';
+export type GraphLanguage = 'cpp' | 'ue' | 'rust' | 'asm';
 export type GraphDisplayLanguage = 'ru' | 'en';
 
 /** 

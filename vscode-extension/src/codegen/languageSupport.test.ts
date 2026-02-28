@@ -11,6 +11,14 @@ describe('Реестр поддержки языков', () => {
     expect(isLanguageSupported('cpp')).toBe(true);
   });
 
+  it('должен помечать ue как поддерживаемый', () => {
+    const info = getLanguageSupportInfo('ue');
+
+    expect(info.supportsGenerator).toBe(true);
+    expect(info.statusLabel).toBe('ready');
+    expect(isLanguageSupported('ue')).toBe(true);
+  });
+
   it('должен помечать rust как неподдерживаемый', () => {
     const info = getLanguageSupportInfo('rust');
 

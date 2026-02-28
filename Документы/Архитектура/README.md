@@ -13,6 +13,7 @@
 - [Правила соединения портов](#правила-соединения-портов)
 - [Ограничения `Port::set_type_name`](#ограничения-portset_type_name)
 - [План внедрения C++ классов в Blueprint](CppClassesInBlueprint.md)
+- [Матрица target-ов кодогенерации](TargetMatrix.md)
 
 ## Слои системы
 1. **Core Library (C++)** — `include/visprog/core`, `src/core`. Реализация узлов, портов, графа, фабрики и типовой системы. Собирается в статическую библиотеку `multicode_core`.

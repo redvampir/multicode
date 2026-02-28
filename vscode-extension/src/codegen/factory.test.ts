@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CppCodeGenerator } from './CppCodeGenerator';
+import { UeCodeGenerator } from './UeCodeGenerator';
 import {
   createGenerator,
   createUnsupportedLanguageError,
@@ -14,6 +15,13 @@ describe('Фабрика генераторов кода', () => {
 
     expect(generator).toBeInstanceOf(CppCodeGenerator);
     expect(generator.getLanguage()).toBe('cpp');
+  });
+
+  it('должна возвращать UeCodeGenerator для языка ue', () => {
+    const generator = createGenerator('ue');
+
+    expect(generator).toBeInstanceOf(UeCodeGenerator);
+    expect(generator.getLanguage()).toBe('ue');
   });
 
   it('должна выбрасывать явную ошибку для языка rust', () => {

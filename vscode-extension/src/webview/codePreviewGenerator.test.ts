@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BlueprintNodeType } from '../shared/blueprintTypes';
 import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import { UeCodeGenerator } from '../codegen/UeCodeGenerator';
 import {
   isPackageRegistrySnapshotAvailable,
   resolveCodePreviewGenerator,
@@ -31,6 +32,19 @@ describe('codePreviewGenerator', () => {
     expect(resolution.diagnostics.usedPackageRegistry).toBe(false);
     expect(resolution.diagnostics.fallbackReason).toBe('registry-unavailable');
     expect(resolution.generator).toBeInstanceOf(CppCodeGenerator);
+  });
+
+  it('должен выбирать UE-генератор для языка ue', () => {
+    const withPackagesSpy = vi.spyOn(UeCodeGenerator, 'withPackages');
+
+    const resolution = resolveCodePreviewGenerator('ue', {
+      getNodeDefinition: () => undefined,
+      packageNodeTypes: ['Custom' as BlueprintNodeType],
+      registryVersion: 3,
+    });
+
+    expect(withPackagesSpy).toHaveBeenCalledOnce();
+    expect(resolution.generator).toBeInstanceOf(UeCodeGenerator);
   });
 
   it('должен валидировать snapshot реестра', () => {

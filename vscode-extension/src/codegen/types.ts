@@ -55,6 +55,8 @@ export enum CodeGenErrorCode {
   EXTERNAL_SYMBOL_NOT_FOUND = 'EXTERNAL_SYMBOL_NOT_FOUND',
   /** Хэш сигнатуры внешнего символа не совпадает */
   EXTERNAL_SYMBOL_SIGNATURE_MISMATCH = 'EXTERNAL_SYMBOL_SIGNATURE_MISMATCH',
+  /** Конструкция не поддерживается target-ом Unreal Engine */
+  UE_UNSUPPORTED_CONSTRUCT = 'UE_UNSUPPORTED_CONSTRUCT',
 }
 
 /** Коды предупреждений */

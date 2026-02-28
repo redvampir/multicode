@@ -7,6 +7,7 @@
  */
 
 import { CppCodeGenerator } from './CppCodeGenerator';
+import { UeCodeGenerator } from './UeCodeGenerator';
 import type { ICodeGenerator } from './types';
 import { CodeGenErrorCode } from './types';
 import type { GraphLanguage } from '../shared/blueprintTypes';
@@ -39,6 +40,10 @@ export function createGenerator(language: GraphLanguage): ICodeGenerator {
     throw new UnsupportedLanguageError(language);
   }
 
+  if (language === 'ue') {
+    return new UeCodeGenerator();
+  }
+
   return new CppCodeGenerator();
 }
 
@@ -52,4 +57,3 @@ export function createUnsupportedLanguageError(language: GraphLanguage) {
     nodeId: '',
   };
 }
-

@@ -1,6 +1,6 @@
 import type { SourceIntegration, SymbolLocalizationEntry } from './externalSymbols';
 
-export type GraphLanguage = 'cpp' | 'rust' | 'asm';
+export type GraphLanguage = 'cpp' | 'ue' | 'rust' | 'asm';
 export type GraphDisplayLanguage = 'ru' | 'en';
 
 export type GraphNodeType = 'Start' | 'Function' | 'End' | 'Variable' | 'Custom';

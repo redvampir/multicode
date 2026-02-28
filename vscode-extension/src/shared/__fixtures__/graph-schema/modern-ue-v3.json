@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 3,
+  "version": 3,
+  "savedAt": "2026-02-22T10:00:00.000Z",
+  "data": {
+    "id": "modern-ue",
+    "name": "Modern UE",
+    "graphVersion": 3,
+    "language": "ue",
+    "displayLanguage": "ru",
+    "nodes": [
+      { "id": "n1", "label": "Start", "type": "Start" },
+      { "id": "n2", "label": "BuildClass", "type": "Function" }
+    ],
+    "edges": [
+      { "id": "e1", "source": "n1", "target": "n2", "kind": "execution" }
+    ],
+    "updatedAt": "2026-02-22T10:00:00.000Z",
+    "classes": [
+      {
+        "id": "class-1",
+        "name": "MyActor",
+        "extensions": {
+          "ue": {
+            "classMacro": "UCLASS(BlueprintType)",
+            "generatedBodyMacro": "GENERATED_BODY()",
+            "methodMacro": "UFUNCTION(BlueprintCallable, Category = \"MultiCode\")"
+          }
+        }
+      }
+    ]
+  }
+}

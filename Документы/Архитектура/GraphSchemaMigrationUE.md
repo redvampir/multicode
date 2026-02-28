@@ -4,7 +4,7 @@
 
 - В сериализованном документе графа вводится явное поле `schemaVersion`.
 - Текущая целевая версия схемы: `3`.
-- Для обратной совместимости поддерживается чтение legacy-документов без `schemaVersion` (`version=1/2`).
+- Для обратной совместимости поддерживается чтение legacy-документов без `schemaVersion` (`version=1/2`) и legacy-envelope формата `{ graph: GraphState }`.
 - UE-поля в классах (`extensions.ue.classMacro`, `generatedBodyMacro`, `methodMacro`) считаются **опциональными** в исходных данных и при миграции заполняются безопасными значениями по умолчанию.
 
 ## Breaking / Non-breaking матрица
@@ -18,7 +18,7 @@
 
 ## План миграции
 
-1. **Чтение**: принимать оба формата (modern + legacy).
+1. **Чтение**: принимать modern-формат, legacy-формат с `data` и legacy-envelope с `graph`.
 2. **Нормализация**: при десериализации приводить документ к `schemaVersion=3` в памяти.
 3. **Экспорт**:
    - `legacy` — для старых пайплайнов;
@@ -38,3 +38,11 @@
 1. Открыть legacy-граф без UE-полей — загрузка должна быть успешной.
 2. Экспортировать тот же граф в режиме `legacy` — структура должна совпасть с прежним контрактом.
 3. Загрузить и повторно сохранить modern UE-граф — `classes[].extensions.ue` должен остаться неизменным.
+
+## Regression-фикстуры
+
+Фикстуры хранятся в `vscode-extension/src/shared/__fixtures__/graph-schema/`:
+
+- `legacy-serialized-v2.json` — старый сериализованный формат (`version=2`, `data`).
+- `legacy-envelope-v1.json` — старый envelope-формат (`version=1`, `graph`).
+- `modern-ue-v3.json` — целевой modern-формат (`schemaVersion=3`) для UE round-trip.

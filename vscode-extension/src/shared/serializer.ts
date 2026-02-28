@@ -23,6 +23,13 @@ export type LegacySerializedGraph = {
 
 export type SerializedGraphDocument = SerializedGraph | LegacySerializedGraph;
 
+type LegacyGraphEnvelope = {
+  version?: number;
+  schemaVersion?: number;
+  savedAt?: string;
+  graph: GraphState;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -90,11 +97,13 @@ export const serializeGraphState = (
     };
   }
 
+  const normalizedState = normalizeGraphState(state, GRAPH_SCHEMA_VERSION);
+
   return {
     schemaVersion: GRAPH_SCHEMA_VERSION,
     version: GRAPH_SCHEMA_VERSION,
     savedAt,
-    data: normalizeGraphState(state, GRAPH_SCHEMA_VERSION),
+    data: normalizedState,
   };
 };
 
@@ -115,6 +124,35 @@ const serializedGraphSchema = z.union([modernSerializedGraphSchema, legacySerial
 
 type ParsedSerializedGraph = z.infer<typeof serializedGraphSchema>;
 
+const legacyGraphEnvelopeSchema: z.ZodType<LegacyGraphEnvelope> = z.object({
+  version: z.number().int().positive().optional(),
+  schemaVersion: z.number().int().positive().optional(),
+  savedAt: z.string().optional(),
+  graph: graphStateSchema,
+});
+
+const normalizeLegacyInput = (input: unknown): unknown => {
+  const directState = graphStateSchema.safeParse(input);
+  if (directState.success) {
+    return {
+      version: LEGACY_SCHEMA_VERSION,
+      savedAt: directState.data.updatedAt,
+      data: directState.data,
+    } satisfies LegacySerializedGraph;
+  }
+
+  const legacyEnvelope = legacyGraphEnvelopeSchema.safeParse(input);
+  if (legacyEnvelope.success) {
+    return {
+      version: legacyEnvelope.data.version ?? legacyEnvelope.data.schemaVersion ?? LEGACY_SCHEMA_VERSION,
+      savedAt: legacyEnvelope.data.savedAt ?? legacyEnvelope.data.graph.updatedAt,
+      data: legacyEnvelope.data.graph,
+    } satisfies LegacySerializedGraph;
+  }
+
+  return input;
+};
+
 const migrateSerializedGraph = (serialized: ParsedSerializedGraph): SerializedGraph => {
   const sourceSchemaVersion =
     'schemaVersion' in serialized
@@ -130,7 +168,7 @@ const migrateSerializedGraph = (serialized: ParsedSerializedGraph): SerializedGr
 };
 
 export const parseSerializedGraph = (data: unknown): ReturnType<typeof serializedGraphSchema.safeParse> =>
-  serializedGraphSchema.safeParse(data);
+  serializedGraphSchema.safeParse(normalizeLegacyInput(data));
 
 export const deserializeGraphState = (input: unknown): GraphState => {
   const parsed = parseSerializedGraph(input);

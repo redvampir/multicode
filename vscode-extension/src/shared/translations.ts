@@ -140,6 +140,21 @@ export type TranslationKey =
   | 'panel.pointers.title'
   | 'panel.pointers.weakTargetLabel'
   | 'panel.pointers.weakAutoUpgrade'
+  | 'panel.classes.title'
+  | 'panel.classes.create'
+  | 'panel.classes.empty'
+  | 'panel.classes.name'
+  | 'panel.classes.delete'
+  | 'panel.classes.fields'
+  | 'panel.classes.field.add'
+  | 'panel.classes.field.name'
+  | 'panel.classes.field.type'
+  | 'panel.classes.field.delete'
+  | 'panel.classes.methods'
+  | 'panel.classes.method.add'
+  | 'panel.classes.method.name'
+  | 'panel.classes.method.returnType'
+  | 'panel.classes.method.delete'
   | 'toolbar.noFile'
   | 'warnings.graphBindingDuplicateId'
   | 'warnings.graphBindingIdMismatch'
@@ -299,6 +314,21 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.pointers.weakTargetLabel': 'Цель (умный указатель)',
     'panel.pointers.weakAutoUpgrade':
       'weak_ptr требует shared_ptr. При сохранении указатель "{name}" будет автоматически переведён в shared.',
+    'panel.classes.title': 'Классы',
+    'panel.classes.create': 'Класс',
+    'panel.classes.empty': 'Пока нет классов',
+    'panel.classes.name': 'Имя класса',
+    'panel.classes.delete': 'Удалить',
+    'panel.classes.fields': 'Поля',
+    'panel.classes.field.add': 'Поле',
+    'panel.classes.field.name': 'Имя поля',
+    'panel.classes.field.type': 'Тип поля',
+    'panel.classes.field.delete': 'Удалить поле',
+    'panel.classes.methods': 'Методы',
+    'panel.classes.method.add': 'Метод',
+    'panel.classes.method.name': 'Имя метода',
+    'panel.classes.method.returnType': 'Возвращаемый тип',
+    'panel.classes.method.delete': 'Удалить метод',
     'warnings.graphBindingDuplicateId': 'Обнаружен дубликат ID графа "{id}" в файлах: {files}',
     'warnings.graphBindingIdMismatch':
       'Несоответствие графа: в коде id={codeId}, в файле ({file}) id={fileId}. Используется id из кода.',
@@ -461,6 +491,21 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.pointers.weakTargetLabel': 'Target (smart pointer)',
     'panel.pointers.weakAutoUpgrade':
       'weak_ptr requires shared_ptr. On save, pointer "{name}" will be automatically upgraded to shared.',
+    'panel.classes.title': 'Classes',
+    'panel.classes.create': 'Class',
+    'panel.classes.empty': 'No classes yet',
+    'panel.classes.name': 'Class name',
+    'panel.classes.delete': 'Delete',
+    'panel.classes.fields': 'Fields',
+    'panel.classes.field.add': 'Field',
+    'panel.classes.field.name': 'Field name',
+    'panel.classes.field.type': 'Field type',
+    'panel.classes.field.delete': 'Delete field',
+    'panel.classes.methods': 'Methods',
+    'panel.classes.method.add': 'Method',
+    'panel.classes.method.name': 'Method name',
+    'panel.classes.method.returnType': 'Return type',
+    'panel.classes.method.delete': 'Delete method',
     'warnings.graphBindingDuplicateId': 'Duplicate graph ID "{id}" detected in files: {files}',
     'warnings.graphBindingIdMismatch':
       'Graph mismatch: source id={codeId}, file ({file}) id={fileId}. Using source id.',

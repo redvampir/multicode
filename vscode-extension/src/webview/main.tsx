@@ -13,6 +13,7 @@ import { GraphEditor } from './GraphEditor';
 import { BlueprintEditor } from './BlueprintEditor';
 import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
 import { DependencyViewPanel } from './DependencyViewPanel';
+import { ClassPanel } from './ClassPanel';
 import type { SymbolDescriptor } from '../shared/externalSymbols';
 import {
   BlueprintGraphState,
@@ -1197,6 +1198,15 @@ const App: React.FC = () => {
     }
   }, [setGraph]);
 
+  const handleBlueprintClassesChange = useCallback((classes: BlueprintGraphState['classes']): void => {
+    handleBlueprintGraphChange({
+      ...blueprintGraph,
+      classes: classes ?? [],
+      updatedAt: new Date().toISOString(),
+      dirty: true,
+    });
+  }, [blueprintGraph, handleBlueprintGraphChange]);
+
   useEffect(() => {
     localeRef.current = graph.displayLanguage;
     setLocale(graph.displayLanguage);
@@ -1463,6 +1473,13 @@ const App: React.FC = () => {
                     ? translate('toast.generation.success', 'Код успешно сгенерирован')
                     : translate('toast.generation.error', 'Ошибка генерации кода'));
                 }}
+              />
+            )}
+            {editorMode === 'blueprint' && (
+              <ClassPanel
+                graphState={blueprintGraph}
+                onClassesChange={handleBlueprintClassesChange}
+                displayLanguage={locale}
               />
             )}
             

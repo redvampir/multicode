@@ -88,6 +88,10 @@ import {
 import { SymbolIndexerRegistry } from './symbol-indexer';
 import {
   handleDependencyMapGet as orchestrateDependencyMapGet,
+  handleClassDelete as orchestrateClassDelete,
+  handleClassReorderMember as orchestrateClassReorderMember,
+  handleClassReorderMethod as orchestrateClassReorderMethod,
+  handleClassUpsert as orchestrateClassUpsert,
   handleIntegrationAdd as orchestrateIntegrationAdd,
   handleIntegrationReindex as orchestrateIntegrationReindex,
   mapToIpcError,
@@ -1317,6 +1321,7 @@ export class GraphPanel {
     const parsed = parseWebviewMessage(message);
     if (!parsed.success) {
       console.error('[EXTENSION DEBUG] Message parsing failed:', message, parsed.error);
+      this.postToast('error', this.translate('errors.ipc.validation.webviewMessage'));
       this.handleMessageError('Некорректное сообщение от webview', parsed.error);
       return;
     }
@@ -1373,6 +1378,7 @@ export class GraphPanel {
   private postExternalIpcResponse(response: ExternalIpcResponse): void {
     const parsed = safeExternalIpcResponse(response);
     if (!parsed.success) {
+      this.postToast('error', this.translate('errors.ipc.validation.extensionResponse'));
       this.handleMessageError('IPC-ответ не прошёл схему', parsed.error);
       return;
     }
@@ -1408,6 +1414,34 @@ export class GraphPanel {
       payload,
       this.boundCodeDocumentUri?.fsPath ?? 'graph-root'
     );
+  }
+
+  private handleClassUpsert(payload: unknown): Promise<Extract<ExternalIpcResponse, { type: 'class/upsert' }>> {
+    return orchestrateClassUpsert(this.graphState, payload, (patch) => {
+      this.markState(patch);
+      this.postState();
+    });
+  }
+
+  private handleClassDelete(payload: unknown): Promise<Extract<ExternalIpcResponse, { type: 'class/delete' }>> {
+    return orchestrateClassDelete(this.graphState, payload, (patch) => {
+      this.markState(patch);
+      this.postState();
+    });
+  }
+
+  private handleClassReorderMember(payload: unknown): Promise<Extract<ExternalIpcResponse, { type: 'class/reorderMember' }>> {
+    return orchestrateClassReorderMember(this.graphState, payload, (patch) => {
+      this.markState(patch);
+      this.postState();
+    });
+  }
+
+  private handleClassReorderMethod(payload: unknown): Promise<Extract<ExternalIpcResponse, { type: 'class/reorderMethod' }>> {
+    return orchestrateClassReorderMethod(this.graphState, payload, (patch) => {
+      this.markState(patch);
+      this.postState();
+    });
   }
 
   private validateExternalSymbolsForCodegen(blueprintState: ReturnType<typeof migrateToBlueprintFormat>) {
@@ -1578,6 +1612,18 @@ export class GraphPanel {
         break;
       case 'dependency-map/get':
         void this.handleDependencyMapGet(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/upsert':
+        void this.handleClassUpsert(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/delete':
+        void this.handleClassDelete(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/reorderMember':
+        void this.handleClassReorderMember(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/reorderMethod':
+        void this.handleClassReorderMethod(message.payload).then((response) => this.postExternalIpcResponse(response));
         break;
       default:
         break;
@@ -2515,6 +2561,5 @@ const getNonce = (): string => {
     .map(() => possible.charAt(Math.floor(Math.random() * possible.length)))
     .join('');
 };
-
 
 

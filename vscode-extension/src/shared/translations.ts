@@ -109,6 +109,8 @@ export type TranslationKey =
   | 'errors.codeWriteTargetMissing'
   | 'errors.codeWriteFailed'
   | 'errors.codegenProfileUpdateFailed'
+  | 'errors.ipc.validation.webviewMessage'
+  | 'errors.ipc.validation.extensionResponse'
   | 'palette.title'
   | 'palette.hint'
   | 'palette.close'
@@ -282,6 +284,8 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.codeWriteTargetMissing': 'Нет привязанного файла для записи кода',
     'errors.codeWriteFailed': 'Не удалось записать код в файл: {reason}',
     'errors.codegenProfileUpdateFailed': 'Не удалось изменить профиль генерации',
+    'errors.ipc.validation.webviewMessage': 'Некорректное сообщение от webview',
+    'errors.ipc.validation.extensionResponse': 'Некорректный IPC-ответ расширения',
     'palette.title': 'Быстрое добавление',
     'palette.hint': '(A / двойной клик)',
     'palette.close': 'Закрыть',
@@ -459,6 +463,8 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.codeWriteTargetMissing': 'No bound file to write generated code',
     'errors.codeWriteFailed': 'Failed to write code to file: {reason}',
     'errors.codegenProfileUpdateFailed': 'Failed to update code generation profile',
+    'errors.ipc.validation.webviewMessage': 'Invalid message received from webview',
+    'errors.ipc.validation.extensionResponse': 'Invalid IPC response from extension',
     'palette.title': 'Quick Add',
     'palette.hint': '(A / double-click)',
     'palette.close': 'Close',

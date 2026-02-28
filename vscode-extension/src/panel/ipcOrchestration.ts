@@ -1,6 +1,17 @@
-import { externalIpcResponseSchema, type ExternalIpcResponse, type IpcError } from '../shared/messages';
+import {
+  blueprintClassSchema,
+  classDeleteRequestSchema,
+  classReorderMemberRequestSchema,
+  classReorderMethodRequestSchema,
+  classUpsertRequestSchema,
+  externalIpcResponseSchema,
+  type ExternalIpcResponse,
+  type IpcError,
+} from '../shared/messages';
 import type { GraphState } from '../shared/graphState';
 import type { SourceIntegration } from '../shared/externalSymbols';
+
+type BlueprintClass = ReturnType<typeof blueprintClassSchema.parse>;
 
 export const mapToIpcError = (error: unknown, fallbackCode: string, fallbackMessage: string): IpcError => {
   if (typeof error === 'string') {
@@ -113,3 +124,125 @@ export const handleDependencyMapGet = async (
 };
 
 export const safeExternalIpcResponse = (response: ExternalIpcResponse) => externalIpcResponseSchema.safeParse(response);
+
+const moveItem = <T extends { id: string }>(items: T[], itemId: string, targetIndex: number): T[] | undefined => {
+  const sourceIndex = items.findIndex((item) => item.id === itemId);
+  if (sourceIndex < 0) {
+    return undefined;
+  }
+
+  const safeTargetIndex = Math.min(Math.max(0, targetIndex), items.length - 1);
+  if (safeTargetIndex === sourceIndex) {
+    return [...items];
+  }
+
+  const next = [...items];
+  const [moved] = next.splice(sourceIndex, 1);
+  next.splice(safeTargetIndex, 0, moved);
+  return next;
+};
+
+export const handleClassUpsert = async (
+  state: GraphState,
+  payload: unknown,
+  applyState: (patch: Partial<GraphState>) => void
+): Promise<Extract<ExternalIpcResponse, { type: 'class/upsert' }>> => {
+  const parsedPayload = classUpsertRequestSchema.shape.payload.safeParse(payload);
+  if (!parsedPayload.success) {
+    return createIpcErrorResponse('class/upsert', parsedPayload.error, 'E_CLASS_UPSERT_VALIDATION', 'Некорректный payload class/upsert');
+  }
+
+  try {
+    const classItem = blueprintClassSchema.parse(parsedPayload.data.classItem);
+    const current = (state.classes ?? []) as BlueprintClass[];
+    const filtered = current.filter((entry) => entry.id !== classItem.id);
+    applyState({ classes: [...filtered, classItem] });
+    return { type: 'class/upsert', ok: true, payload: { classItem } };
+  } catch (error) {
+    return createIpcErrorResponse('class/upsert', error, 'E_CLASS_UPSERT', 'Не удалось сохранить класс');
+  }
+};
+
+export const handleClassDelete = async (
+  state: GraphState,
+  payload: unknown,
+  applyState: (patch: Partial<GraphState>) => void
+): Promise<Extract<ExternalIpcResponse, { type: 'class/delete' }>> => {
+  const parsedPayload = classDeleteRequestSchema.shape.payload.safeParse(payload);
+  if (!parsedPayload.success) {
+    return createIpcErrorResponse('class/delete', parsedPayload.error, 'E_CLASS_DELETE_VALIDATION', 'Некорректный payload class/delete');
+  }
+
+  try {
+    const current = (state.classes ?? []) as BlueprintClass[];
+    const next = current.filter((item) => item.id !== parsedPayload.data.classId);
+    applyState({ classes: next });
+    return {
+      type: 'class/delete',
+      ok: true,
+      payload: { classId: parsedPayload.data.classId, removed: next.length !== current.length },
+    };
+  } catch (error) {
+    return createIpcErrorResponse('class/delete', error, 'E_CLASS_DELETE', 'Не удалось удалить класс');
+  }
+};
+
+export const handleClassReorderMember = async (
+  state: GraphState,
+  payload: unknown,
+  applyState: (patch: Partial<GraphState>) => void
+): Promise<Extract<ExternalIpcResponse, { type: 'class/reorderMember' }>> => {
+  const parsedPayload = classReorderMemberRequestSchema.shape.payload.safeParse(payload);
+  if (!parsedPayload.success) {
+    return createIpcErrorResponse('class/reorderMember', parsedPayload.error, 'E_CLASS_REORDER_MEMBER_VALIDATION', 'Некорректный payload class/reorderMember');
+  }
+
+  try {
+    const classes = (state.classes ?? []) as BlueprintClass[];
+    const classEntry = classes.find((item) => item.id === parsedPayload.data.classId);
+    if (!classEntry) {
+      return createIpcErrorResponse('class/reorderMember', 'Класс не найден', 'E_CLASS_NOT_FOUND', 'Класс не найден');
+    }
+
+    const reordered = moveItem(classEntry.members, parsedPayload.data.memberId, parsedPayload.data.targetIndex);
+    if (!reordered) {
+      return createIpcErrorResponse('class/reorderMember', 'Поле класса не найдено', 'E_CLASS_MEMBER_NOT_FOUND', 'Поле класса не найдено');
+    }
+
+    const nextClasses = classes.map((item) => (item.id === classEntry.id ? { ...item, members: reordered } : item));
+    applyState({ classes: nextClasses });
+    return { type: 'class/reorderMember', ok: true, payload: parsedPayload.data };
+  } catch (error) {
+    return createIpcErrorResponse('class/reorderMember', error, 'E_CLASS_REORDER_MEMBER', 'Не удалось изменить порядок полей класса');
+  }
+};
+
+export const handleClassReorderMethod = async (
+  state: GraphState,
+  payload: unknown,
+  applyState: (patch: Partial<GraphState>) => void
+): Promise<Extract<ExternalIpcResponse, { type: 'class/reorderMethod' }>> => {
+  const parsedPayload = classReorderMethodRequestSchema.shape.payload.safeParse(payload);
+  if (!parsedPayload.success) {
+    return createIpcErrorResponse('class/reorderMethod', parsedPayload.error, 'E_CLASS_REORDER_METHOD_VALIDATION', 'Некорректный payload class/reorderMethod');
+  }
+
+  try {
+    const classes = (state.classes ?? []) as BlueprintClass[];
+    const classEntry = classes.find((item) => item.id === parsedPayload.data.classId);
+    if (!classEntry) {
+      return createIpcErrorResponse('class/reorderMethod', 'Класс не найден', 'E_CLASS_NOT_FOUND', 'Класс не найден');
+    }
+
+    const reordered = moveItem(classEntry.methods, parsedPayload.data.methodId, parsedPayload.data.targetIndex);
+    if (!reordered) {
+      return createIpcErrorResponse('class/reorderMethod', 'Метод класса не найден', 'E_CLASS_METHOD_NOT_FOUND', 'Метод класса не найден');
+    }
+
+    const nextClasses = classes.map((item) => (item.id === classEntry.id ? { ...item, methods: reordered } : item));
+    applyState({ classes: nextClasses });
+    return { type: 'class/reorderMethod', ok: true, payload: parsedPayload.data };
+  } catch (error) {
+    return createIpcErrorResponse('class/reorderMethod', error, 'E_CLASS_REORDER_METHOD', 'Не удалось изменить порядок методов класса');
+  }
+};

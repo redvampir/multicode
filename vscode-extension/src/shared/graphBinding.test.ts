@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
+import { migrateFromBlueprintFormat, migrateToBlueprintFormat } from './blueprintTypes';
 import {
   findMulticodeGraphBindingInSource,
   formatMulticodeGraphBindingLine,
@@ -67,6 +68,38 @@ describe('graphBinding', () => {
 
   it('sanitizes file name parts', () => {
     expect(sanitizeGraphBindingFileName('graph id: 1/2')).toBe('graph_id_1_2');
+  });
+
+
+  it('делает round-trip Blueprint ↔ Classic с заполненным classes', () => {
+    const blueprint = migrateToBlueprintFormat({
+      id: 'graph-classic',
+      name: 'Classic',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [],
+      edges: [],
+      updatedAt: '2026-02-25T00:00:00.000Z',
+    });
+    blueprint.classes = [
+      {
+        id: 'class-enemy',
+        name: 'Enemy',
+        members: [{ id: 'member-armor', name: 'armor', dataType: 'int32', access: 'protected', defaultValue: 5 }],
+        methods: [
+          {
+            id: 'method-hit',
+            name: 'Hit',
+            returnType: 'execution',
+            params: [{ id: 'param-force', name: 'force', dataType: 'float' }],
+            access: 'public',
+          },
+        ],
+      },
+    ];
+
+    const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(blueprint));
+    expect(restored.classes).toEqual(blueprint.classes);
   });
 
   it('resolves relative binding path under root', () => {

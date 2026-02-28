@@ -261,6 +261,51 @@ describe('CppCodeGenerator', () => {
       expect(result.code.indexOf('class player {')).toBeLessThan(result.code.indexOf('int main() {'));
     });
 
+
+    it('should generate class constructor + method call integration scenario', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const constructorNode = createNode('ClassConstructorCall', { x: 200, y: 0 }, 'ctor');
+      constructorNode.properties = { classId: 'class-player' };
+
+      const methodNode = createNode('ClassMethodCall', { x: 400, y: 0 }, 'call');
+      methodNode.properties = {
+        classId: 'class-player',
+        methodId: 'method-jump',
+      };
+
+      const graph = createTestGraph(
+        [startNode, constructorNode, methodNode],
+        [
+          createEdge('start', 'start-exec-out', 'ctor', 'ctor-exec-in', 'execution'),
+          createEdge('ctor', 'ctor-exec-out', 'call', 'call-exec-in', 'execution'),
+          createEdge('ctor', 'ctor-instance', 'call', 'call-target', 'class'),
+        ]
+      );
+
+      graph.classes = [
+        {
+          id: 'class-player',
+          name: 'Player',
+          members: [],
+          methods: [
+            {
+              id: 'method-jump',
+              name: 'Jump',
+              returnType: 'bool',
+              params: [],
+              access: 'public',
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('player class_instance_ctor{};');
+      expect(result.code).toContain('auto class_method_result_call = class_instance_ctor.jump();');
+    });
+
     it('should return explicit error for invalid class method binding', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const methodNode = createNode('ClassMethodCall', { x: 200, y: 0 }, 'call');

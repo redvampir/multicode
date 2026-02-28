@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphState } from './graphState';
+import { migrateFromBlueprintFormat, migrateToBlueprintFormat } from './blueprintTypes';
 import {
   injectOrReplaceMulticodeGraphSnapshot,
   removeMulticodeGraphSnapshot,
@@ -135,6 +136,31 @@ describe('graphSnapshot', () => {
     expect(restored?.graphVersion).toBe(2);
     expect(restored?.integrationBindings).toEqual([]);
     expect(restored?.symbolLocalization).toEqual({});
+  });
+
+
+  it('сохраняет classes при round-trip Blueprint ↔ Classic', () => {
+    const blueprint = migrateToBlueprintFormat(makeGraphState());
+    blueprint.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [{ id: 'member-health', name: 'health', dataType: 'int32', access: 'private', defaultValue: 100 }],
+        methods: [
+          {
+            id: 'method-attack',
+            name: 'Attack',
+            returnType: 'bool',
+            params: [{ id: 'param-damage', name: 'damage', dataType: 'int32' }],
+            access: 'public',
+          },
+        ],
+      },
+    ];
+
+    const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(blueprint));
+
+    expect(restored.classes).toEqual(blueprint.classes);
   });
 
   it('возвращает null для невалидного snapshot', () => {

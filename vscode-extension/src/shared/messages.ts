@@ -312,6 +312,13 @@ export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
+  integrationAddRequestSchema,
+  integrationRemoveRequestSchema,
+  integrationListRequestSchema,
+  integrationReindexRequestSchema,
+  integrationDiagnosticsRequestSchema,
+  symbolsQueryRequestSchema,
+  dependencyMapGetRequestSchema,
   z.object({ type: z.literal('ready') }),
   z.object({
     type: z.literal('addNode'),

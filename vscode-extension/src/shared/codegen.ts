@@ -8,15 +8,7 @@ export const generateCodeFromGraph = (state: GraphState): string => {
   lines.push(`// Graph: ${state.name}`);
   lines.push('');
 
-  if (state.language === 'cpp') {
-    lines.push('#include <iostream>');
-    lines.push('');
-    lines.push('int main() {');
-  } else if (state.language === 'rust') {
-    lines.push('fn main() {');
-  } else {
-    lines.push('int main() {');
-  }
+  lines.push(...renderTargetPreamble(state.language));
 
   if (!order.length) {
     lines.push('    // TODO: empty graph');
@@ -52,6 +44,24 @@ export const generateCodeFromGraph = (state: GraphState): string => {
   lines.push('}');
   lines.push('');
   return lines.join('\n');
+};
+
+const renderTargetPreamble = (language: GraphState['language']): string[] => {
+  switch (language) {
+    case 'cpp':
+      return ['#include <iostream>', '', 'int main() {'];
+    case 'ue':
+      return [
+        '#include "CoreMinimal.h"',
+        '#include "UObject/NoExportTypes.h"',
+        '',
+        'void ExecuteGraph() {',
+      ];
+    case 'rust':
+      return ['fn main() {'];
+    default:
+      return ['int main() {'];
+  }
 };
 
 const getExecutionOrder = (state: GraphState): string[] => {

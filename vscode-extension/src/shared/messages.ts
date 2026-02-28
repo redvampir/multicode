@@ -9,7 +9,7 @@ const positionSchema = z.object({
 });
 
 const graphNodeTypeSchema = z.enum(['Start', 'Function', 'End', 'Variable', 'Custom']);
-const graphLanguageSchema = z.enum(['cpp', 'rust', 'asm']);
+const graphLanguageSchema = z.enum(['cpp', 'ue', 'rust', 'asm']);
 const graphDisplayLanguageSchema = z.enum(['ru', 'en']);
 const graphEdgeKindSchema = z.enum(['execution', 'data']);
 const cppStandardSchema = z.enum(['cpp14', 'cpp17', 'cpp20', 'cpp23']);

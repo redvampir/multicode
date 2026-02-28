@@ -1239,6 +1239,8 @@ export class GraphPanel {
     switch (this.graphState.language) {
       case 'cpp':
         return ['cpp', 'c', 'cuda-cpp', 'objective-cpp'];
+      case 'ue':
+        return ['cpp', 'c'];
       case 'rust':
         return ['rust'];
       case 'asm':
@@ -2574,5 +2576,4 @@ const getNonce = (): string => {
     .map(() => possible.charAt(Math.floor(Math.random() * possible.length)))
     .join('');
 };
-
 

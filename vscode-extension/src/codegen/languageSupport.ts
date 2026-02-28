@@ -19,6 +19,11 @@ const LANGUAGE_SUPPORT: Record<GraphLanguage, LanguageSupportInfo> = {
     supportsGenerator: true,
     statusLabel: 'ready',
   },
+  ue: {
+    language: 'ue',
+    supportsGenerator: true,
+    statusLabel: 'ready',
+  },
   rust: {
     language: 'rust',
     supportsGenerator: false,

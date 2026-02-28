@@ -8,6 +8,7 @@
 
 import type { BlueprintNodeType, GraphLanguage } from '../shared/blueprintTypes';
 import { CppCodeGenerator } from '../codegen/CppCodeGenerator';
+import { UeCodeGenerator } from '../codegen/UeCodeGenerator';
 import type { ICodeGenerator } from '../codegen/types';
 import type { NodeDefinitionGetter } from '../codegen/generators/template';
 import { isLanguageSupported } from '../codegen/languageSupport';
@@ -60,8 +61,12 @@ export function resolveCodePreviewGenerator(
   }
 
   if (isPackageRegistrySnapshotAvailable(snapshot)) {
+    const packageGenerator = language === 'ue'
+      ? UeCodeGenerator.withPackages(snapshot.getNodeDefinition, snapshot.packageNodeTypes)
+      : CppCodeGenerator.withPackages(snapshot.getNodeDefinition, snapshot.packageNodeTypes);
+
     return {
-      generator: CppCodeGenerator.withPackages(snapshot.getNodeDefinition, snapshot.packageNodeTypes),
+      generator: packageGenerator,
       diagnostics: {
         usedPackageRegistry: true,
         packageNodeTypeCount: snapshot.packageNodeTypes.length,
@@ -71,7 +76,7 @@ export function resolveCodePreviewGenerator(
   }
 
   return {
-    generator: new CppCodeGenerator(),
+    generator: language === 'ue' ? new UeCodeGenerator() : new CppCodeGenerator(),
     diagnostics: {
       usedPackageRegistry: false,
       packageNodeTypeCount: 0,

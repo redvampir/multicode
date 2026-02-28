@@ -95,6 +95,17 @@ describe('generateCodeFromGraph', () => {
       expect(code).toContain('fn main() {');
       expect(code).toContain('}');
     });
+
+    it('should generate explicit UE preamble for ue language', () => {
+      const state = createGraphState([
+        createGraphNode('Start', 'Начало', 'start'),
+      ], [], { language: 'ue' });
+
+      const code = generateCodeFromGraph(state);
+
+      expect(code).toContain('#include "CoreMinimal.h"');
+      expect(code).toContain('void ExecuteGraph() {');
+    });
     
     it('should default to int main() for unknown language', () => {
       const state = createGraphState([

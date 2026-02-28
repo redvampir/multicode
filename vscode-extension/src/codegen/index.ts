@@ -31,6 +31,7 @@ export {
 
 // Генераторы
 export { CppCodeGenerator } from './CppCodeGenerator';
+export { UeCodeGenerator } from './UeCodeGenerator';
 
 export {
   createGenerator,

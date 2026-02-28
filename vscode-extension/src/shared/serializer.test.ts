@@ -7,9 +7,14 @@ import {
   serializeGraphState,
   parseSerializedGraph,
   deserializeGraphState,
-  SerializedGraph,
+  LegacySerializedGraph,
 } from './serializer';
 import type { GraphState } from './graphState';
+import {
+  legacyGraphWithoutUeFixture,
+  legacySerializedExportFixture,
+  modernUeGraphFixture,
+} from './__fixtures__/graph-schema/regressionFixtures';
 
 // ============================================
 // Тестовые данные
@@ -94,8 +99,9 @@ describe('serializer', () => {
       const state = createValidGraphState();
       const result = serializeGraphState(state);
 
-      expect(result.version).toBe(2);
-      expect(result.data).toEqual(state);
+      expect(result.version).toBe(3);
+      expect('schemaVersion' in result ? result.schemaVersion : undefined).toBe(3);
+      expect(result.data.graphVersion).toBe(3);
       expect(result.savedAt).toBe('2025-01-15T12:00:00.000Z');
     });
 
@@ -103,7 +109,7 @@ describe('serializer', () => {
       const state = createComplexGraphState();
       const result = serializeGraphState(state);
 
-      expect(result.version).toBe(2);
+      expect(result.version).toBe(3);
       expect(result.data.nodes).toHaveLength(3);
       expect(result.data.edges).toHaveLength(2);
       expect(result.data.language).toBe('rust');
@@ -122,9 +128,18 @@ describe('serializer', () => {
 
       const result = serializeGraphState(emptyState);
 
-      expect(result.version).toBe(2);
+      expect(result.version).toBe(3);
       expect(result.data.nodes).toHaveLength(0);
       expect(result.data.edges).toHaveLength(0);
+    });
+
+    it('должен поддерживать legacy export без schemaVersion', () => {
+      const state = createValidGraphState();
+      const result = serializeGraphState(state, { mode: 'legacy' });
+
+      expect(result.version).toBe(2);
+      expect('schemaVersion' in result).toBe(false);
+      expect(result.data.graphVersion).toBeUndefined();
     });
 
     it('должен сохранять все поля GraphState', () => {
@@ -141,7 +156,7 @@ describe('serializer', () => {
 
   describe('parseSerializedGraph', () => {
     it('должен парсить валидный сериализованный граф', () => {
-      const serialized: SerializedGraph = {
+      const serialized: LegacySerializedGraph = {
         version: 1,
         savedAt: '2025-01-15T12:00:00.000Z',
         data: createValidGraphState(),
@@ -244,7 +259,7 @@ describe('serializer', () => {
 
   describe('deserializeGraphState', () => {
     it('должен десериализовать валидный граф', () => {
-      const serialized: SerializedGraph = {
+      const serialized: LegacySerializedGraph = {
         version: 1,
         savedAt: '2025-01-15T12:00:00.000Z',
         data: createValidGraphState(),
@@ -255,14 +270,14 @@ describe('serializer', () => {
       expect(result.nodes).toHaveLength(1);
       expect(result.edges).toHaveLength(0);
       expect(result.id).toBe('graph-1');
-      expect(result.graphVersion).toBe(2);
+      expect(result.graphVersion).toBe(3);
       expect(result.integrationBindings).toEqual([]);
       expect(result.symbolLocalization).toEqual({});
     });
 
     it('должен десериализовать сложный граф', () => {
       const originalState = createComplexGraphState();
-      const serialized: SerializedGraph = {
+      const serialized: LegacySerializedGraph = {
         version: 1,
         savedAt: '2025-01-15T12:00:00.000Z',
         data: originalState,
@@ -291,7 +306,7 @@ describe('serializer', () => {
 
     it('должен сохранять все свойства узлов', () => {
       const state = createComplexGraphState();
-      const serialized: SerializedGraph = {
+      const serialized: LegacySerializedGraph = {
         version: 1,
         savedAt: '2025-01-15T12:00:00.000Z',
         data: state,
@@ -308,7 +323,7 @@ describe('serializer', () => {
 
     it('должен сохранять все свойства связей', () => {
       const state = createComplexGraphState();
-      const serialized: SerializedGraph = {
+      const serialized: LegacySerializedGraph = {
         version: 1,
         savedAt: '2025-01-15T12:00:00.000Z',
         data: state,
@@ -332,7 +347,7 @@ describe('serializer', () => {
       const deserialized = deserializeGraphState(serialized);
 
       expect(deserialized).toMatchObject(originalState);
-      expect(deserialized.graphVersion).toBe(2);
+      expect(deserialized.graphVersion).toBe(3);
       expect(deserialized.integrationBindings).toEqual([]);
       expect(deserialized.symbolLocalization).toEqual({});
     });
@@ -450,6 +465,38 @@ describe('serializer', () => {
       nodeTypes.forEach((type, i) => {
         expect(deserialized.nodes[i].type).toBe(type);
       });
+    });
+  });
+
+  describe('регрессионные фикстуры схемы', () => {
+    it('старые графы открываются без UE', () => {
+      const migrated = deserializeGraphState(legacyGraphWithoutUeFixture);
+
+      expect(migrated.language).toBe('cpp');
+      expect(migrated.graphVersion).toBe(3);
+      expect(migrated.classes).toBeUndefined();
+      expect(migrated.integrationBindings).toEqual([]);
+      expect(migrated.symbolLocalization).toEqual({});
+    });
+
+    it('старые графы экспортируются в прежнем формате', () => {
+      const exported = serializeGraphState(legacySerializedExportFixture.data, { mode: 'legacy' });
+
+      expect(exported).toMatchObject({
+        version: 2,
+        data: legacySerializedExportFixture.data,
+      });
+      expect('schemaVersion' in exported).toBe(false);
+    });
+
+    it('новые UE-графы не деградируют при повторной загрузке', () => {
+      const loaded = deserializeGraphState(modernUeGraphFixture);
+      const reserialized = serializeGraphState(loaded);
+      const reloaded = deserializeGraphState(reserialized);
+
+      expect(reloaded.language).toBe('ue');
+      expect(reloaded.classes).toEqual(loaded.classes);
+      expect(reloaded.graphVersion).toBe(3);
     });
   });
 });

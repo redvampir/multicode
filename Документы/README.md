@@ -14,12 +14,14 @@
 | [`Архитектура/README.md`](Архитектура/README.md) | Карта архитектуры и модулей. |
 | [`Архитектура/VisualEditor.md`](Архитектура/VisualEditor.md) | Архитектура webview-редактора. |
 | [`Архитектура/PackageSystem.md`](Архитектура/PackageSystem.md) | Пакетная система узлов и её ограничения. |
+| [`Архитектура/GraphSchemaMigrationUE.md`](Архитектура/GraphSchemaMigrationUE.md) | Матрица совместимости и миграция схемы графа для UE-ветки. |
 | [`Архитектура/CodeBinding.md`](Архитектура/CodeBinding.md) | Связь графа с исходным кодом. |
 | [`Архитектура/Multithreading.md`](Архитектура/Multithreading.md) | Модель потоков и ограничения. |
 | [`Архитектура/AdvancedFeatures.md`](Архитектура/AdvancedFeatures.md) | Перспективные фичи с пометкой статуса. |
 | [`Инфраструктура/README.md`](Инфраструктура/README.md) | Политика Renovate и поддержка зависимостей. |
 | [`Инфраструктура/ENCODING_ISSUE.md`](Инфраструктура/ENCODING_ISSUE.md) | Рекомендации по UTF-8 в Windows-сборке. |
 | [`Инфраструктура/ERROR_MONITORING.md`](Инфраструктура/ERROR_MONITORING.md) | Мониторинг ошибок и интеграция с tasks. |
+| [`Инфраструктура/UE_PRE_RELEASE_CHECKLIST.md`](Инфраструктура/UE_PRE_RELEASE_CHECKLIST.md) | Pre-release чек-лист для UE-ветки (миграция/экспорт/совместимость). |
 
 ## Архив
 

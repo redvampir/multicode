@@ -220,6 +220,15 @@
           "default": "clean",
           "description": "Generated C++ output profile: clean (minimal), learn (readable comments), debug (node markers), recovery (debug + embedded snapshot)"
         },
+        "multicode.graphExport.compatibilityMode": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "modern"
+          ],
+          "default": "legacy",
+          "description": "Формат экспорта .multicode/.json: legacy (version=2, без schemaVersion) или modern (schemaVersion=3 с миграцией UE-полей)"
+        },
         "multicode.cpp.standard": {
           "type": "string",
           "enum": [

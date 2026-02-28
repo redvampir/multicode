@@ -471,7 +471,10 @@ export class GraphPanel {
     }
 
     const isJson = uri.fsPath.toLowerCase().endsWith('.json');
-    const payload = isJson ? serializeGraphState(this.graphState) : ({ ...this.graphState, dirty: false } as GraphState);
+    const exportMode = this.readGraphExportMode();
+    const payload = isJson
+      ? serializeGraphState(this.graphState, { mode: exportMode })
+      : ({ ...this.graphState, dirty: false } as GraphState);
     const data = Buffer.from(JSON.stringify(payload, null, 2), 'utf8');
     await vscode.workspace.fs.writeFile(uri, data);
     this.graphState.dirty = false;
@@ -1811,6 +1814,13 @@ export class GraphPanel {
     this.scheduleBoundGraphAutoSave();
   }
 
+  private readGraphExportMode(): 'modern' | 'legacy' {
+    const mode = vscode.workspace
+      .getConfiguration('multicode')
+      .get<'modern' | 'legacy'>('graphExport.compatibilityMode', 'legacy');
+    return mode === 'modern' ? 'modern' : 'legacy';
+  }
+
   private readGraphBindingConfig(): {
     enabled: boolean;
     autoSave: boolean;
@@ -2187,7 +2197,9 @@ export class GraphPanel {
       await vscode.workspace.fs.createDirectory(directory);
 
       const snapshot: GraphState = { ...this.graphState, id: effectiveBinding.binding.graphId, dirty: false };
-      const data = Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8');
+      const exportMode = this.readGraphExportMode();
+      const payload = serializeGraphState(snapshot, { mode: exportMode });
+      const data = Buffer.from(JSON.stringify(payload, null, 2), 'utf8');
       await vscode.workspace.fs.writeFile(effectiveBinding.graphUri, data);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown error';

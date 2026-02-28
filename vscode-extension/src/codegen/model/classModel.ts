@@ -14,7 +14,12 @@ export type CodegenTarget = 'cpp' | 'ue';
 export interface UeClassMetadata {
   classMacro?: string;
   generatedBodyMacro?: string;
-  methodMacro?: string;
+  propertyMacro?: string;
+  functionMacro?: string;
+}
+
+export interface ClassIrUeExtension {
+  ue?: UeClassMetadata;
 }
 
 export interface ClassModelParameter {
@@ -31,6 +36,7 @@ export interface ClassModelField {
   typeName?: string;
   access: BlueprintClassAccess;
   defaultValue?: BlueprintVariableDefaultValue;
+  extensions?: ClassIrUeExtension;
 }
 
 export interface ClassModelMethod {
@@ -44,6 +50,7 @@ export interface ClassModelMethod {
   access: BlueprintClassAccess;
   isVirtual: boolean;
   isOverride: boolean;
+  extensions?: ClassIrUeExtension;
 }
 
 export interface ClassModel {
@@ -52,9 +59,7 @@ export interface ClassModel {
   namespace?: string;
   fields: ClassModelField[];
   methods: ClassModelMethod[];
-  extensions?: {
-    ue?: UeClassMetadata;
-  };
+  extensions?: ClassIrUeExtension;
 }
 
 const mapParameter = (param: BlueprintClassMethodParameter): ClassModelParameter => ({
@@ -96,12 +101,29 @@ const mapClass = (blueprintClass: BlueprintClass): ClassModel => ({
 
 const withUeExtension = (classModel: ClassModel): ClassModel => ({
   ...classModel,
+  fields: classModel.fields.map((field) => ({
+    ...field,
+    extensions: {
+      ...field.extensions,
+      ue: {
+        propertyMacro: 'UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiCode")',
+      },
+    },
+  })),
+  methods: classModel.methods.map((method) => ({
+    ...method,
+    extensions: {
+      ...method.extensions,
+      ue: {
+        functionMacro: 'UFUNCTION(BlueprintCallable, Category = "MultiCode")',
+      },
+    },
+  })),
   extensions: {
     ...classModel.extensions,
     ue: {
       classMacro: 'UCLASS(BlueprintType)',
       generatedBodyMacro: 'GENERATED_BODY()',
-      methodMacro: 'UFUNCTION(BlueprintCallable, Category = "MultiCode")',
     },
   },
 });

@@ -3,26 +3,26 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include <iostream>
 #include "TargetmatrixgraphGenerated.generated.h"
 
 UCLASS(BlueprintType)
 class UPlayerstateGenerated : public UObject {
     GENERATED_BODY()
 public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiCode")
+    int health;
+    UFUNCTION(BlueprintCallable, Category = "MultiCode")
+    int gethealth();
     UFUNCTION(BlueprintCallable, Category = "MultiCode")
     void ExecuteGraph();
 };
 
+int UPlayerstateGenerated::gethealth() {
+    return 0;
+}
+
 void UPlayerstateGenerated::ExecuteGraph() {
-    class playerstate {
-    public:
-        int gethealth();
-    private:
-        int health;
-    };
-    int playerstate::gethealth() {
-        return 0;
-    }
     // Начало
     // Вывод
     std::cout << "Hello UE" << std::endl;

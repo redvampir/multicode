@@ -12,7 +12,7 @@ export interface UeMacroLayout {
   generatedHeaderName: string;
   classMacro: string;
   generatedBodyMacro: string;
-  methodMacro: string;
+  executeMethodMacro: string;
 }
 
 export class UeMacroStrategy {
@@ -30,7 +30,7 @@ export class UeMacroStrategy {
       generatedHeaderName,
       classMacro: ueMeta?.classMacro ?? 'UCLASS(BlueprintType)',
       generatedBodyMacro: ueMeta?.generatedBodyMacro ?? 'GENERATED_BODY()',
-      methodMacro: ueMeta?.methodMacro ?? 'UFUNCTION(BlueprintCallable, Category = "MultiCode")',
+      executeMethodMacro: 'UFUNCTION(BlueprintCallable, Category = "MultiCode")',
     };
   }
 }

@@ -18,11 +18,12 @@ describe('classModel single-source pipeline', () => {
     const [ueClass] = ueModel;
 
     expect(cppClass.name).toBe(ueClass.name);
-    expect(cppClass.fields).toEqual(ueClass.fields);
-    expect(cppClass.methods).toEqual(ueClass.methods);
+    expect(cppClass.fields).toEqual(ueClass.fields.map(({ extensions: _extensions, ...field }) => field));
+    expect(cppClass.methods).toEqual(ueClass.methods.map(({ extensions: _extensions, ...method }) => method));
     expect(cppClass.extensions?.ue).toBeUndefined();
     expect(ueClass.extensions?.ue?.classMacro).toBe('UCLASS(BlueprintType)');
     expect(ueClass.extensions?.ue?.generatedBodyMacro).toBe('GENERATED_BODY()');
-    expect(ueClass.extensions?.ue?.methodMacro).toContain('UFUNCTION');
+    expect(ueClass.fields[0]?.extensions?.ue?.propertyMacro).toContain('UPROPERTY');
+    expect(ueClass.methods[0]?.extensions?.ue?.functionMacro).toContain('UFUNCTION');
   });
 });

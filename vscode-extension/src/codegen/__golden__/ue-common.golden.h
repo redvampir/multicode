@@ -3,6 +3,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include <iostream>
 #include "TargetmatrixgraphGenerated.generated.h"
 
 UCLASS(BlueprintType)

@@ -12,6 +12,8 @@ import { getTranslation, type TranslationKey } from '../shared/translations';
 import { GraphEditor } from './GraphEditor';
 import { BlueprintEditor } from './BlueprintEditor';
 import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
+import { DependencyViewPanel } from './DependencyViewPanel';
+import type { SymbolDescriptor } from '../shared/externalSymbols';
 import {
   BlueprintGraphState,
   BlueprintNodeType,
@@ -44,7 +46,7 @@ import HelpPanel from './HelpPanel';
 import { globalRegistry } from '../shared/packageLoader';
 
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
-type EditorMode = 'blueprint' | 'cytoscape';
+type EditorMode = 'blueprint' | 'cytoscape' | 'dependency';
 const EDITOR_MODE_KEY = 'multicode.editorMode';
 
 type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
@@ -53,7 +55,7 @@ type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
 const getInitialEditorMode = (): EditorMode => {
   try {
     const saved = localStorage.getItem(EDITOR_MODE_KEY);
-    if (saved === 'blueprint' || saved === 'cytoscape') {
+    if (saved === 'blueprint' || saved === 'cytoscape' || saved === 'dependency') {
       return saved;
     }
   } catch {
@@ -75,7 +77,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const isEditorMode = (value: string): value is EditorMode =>
-  value === 'blueprint' || value === 'cytoscape';
+  value === 'blueprint' || value === 'cytoscape' || value === 'dependency';
 
 const isGraphDisplayLanguage = (value: unknown): value is GraphDisplayLanguage =>
   value === 'ru' || value === 'en';
@@ -326,6 +328,7 @@ const Toolbar: React.FC<{
           >
             <option value="blueprint">{locale === 'ru' ? '🎨 Визуальный' : '🎨 Visual'}</option>
             <option value="cytoscape">{locale === 'ru' ? '📊 Классический' : '📊 Classic'}</option>
+            <option value="dependency">{locale === 'ru' ? '🧩 Зависимости' : '🧩 Dependency'}</option>
           </select>
           <select
             value={locale}
@@ -965,6 +968,9 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
+  const integrations = useGraphStore((state) => state.integrations);
+  const symbolCatalog = useGraphStore((state) => state.symbolCatalog);
+  const resolveLocalizedSymbol = useGraphStore((state) => state.resolveLocalizedSymbol);
   const [locale, setLocale] = useState<GraphDisplayLanguage>(bootLocale);
   const localeRef = useRef<GraphDisplayLanguage>(bootLocale);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -1357,6 +1363,7 @@ const App: React.FC = () => {
   };
 
   const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape' || showCodePreview;
+  const allExternalSymbols = useMemo<SymbolDescriptor[]>(() => Object.values(symbolCatalog).flat(), [symbolCatalog]);
 
   // Render the appropriate editor based on mode
   const renderEditor = () => {
@@ -1366,6 +1373,20 @@ const App: React.FC = () => {
           graph={blueprintGraph}
           onGraphChange={handleBlueprintGraphChange}
           displayLanguage={locale}
+          externalSymbols={allExternalSymbols}
+          integrations={integrations}
+          activeFilePath={boundFile.filePath}
+          resolveLocalizedSymbolName={(symbol) => resolveLocalizedSymbol(symbol, locale)}
+        />
+      );
+    }
+
+    if (editorMode === 'dependency') {
+      return (
+        <DependencyViewPanel
+          useGraphStore={useGraphStore}
+          displayLanguage={locale}
+          activeFilePath={boundFile.filePath}
         />
       );
     }

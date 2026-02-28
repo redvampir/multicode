@@ -4,7 +4,12 @@
   "title": "MultiCode Package",
   "description": "Схема пакета узлов для MultiCode",
   "type": "object",
-  "required": ["name", "version", "displayName", "nodes"],
+  "required": [
+    "name",
+    "version",
+    "displayName",
+    "nodes"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -15,13 +20,21 @@
       "type": "string",
       "pattern": "^@?[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)?$",
       "description": "Уникальное имя пакета (npm-style: @scope/name или name)",
-      "examples": ["@multicode/std", "@multicode/math", "my-custom-nodes"]
+      "examples": [
+        "@multicode/std",
+        "@multicode/math",
+        "my-custom-nodes"
+      ]
     },
     "version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?(\\+[a-zA-Z0-9.]+)?$",
       "description": "Версия пакета в формате SemVer",
-      "examples": ["1.0.0", "0.1.0-alpha", "2.3.1+build.123"]
+      "examples": [
+        "1.0.0",
+        "0.1.0-alpha",
+        "2.3.1+build.123"
+      ]
     },
     "displayName": {
       "type": "string",
@@ -42,14 +55,26 @@
     },
     "author": {
       "oneOf": [
-        { "type": "string" },
+        {
+          "type": "string"
+        },
         {
           "type": "object",
-          "required": ["name"],
+          "required": [
+            "name"
+          ],
           "properties": {
-            "name": { "type": "string" },
-            "email": { "type": "string", "format": "email" },
-            "url": { "type": "string", "format": "uri" }
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            }
           }
         }
       ],
@@ -58,7 +83,11 @@
     "license": {
       "type": "string",
       "description": "Лицензия пакета (SPDX identifier)",
-      "examples": ["MIT", "Apache-2.0", "GPL-3.0-only"]
+      "examples": [
+        "MIT",
+        "Apache-2.0",
+        "GPL-3.0-only"
+      ]
     },
     "homepage": {
       "type": "string",
@@ -67,14 +96,32 @@
     },
     "repository": {
       "oneOf": [
-        { "type": "string", "format": "uri" },
+        {
+          "type": "string",
+          "format": "uri"
+        },
         {
           "type": "object",
-          "required": ["type", "url"],
+          "required": [
+            "type",
+            "url"
+          ],
           "properties": {
-            "type": { "type": "string", "enum": ["git", "svn", "mercurial"] },
-            "url": { "type": "string", "format": "uri" },
-            "directory": { "type": "string" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "git",
+                "svn",
+                "mercurial"
+              ]
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "directory": {
+              "type": "string"
+            }
           }
         }
       ],
@@ -82,12 +129,21 @@
     },
     "bugs": {
       "oneOf": [
-        { "type": "string", "format": "uri" },
+        {
+          "type": "string",
+          "format": "uri"
+        },
         {
           "type": "object",
           "properties": {
-            "url": { "type": "string", "format": "uri" },
-            "email": { "type": "string", "format": "email" }
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            }
           }
         }
       ],
@@ -95,7 +151,9 @@
     },
     "keywords": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Ключевые слова для поиска"
     },
     "engines": {
@@ -114,18 +172,24 @@
     },
     "dependencies": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
+      "additionalProperties": {
+        "type": "string"
+      },
       "description": "Зависимости от других пакетов MultiCode"
     },
     "categories": {
       "type": "array",
-      "items": { "$ref": "#/$defs/category" },
+      "items": {
+        "$ref": "#/$defs/category"
+      },
       "description": "Пользовательские категории узлов (дополняют стандартные)"
     },
     "nodes": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "node.schema.json" },
+      "items": {
+        "$ref": "node.schema.json"
+      },
       "description": "Определения узлов пакета"
     },
     "contributes": {
@@ -134,18 +198,28 @@
       "properties": {
         "portTypes": {
           "type": "array",
-          "items": { "$ref": "#/$defs/portType" },
+          "items": {
+            "$ref": "#/$defs/portType"
+          },
           "description": "Пользовательские типы портов"
         },
         "themes": {
           "type": "array",
-          "items": { "$ref": "#/$defs/theme" },
+          "items": {
+            "$ref": "#/$defs/theme"
+          },
           "description": "Цветовые темы для узлов"
         },
         "snippets": {
           "type": "array",
-          "items": { "$ref": "#/$defs/snippet" },
+          "items": {
+            "$ref": "#/$defs/snippet"
+          },
           "description": "Шаблоны графов (snippets)"
+        },
+        "typeCompatibilityPolicy": {
+          "$ref": "#/$defs/typeCompatibilityPolicy",
+          "description": "Политика совместимости типов и иерархия наследования"
         }
       }
     }
@@ -153,7 +227,11 @@
   "$defs": {
     "category": {
       "type": "object",
-      "required": ["id", "label", "labelRu"],
+      "required": [
+        "id",
+        "label",
+        "labelRu"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -186,7 +264,11 @@
     },
     "portType": {
       "type": "object",
-      "required": ["id", "name", "color"],
+      "required": [
+        "id",
+        "name",
+        "color"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -213,7 +295,9 @@
         },
         "compatibleWith": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Список совместимых типов"
         },
         "cppType": {
@@ -228,7 +312,11 @@
     },
     "theme": {
       "type": "object",
-      "required": ["id", "name", "colors"],
+      "required": [
+        "id",
+        "name",
+        "colors"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -242,13 +330,20 @@
         "colors": {
           "type": "object",
           "description": "Цвета темы",
-          "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          }
         }
       }
     },
     "snippet": {
       "type": "object",
-      "required": ["id", "name", "graph"],
+      "required": [
+        "id",
+        "name",
+        "graph"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -273,12 +368,59 @@
         },
         "keywords": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Ключевые слова для поиска"
         },
         "graph": {
           "type": "object",
           "description": "Граф сниппета (узлы и связи)"
+        }
+      }
+    },
+    "typeHierarchyEntry": {
+      "type": "object",
+      "required": [
+        "typeId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "typeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Идентификатор типа"
+        },
+        "parents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [],
+          "description": "Родительские типы (base classes)"
+        }
+      }
+    },
+    "typeCompatibilityPolicy": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Версия policy-правил совместимости"
+        },
+        "hierarchy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typeHierarchyEntry"
+          },
+          "default": [],
+          "description": "Реестр наследования UE-типов"
         }
       }
     }

@@ -263,6 +263,7 @@ const PORT_DATA_TYPES: PortDataType[] = [
   'vector',
   'pointer',
   'class',
+  'object-reference',
   'array',
   'any',
 ];

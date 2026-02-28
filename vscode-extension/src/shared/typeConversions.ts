@@ -1,4 +1,12 @@
 import type { PortDataType } from './portTypes';
+import {
+  canDirectlyConnectDataPortsByPolicy,
+  evaluateTypeCompatibility,
+  formatCompatibilityDiagnostic,
+  type CompatibilityPolicyContext,
+  type PortTypeCompatibilityDescriptor,
+  type TypeCompatibilityResult,
+} from './typeCompatibilityPolicy';
 
 export type TypeConversionId =
   | 'int32_to_int64'
@@ -37,7 +45,8 @@ export type TypeConversionId =
   | 'vector_to_string'
   | 'string_to_vector'
   | 'array_to_string'
-  | 'string_to_array';
+  | 'string_to_array'
+  | 'object-reference_to_string';
 
 export type TypeConversionStage = 1 | 2 | 3 | 4;
 
@@ -87,6 +96,7 @@ const TYPE_LABELS_FOR_CONVERSION: Record<PortDataType, string> = {
   vector: 'Vector',
   pointer: 'Pointer',
   class: 'Class',
+  'object-reference': 'ObjectReference',
   array: 'Array',
   any: 'Any',
 };
@@ -102,6 +112,7 @@ const CPP_CAST_TYPES: Record<PortDataType, string> = {
   vector: 'auto',
   pointer: 'auto',
   class: 'auto',
+  'object-reference': 'auto',
   array: 'auto',
   any: 'auto',
 };
@@ -200,6 +211,7 @@ const STAGE_4_RULES: TypeConversionRule[] = [
   createHelperRule(4, 'pointer', 'bool', 'pointer_truthy'),
   createHelperRule(4, 'pointer', 'string', 'pointer_to_string'),
   createHelperRule(4, 'class', 'string', 'class_to_string'),
+  createHelperRule(4, 'object-reference', 'string', 'class_to_string'),
   createHelperRule(4, 'vector', 'string', 'vector_to_string'),
   createHelperRule(4, 'string', 'vector', 'parse_vector_strict', { requiresMeta: true }),
   createHelperRule(4, 'array', 'string', 'array_to_string'),
@@ -241,6 +253,7 @@ const TYPE_LABELS: Record<PortDataType, { ru: string; en: string }> = {
   vector: { ru: 'vector', en: 'vector' },
   pointer: { ru: 'pointer', en: 'pointer' },
   class: { ru: 'class', en: 'class' },
+  'object-reference': { ru: 'object-reference', en: 'object-reference' },
   array: { ru: 'array', en: 'array' },
   any: { ru: 'any', en: 'any' },
 };
@@ -262,17 +275,7 @@ export const findTypeConversionRuleById = (id: string): TypeConversionRule | nul
 export const canDirectlyConnectDataPorts = (
   sourceType: PortDataType,
   targetType: PortDataType
-): boolean => {
-  if (sourceType === 'execution' || targetType === 'execution') {
-    return false;
-  }
-
-  if (sourceType === targetType) {
-    return true;
-  }
-
-  return sourceType === 'any' || targetType === 'any';
-};
+): boolean => canDirectlyConnectDataPortsByPolicy(sourceType, targetType);
 
 export const formatTypeConversionLabel = (
   rule: TypeConversionRule,
@@ -291,87 +294,33 @@ export const applyTypeConversionTemplate = (
 
 
 
-export interface DataPortTypeDescriptor {
-  dataType: PortDataType;
-  typeName?: string;
-  classId?: string;
-  targetClassId?: string;
-}
+export type DataPortTypeDescriptor = PortTypeCompatibilityDescriptor;
 
 export interface DataPortCompatibilityResult {
   compatible: boolean;
-  reason: 'ok' | 'base-type-mismatch' | 'class-mismatch';
+  reason: TypeCompatibilityResult['reason'];
+  diagnostic: TypeCompatibilityResult['diagnostic'];
 }
-
-const normalizeTypeIdentity = (value: string | undefined): string | undefined => {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const resolveClassIdentity = (port: DataPortTypeDescriptor): string | undefined => {
-  if (port.dataType === 'class') {
-    return normalizeTypeIdentity(port.classId) ?? normalizeTypeIdentity(port.typeName);
-  }
-  if (port.dataType === 'pointer') {
-    return normalizeTypeIdentity(port.targetClassId) ?? normalizeTypeIdentity(port.typeName);
-  }
-  return undefined;
-};
 
 export const validateDataPortCompatibility = (
   sourcePort: DataPortTypeDescriptor,
-  targetPort: DataPortTypeDescriptor
+  targetPort: DataPortTypeDescriptor,
+  policyContext?: CompatibilityPolicyContext
 ): DataPortCompatibilityResult => {
-  const directCompatible = canDirectlyConnectDataPorts(sourcePort.dataType, targetPort.dataType);
-  if (!directCompatible) {
-    return { compatible: false, reason: 'base-type-mismatch' };
-  }
-
-  const involvesClassData =
-    sourcePort.dataType === 'class' ||
-    sourcePort.dataType === 'pointer' ||
-    targetPort.dataType === 'class' ||
-    targetPort.dataType === 'pointer';
-
-  if (!involvesClassData) {
-    return { compatible: true, reason: 'ok' };
-  }
-
-  const sourceClassIdentity = resolveClassIdentity(sourcePort);
-  const targetClassIdentity = resolveClassIdentity(targetPort);
-
-  // Миграционный fallback: если идентификаторы типа ещё не сохранены, пропускаем как совместимые.
-  if (!sourceClassIdentity || !targetClassIdentity) {
-    return { compatible: true, reason: 'ok' };
-  }
-
-  if (sourceClassIdentity !== targetClassIdentity) {
-    return { compatible: false, reason: 'class-mismatch' };
-  }
-
-  return { compatible: true, reason: 'ok' };
-};
-
-const getClassIdentityForMessage = (port: DataPortTypeDescriptor): string => {
-  return resolveClassIdentity(port) ?? getTypeLabelForMessage(port.dataType, 'en');
+  return evaluateTypeCompatibility(sourcePort, targetPort, policyContext);
 };
 
 export const formatIncompatiblePortMessage = (
   sourcePort: DataPortTypeDescriptor,
   targetPort: DataPortTypeDescriptor,
-  locale: 'ru' | 'en'
+  locale: 'ru' | 'en',
+  policyContext?: CompatibilityPolicyContext
 ): string => {
-  const compatibility = validateDataPortCompatibility(sourcePort, targetPort);
-  if (compatibility.reason === 'class-mismatch') {
-    const sourceClass = getClassIdentityForMessage(sourcePort);
-    const targetClass = getClassIdentityForMessage(targetPort);
-    if (locale === 'ru') {
-      return `Классы несовместимы: ${sourceClass} → ${targetClass}`;
+  const compatibility = validateDataPortCompatibility(sourcePort, targetPort, policyContext);
+  if (compatibility.reason !== 'base-type-mismatch') {
+    if (!compatibility.compatible || compatibility.reason === 'type-id-missing') {
+      return formatCompatibilityDiagnostic(compatibility, locale);
     }
-    return `Class types are incompatible: ${sourceClass} -> ${targetClass}`;
   }
 
   return formatIncompatibleTypeMessage(sourcePort.dataType, targetPort.dataType, locale);

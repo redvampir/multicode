@@ -145,6 +145,7 @@
             "vector",
             "pointer",
             "class",
+            "object-reference",
             "array",
             "any"
           ],
@@ -180,6 +181,16 @@
           "type": "boolean",
           "default": false,
           "description": "Разрешить множественные подключения"
+        },
+        "typeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Единый идентификатор типа порта"
+        },
+        "compatibilityPolicyVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Версия policy-правил совместимости для порта"
         }
       }
     },

@@ -15,17 +15,18 @@ import {
 
 describe('typeConversions', () => {
   it('contains complete Stage 1-4 conversion catalog', () => {
-    expect(TYPE_CONVERSION_RULES).toHaveLength(37);
+    expect(TYPE_CONVERSION_RULES).toHaveLength(38);
     expect(TYPE_CONVERSION_RULES_BY_STAGE[1]).toHaveLength(12);
     expect(TYPE_CONVERSION_RULES_BY_STAGE[2]).toHaveLength(8);
     expect(TYPE_CONVERSION_RULES_BY_STAGE[3]).toHaveLength(10);
-    expect(TYPE_CONVERSION_RULES_BY_STAGE[4]).toHaveLength(7);
+    expect(TYPE_CONVERSION_RULES_BY_STAGE[4]).toHaveLength(8);
 
     expect(findTypeConversionRule('int32', 'double')?.id).toBe('int32_to_double');
     expect(findTypeConversionRule('string', 'int64')?.id).toBe('string_to_int64');
     expect(findTypeConversionRule('string', 'bool')?.id).toBe('string_to_bool');
     expect(findTypeConversionRule('pointer', 'string')?.id).toBe('pointer_to_string');
     expect(findTypeConversionRule('string', 'array')?.id).toBe('string_to_array');
+    expect(findTypeConversionRule('object-reference', 'string')?.id).toBe('object-reference_to_string');
   });
 
   it('returns null for unsupported conversion', () => {
@@ -64,10 +65,11 @@ describe('typeConversions', () => {
     expect(applyTypeConversionTemplate(rule!, 'valueExpr')).toBe('valueExpr');
   });
 
-  it('allows direct data connection only for same type or wildcard', () => {
+  it('allows direct data connection for same type, wildcard and object-reference family', () => {
     expect(canDirectlyConnectDataPorts('int32', 'int32')).toBe(true);
     expect(canDirectlyConnectDataPorts('int32', 'any')).toBe(true);
     expect(canDirectlyConnectDataPorts('any', 'string')).toBe(true);
+    expect(canDirectlyConnectDataPorts('pointer', 'object-reference')).toBe(true);
     expect(canDirectlyConnectDataPorts('int32', 'float')).toBe(false);
     expect(canDirectlyConnectDataPorts('execution', 'execution')).toBe(false);
   });
@@ -82,37 +84,80 @@ describe('typeConversions', () => {
     expect(getTypeLabelForMessage('string', 'en')).toBe('string');
   });
 
-
-  it('validates class ports compatibility by class identity', () => {
+  it('exact match: class ports compatible', () => {
     expect(validateDataPortCompatibility(
-      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' },
-      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' }
-    )).toEqual({ compatible: true, reason: 'ok' });
-
-    expect(validateDataPortCompatibility(
-      { dataType: 'class', classId: 'cls.player', typeName: 'Gameplay::Player' },
-      { dataType: 'class', classId: 'cls.enemy', typeName: 'Gameplay::Enemy' }
-    )).toEqual({ compatible: false, reason: 'class-mismatch' });
+      { dataType: 'class', typeId: 'UE.Actor' },
+      { dataType: 'class', typeId: 'UE.Actor' }
+    ).compatible).toBe(true);
   });
 
-  it('supports migration fallback for class metadata when identity is missing', () => {
-    expect(validateDataPortCompatibility(
-      { dataType: 'pointer', typeName: 'Gameplay::Player' },
-      { dataType: 'pointer' }
-    )).toEqual({ compatible: true, reason: 'ok' });
+  it('upcast by hierarchy is allowed, downcast is blocked', () => {
+    const context = {
+      hierarchy: {
+        policyVersion: '2.0.0',
+        inheritance: {
+          'UE.Object': [],
+          'UE.Actor': ['UE.Object'],
+          'UE.Pawn': ['UE.Actor'],
+          'UE.Character': ['UE.Pawn'],
+        },
+      },
+    };
+
+    const upcast = validateDataPortCompatibility(
+      { dataType: 'object-reference', typeId: 'UE.Character' },
+      { dataType: 'class', typeId: 'UE.Actor' },
+      context
+    );
+    expect(upcast).toMatchObject({ compatible: true, reason: 'ok' });
+
+    const downcast = validateDataPortCompatibility(
+      { dataType: 'class', typeId: 'UE.Actor' },
+      { dataType: 'object-reference', typeId: 'UE.Character' },
+      context
+    );
+    expect(downcast).toMatchObject({ compatible: false, reason: 'unsafe-downcast' });
   });
 
-  it('formats class mismatch message in ru/en', () => {
+  it('unknown type returns diagnostic', () => {
+    const result = validateDataPortCompatibility(
+      { dataType: 'class', typeId: 'UE.Missing' },
+      { dataType: 'class', typeId: 'UE.Actor' },
+      {
+        hierarchy: {
+          policyVersion: '2.0.0',
+          inheritance: { 'UE.Actor': ['UE.Object'], 'UE.Object': [] },
+        },
+      }
+    );
+
+    expect(result.reason).toBe('unknown-type');
     expect(formatIncompatiblePortMessage(
-      { dataType: 'class', typeName: 'Gameplay::Player' },
-      { dataType: 'class', typeName: 'Gameplay::Enemy' },
-      'ru'
-    )).toBe('Классы несовместимы: Gameplay::Player → Gameplay::Enemy');
-    expect(formatIncompatiblePortMessage(
-      { dataType: 'class', typeName: 'Gameplay::Player' },
-      { dataType: 'class', typeName: 'Gameplay::Enemy' },
-      'en'
-    )).toBe('Class types are incompatible: Gameplay::Player -> Gameplay::Enemy');
+      { dataType: 'class', typeId: 'UE.Missing' },
+      { dataType: 'class', typeId: 'UE.Actor' },
+      'ru',
+      {
+        hierarchy: {
+          policyVersion: '2.0.0',
+          inheritance: { 'UE.Actor': ['UE.Object'], 'UE.Object': [] },
+        },
+      }
+    )).toContain('Тип не найден в реестре иерархии');
   });
 
+  it('detects cyclic and broken hierarchy', () => {
+    const cyclic = validateDataPortCompatibility(
+      { dataType: 'class', typeId: 'A' },
+      { dataType: 'class', typeId: 'B' },
+      { hierarchy: { policyVersion: '2.0.0', inheritance: { A: ['B'], B: ['A'] } } }
+    );
+    expect(cyclic.reason).toBe('hierarchy-cycle');
+
+    const broken = validateDataPortCompatibility(
+      { dataType: 'class', typeId: 'A' },
+      { dataType: 'class', typeId: 'Root' },
+      { hierarchy: { policyVersion: '2.0.0', inheritance: { A: [''], Root: [] } } }
+    );
+    expect(broken.reason).toBe('hierarchy-invalid');
+  });
 });

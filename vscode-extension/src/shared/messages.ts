@@ -38,6 +38,10 @@ const sourceIntegrationSchema: z.ZodType<SourceIntegration> = z.object({
   kind: z.enum(['library', 'framework', 'file']).optional(),
   displayName: z.string().optional(),
   version: z.string().optional(),
+  location: z.object({
+    type: z.enum(['npm', 'vcpkg', 'local_file', 'local_folder', 'git']),
+    value: z.string(),
+  }).optional(),
 });
 
 const symbolLocalizationEntrySchema: z.ZodType<SymbolLocalizationEntry> = z.object({

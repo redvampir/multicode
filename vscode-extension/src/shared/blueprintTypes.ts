@@ -3,7 +3,9 @@
  * Совместимы с C++ ядром, но с дополнительной информацией для UI
  */
 
-import { PortDataType, PortDefinition } from './portTypes';
+import type { PortDefinition } from './portTypes';
+import type { NodeCategory, PortDataType } from './portTypeContract';
+import { isPortDataType } from './portTypeContract';
 import {
   canDirectlyConnectDataPorts,
   findTypeConversionRule,
@@ -536,7 +538,7 @@ export interface NodeTypeDefinition {
   type: BlueprintNodeType;
   label: string;
   labelRu: string;
-  category: 'flow' | 'function' | 'variable' | 'math' | 'comparison' | 'logic' | 'io' | 'string' | 'collection' | 'other';
+  category: NodeCategory;
   /** Ключ иконки или путь (например: 'loop' или 'vscode-extension/media/icons/loop.svg') */
   icon?: string;
   description?: string;
@@ -565,20 +567,6 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 const isPortDirection = (value: unknown): value is NodePort['direction'] =>
   value === 'input' || value === 'output';
-
-const isPortDataType = (value: unknown): value is PortDataType =>
-  value === 'execution' ||
-  value === 'bool' ||
-  value === 'int32' ||
-  value === 'int64' ||
-  value === 'float' ||
-  value === 'double' ||
-  value === 'string' ||
-  value === 'vector' ||
-  value === 'pointer' ||
-  value === 'class' ||
-  value === 'array' ||
-  value === 'any';
 
 const isBlueprintNodeTypeValue = (value: unknown): value is BlueprintNodeType =>
   typeof value === 'string' && Object.prototype.hasOwnProperty.call(NODE_TYPE_DEFINITIONS, value);
@@ -2636,6 +2624,9 @@ export const NODE_CATEGORIES: { id: NodeTypeDefinition['category']; label: strin
   { id: 'logic', label: 'Logic', labelRu: 'Логика' },
   { id: 'io', label: 'Input/Output', labelRu: 'Ввод/Вывод' },
   { id: 'string', label: 'String', labelRu: 'Строки' },
+  { id: 'array', label: 'Array', labelRu: 'Массивы' },
+  { id: 'pointer', label: 'Pointer', labelRu: 'Указатели' },
+  { id: 'class', label: 'Class', labelRu: 'Классы' },
   { id: 'collection', label: 'Collection', labelRu: 'Коллекции' },
   { id: 'other', label: 'Other', labelRu: 'Прочее' },
 ];

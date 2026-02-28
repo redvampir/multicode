@@ -97,6 +97,30 @@ const validFullPackage = {
         },
       },
     },
+    {
+      type: 'ResolvePointer',
+      label: 'Resolve Pointer',
+      labelRu: 'Разыменовать указатель',
+      category: 'pointer',
+      inputs: [
+        { id: 'ptr', name: 'Ptr', nameRu: 'Указатель', dataType: 'pointer', typeName: 'Gameplay::Player*' },
+      ],
+      outputs: [
+        { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'class', typeName: 'Gameplay::Player' },
+      ],
+    },
+    {
+      type: 'BuildParty',
+      label: 'Build Party',
+      labelRu: 'Собрать группу',
+      category: 'collection',
+      inputs: [
+        { id: 'leader', name: 'Leader', nameRu: 'Лидер', dataType: 'class', typeName: 'Gameplay::Player' },
+      ],
+      outputs: [
+        { id: 'party', name: 'Party', nameRu: 'Группа', dataType: 'array', typeName: 'std::vector<Gameplay::Player>' },
+      ],
+    },
   ],
 };
 
@@ -144,7 +168,7 @@ describe('packageSchema', () => {
     it('should validate full package', () => {
       const result = validatePackageManifest(validFullPackage);
       expect(result.name).toBe('@test/full-package');
-      expect(result.nodes).toHaveLength(2);
+      expect(result.nodes).toHaveLength(4);
       expect(result.categories).toHaveLength(1);
     });
 
@@ -193,7 +217,7 @@ describe('PackageLoader', () => {
     it('should load valid full package', () => {
       const result = PackageLoader.load(validFullPackage);
       expect(result.success).toBe(true);
-      expect(result.package?.nodeDefinitions.size).toBe(2);
+      expect(result.package?.nodeDefinitions.size).toBe(4);
       expect(result.package?.categories).toHaveLength(1);
     });
 
@@ -218,6 +242,14 @@ describe('PackageLoader', () => {
       expect(addNode?.inputs[0].id).toBe('a');
       expect(addNode?.inputs[0].dataType).toBe('float');
       expect(addNode?.inputs[0].defaultValue).toBe(0);
+      const pointerNode = result.package?.nodeDefinitions.get('ResolvePointer');
+      const collectionNode = result.package?.nodeDefinitions.get('BuildParty');
+
+      expect(pointerNode?.category).toBe('pointer');
+      expect(pointerNode?.inputs[0].dataType).toBe('pointer');
+      expect(pointerNode?.outputs[0].dataType).toBe('class');
+      expect(collectionNode?.category).toBe('collection');
+      expect(collectionNode?.outputs[0].dataType).toBe('array');
       expect(printNode?.inputs[1].nameRu).toBe('Сообщение');
     });
 
@@ -310,9 +342,11 @@ describe('PackageRegistry', () => {
     it('should return all loaded nodes', () => {
       registry.loadPackage(validFullPackage);
       const allNodes = registry.getAllNodeDefinitions();
-      expect(allNodes.size).toBe(2);
+      expect(allNodes.size).toBe(4);
       expect(allNodes.has('PrintMessage')).toBe(true);
       expect(allNodes.has('AddNumbers')).toBe(true);
+      expect(allNodes.has('ResolvePointer')).toBe(true);
+      expect(allNodes.has('BuildParty')).toBe(true);
     });
   });
 
@@ -406,7 +440,7 @@ describe('PackageRegistry', () => {
       registry.loadPackage(validMinimalPackage);
       registry.loadPackage(validFullPackage);
       
-      expect(registry.getAllNodeDefinitions().size).toBe(3);
+      expect(registry.getAllNodeDefinitions().size).toBe(5);
       
       registry.clear();
       

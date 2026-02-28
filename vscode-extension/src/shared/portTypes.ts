@@ -3,19 +3,10 @@
  * Цветовая схема вдохновлена Unreal Engine Blueprints
  */
 
-export type PortDataType =
-  | 'execution'   // Поток выполнения (белый)
-  | 'bool'        // Логический (красный)
-  | 'int32'       // 32-бит целое (cyan)
-  | 'int64'       // 64-бит целое (cyan)
-  | 'float'       // Дробное (32) (зелёный)
-  | 'double'      // Двойная точность (зелёный)
-  | 'string'      // Строка (пурпурный/розовый)
-  | 'vector'      // Вектор (жёлтый)
-  | 'pointer'     // Указатель (умный) (синий)
-  | 'class'       // Класс/экземпляр (индиго)
-  | 'array'       // Массив (оранжевый)
-  | 'any';        // Wildcard (серый)
+import type { PortDataType } from './portTypeContract';
+
+export type { PortDataType } from './portTypeContract';
+
 
 export type PortDirection = 'input' | 'output';
 

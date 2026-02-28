@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type GraphState } from './graphState';
 import type { SourceIntegration, SymbolDescriptor, SymbolLocalizationEntry } from './externalSymbols';
+import { PortDataTypeSchema } from './packageSchema';
 
 const positionSchema = z.object({
   x: z.number(),
@@ -142,7 +143,7 @@ const validationIssueSchema = z.object({
 export const blueprintClassMemberSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  dataType: z.string().min(1),
+  dataType: PortDataTypeSchema,
   typeName: z.string().min(1).optional(),
   access: blueprintClassAccessSchema,
 });

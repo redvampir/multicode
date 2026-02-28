@@ -210,6 +210,19 @@ export const ContributesSchema = z.object({
 
 export type Contributes = z.infer<typeof ContributesSchema>;
 
+export const UeMetadataSchema = z.object({
+  typeHierarchyVersion: z.string().regex(/^\d+\.\d+\.\d+$/).optional(),
+  typeHierarchy: z.array(TypeHierarchyEntrySchema).default([]),
+});
+
+export type UeMetadata = z.infer<typeof UeMetadataSchema>;
+
+export const PackageMetadataSchema = z.object({
+  ue: UeMetadataSchema.optional(),
+});
+
+export type PackageMetadata = z.infer<typeof PackageMetadataSchema>;
+
 // ============================================
 // Автор пакета
 // ============================================
@@ -270,6 +283,7 @@ export const PackageManifestSchema = z.object({
     vscode: z.string().optional(),
   }).optional(),
   dependencies: z.record(z.string()).optional(),
+  metadata: PackageMetadataSchema.optional(),
   categories: z.array(PackageCategorySchema).optional(),
   nodes: z.array(NodeDefinitionSchema).min(1),
   contributes: ContributesSchema.optional(),

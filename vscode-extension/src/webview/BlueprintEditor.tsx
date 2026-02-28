@@ -51,7 +51,8 @@ import {
   formatTypeConversionLabel,
   validateDataPortCompatibility,
 } from '../shared/typeConversions';
-import { TYPE_COMPATIBILITY_POLICY_VERSION, type CompatibilityPolicyContext } from '../shared/typeCompatibilityPolicy';
+import type { CompatibilityPolicyContext } from '../shared/typeCompatibilityPolicy';
+import { buildTypeCompatibilityPolicyContext } from '../shared/typeCompatibilityPolicyContext';
 import { CodePreviewPanel } from './CodePreviewPanel';
 import { PackageManagerPanel } from './PackageManagerPanel';
 import { useUndoRedo, useClipboard, useAutoLayout, usePackageRegistry } from './hooks';
@@ -1503,33 +1504,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   } = usePackageRegistry(packageSettings);
 
   const compatibilityPolicyContext = useMemo<CompatibilityPolicyContext>(() => {
-    const inheritance: Record<string, string[]> = {};
-    for (const info of registry.getPackageList()) {
-      const pkg = registry.getPackage(info.name);
-      const policy = pkg?.manifest.contributes?.typeCompatibilityPolicy;
-      if (!policy) {
-        continue;
-      }
-      for (const entry of policy.hierarchy) {
-        inheritance[entry.typeId] = [...entry.parents];
-      }
-    }
+    void registryVersion;
+    const manifests = registry
+      .getPackageList()
+      .map((info) => registry.getPackage(info.name)?.manifest)
+      .filter((manifest): manifest is NonNullable<typeof manifest> => Boolean(manifest));
 
-    if (Object.keys(inheritance).length === 0) {
-      return {
-        hierarchy: {
-          policyVersion: TYPE_COMPATIBILITY_POLICY_VERSION,
-          inheritance: {},
-        },
-      };
-    }
-
-    return {
-      hierarchy: {
-        policyVersion: TYPE_COMPATIBILITY_POLICY_VERSION,
-        inheritance,
-      },
-    };
+    return buildTypeCompatibilityPolicyContext(manifests);
   }, [registry, registryVersion]);
 
   const packageRegistrySnapshot = useMemo(() => {
@@ -2543,6 +2524,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     if (sourcePort.dataType === 'execution' || targetPort.dataType === 'execution') {
       if (sourcePort.dataType !== 'execution' || targetPort.dataType !== 'execution') {
         const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
+        console.warn('[ConnectionRejected]', {
+          reason: 'execution-data-mismatch',
+          sourcePort,
+          targetPort,
+          message,
+        });
         setNormalizationToast(message);
         return;
       }
@@ -2620,6 +2607,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     const conversionRule = findTypeConversionRule(sourcePort.dataType, targetPort.dataType);
     if (!conversionRule) {
       const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
+      console.warn('[ConnectionRejected]', {
+        reason: 'conversion-rule-missing',
+        sourcePort,
+        targetPort,
+        message,
+      });
       setNormalizationToast(message);
       return;
     }
@@ -2712,6 +2705,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
     if (!conversionInputPortId || !conversionOutputPortId) {
       const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
+      console.warn('[ConnectionRejected]', {
+        reason: 'conversion-node-port-missing',
+        sourcePort,
+        targetPort,
+        message,
+      });
       setNormalizationToast(message);
       return;
     }
@@ -2743,6 +2742,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     computeNodePosition,
     createNodeByType,
     displayLanguage,
+    compatibilityPolicyContext,
     edges,
     nodes,
     notifyGraphChange,

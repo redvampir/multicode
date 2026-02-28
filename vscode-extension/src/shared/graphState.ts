@@ -39,6 +39,8 @@ export interface GraphState {
   variables?: unknown[];
   /** Пользовательские функции (Blueprint-style) */
   functions?: unknown[];
+  /** Реестр пользовательских C++ классов (Blueprint-style) */
+  classes?: unknown[];
   /** Привязки графа к внешним источникам символов */
   integrationBindings?: SourceIntegration[];
   /** Локализация внешних символов по ключу symbolId/signatureHash */

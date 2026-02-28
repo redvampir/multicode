@@ -80,6 +80,7 @@ export const graphStateSchema: z.ZodType<GraphState> = z.object({
   // Blueprint-style расширения
   variables: z.array(z.unknown()).optional(),
   functions: z.array(z.unknown()).optional(),
+  classes: z.array(z.unknown()).optional(),
   integrationBindings: z.array(sourceIntegrationSchema).optional(),
   symbolLocalization: z.record(z.string(), symbolLocalizationEntrySchema).optional(),
 });
@@ -105,6 +106,7 @@ const graphMutationSchema = z.object({
   // Blueprint-style расширения
   variables: z.array(z.unknown()).optional(),
   functions: z.array(z.unknown()).optional(),
+  classes: z.array(z.unknown()).optional(),
 });
 
 const themeMessageSchema = z.object({

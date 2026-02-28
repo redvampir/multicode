@@ -209,6 +209,7 @@ const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload
   displayLanguage: graphState.displayLanguage,
   variables: graphState.variables,
   functions: graphState.functions,
+  classes: graphState.classes,
 });
 
 const sendToExtension = (message: WebviewToExtensionMessage): void => {

@@ -349,7 +349,8 @@
     "test": "node ./out/test/runTest.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "validate:type-contract": "vitest run src/shared/portTypeContractConsistency.test.ts"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",

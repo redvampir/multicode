@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://multicode.dev/schemas/multicode-ue-package.schema.json",
+  "title": "MultiCode Unreal Engine Package",
+  "description": "Схема UE-пакета узлов для MultiCode (совместима с базовой схемой пакета)",
+  "$ref": "./multicode-package.schema.json"
+}

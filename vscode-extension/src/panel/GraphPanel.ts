@@ -163,6 +163,7 @@ export class GraphPanel {
   private translationEngine: 'none' | 'marian';
   private translationModels: Partial<Record<TranslationDirection, string>>;
   private translationCacheLimit: number;
+  private enableUePackage: boolean;
   private translator: MarianTranslator | undefined;
   private boundCodeDocumentUri: vscode.Uri | undefined;
   private boundGraphBinding:
@@ -201,6 +202,7 @@ export class GraphPanel {
       displayLanguage: this.locale
     });
     this.themePreference = this.readThemePreference();
+    this.enableUePackage = this.readEnableUePackage();
     const translationConfig = this.readTranslationConfig();
     this.translationEngine = translationConfig.engine;
     this.translationModels = translationConfig.models;
@@ -229,6 +231,11 @@ export class GraphPanel {
         }
         if (event.affectsConfiguration('multicode.codegen.outputProfile')) {
           this.postCodegenProfile();
+        }
+        if (event.affectsConfiguration('multicode.packages.enableUe')) {
+          this.enableUePackage = this.readEnableUePackage();
+          this.updateWebviewHtml();
+          this.postState();
         }
         if (event.affectsConfiguration('multicode.translation')) {
           const config = this.readTranslationConfig();
@@ -1069,6 +1076,10 @@ export class GraphPanel {
       updatedAt: new Date().toISOString(),
       dirty: true
     };
+  }
+
+  private readEnableUePackage(): boolean {
+    return vscode.workspace.getConfiguration('multicode').get<boolean>('packages.enableUe', false);
   }
 
   private readThemePreference(): ThemeSetting {
@@ -2535,6 +2546,8 @@ export class GraphPanel {
       preference: this.themePreference,
       hostTheme: this.getHostTheme(),
       displayLanguage: this.locale
+    })}; const initialPackageSettings = ${JSON.stringify({
+      enableUePackage: this.enableUePackage,
     })};</script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>

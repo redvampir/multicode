@@ -319,6 +319,11 @@
           "default": 200,
           "minimum": 50,
           "description": "Размер кэша переводов MarianMT"
+        },
+        "multicode.packages.enableUe": {
+          "type": "boolean",
+          "default": false,
+          "description": "Включить загрузку встроенного UE-пакета узлов (@multicode/ue)"
         }
       }
     }

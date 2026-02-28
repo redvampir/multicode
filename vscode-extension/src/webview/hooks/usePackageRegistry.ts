@@ -18,7 +18,11 @@ import { NodeTypeDefinition, NODE_TYPE_DEFINITIONS, NODE_CATEGORIES } from '../.
 
 // Стандартный пакет (встроен в бандл для простоты)
 // В будущем можно загружать через fetch или vscode API
-import stdPackage from '../../../../packages/std/package.json';
+import {
+  bundledPackageNamesInPriorityOrder,
+  resolveBundledPackages,
+  type BundledPackageSettings,
+} from '../../shared/bundledPackages';
 
 export interface UsePackageRegistryResult {
   /** Готов ли реестр (загружен ли стандартный пакет) */
@@ -119,40 +123,55 @@ function groupNodesByCategory(
 /**
  * Хук для работы с реестром пакетов
  */
-export function usePackageRegistry(): UsePackageRegistryResult {
+export function usePackageRegistry(settings?: Partial<BundledPackageSettings>): UsePackageRegistryResult {
   const [ready, setReady] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [version, setVersion] = useState(0); // Для триггера перерендера
+  const enableUePackage = settings?.enableUePackage ?? false;
   
-  // Загрузка стандартного пакета при монтировании
+  // Загрузка встроенных пакетов при монтировании.
+  // Важно: порядок фиксированный и воспроизводимый (std -> ue).
   useEffect(() => {
-    const loadStandardPackage = () => {
-      try {
-        const result = globalRegistry.loadPackage(stdPackage);
-        
-        if (!result.success) {
-          console.error('Failed to load @multicode/std:', result.errors);
-          setErrors(result.errors ?? ['Unknown error loading standard package']);
-        } else {
-          console.log('Loaded @multicode/std with', result.package?.nodeDefinitions.size, 'nodes');
-          // Триггер перерендера после загрузки
-          setVersion(v => v + 1);
+    const loadBundledPackages = () => {
+      const nextErrors: string[] = [];
+      const bundledPackages = resolveBundledPackages({ enableUePackage });
+
+      const desiredPackageNames = new Set(bundledPackages.map(pkg => pkg.name));
+
+      for (const packageName of bundledPackageNamesInPriorityOrder) {
+        if (!desiredPackageNames.has(packageName) && globalRegistry.getPackage(packageName)) {
+          globalRegistry.unloadPackage(packageName);
         }
-      } catch (err) {
-        console.error('Error loading standard package:', err);
-        setErrors([err instanceof Error ? err.message : String(err)]);
       }
-      
+
+      for (const bundledPackage of bundledPackages) {
+        if (globalRegistry.getPackage(bundledPackage.name)) {
+          continue;
+        }
+
+        try {
+          const result = globalRegistry.loadPackage(bundledPackage.manifest);
+          if (!result.success) {
+            nextErrors.push(...(result.errors ?? [`Unknown error loading ${bundledPackage.name}`]));
+            console.error(`Failed to load ${bundledPackage.name}:`, result.errors);
+            continue;
+          }
+
+          console.log('Loaded package', bundledPackage.name, 'with', result.package?.nodeDefinitions.size, 'nodes');
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          nextErrors.push(`${bundledPackage.name}: ${message}`);
+          console.error(`Error loading package ${bundledPackage.name}:`, err);
+        }
+      }
+
+      setErrors(nextErrors);
+      setVersion(v => v + 1);
       setReady(true);
     };
-    
-    // Загружаем только если ещё не загружен
-    if (!globalRegistry.getPackage('@multicode/std')) {
-      loadStandardPackage();
-    } else {
-      setReady(true);
-    }
-  }, []);
+
+    loadBundledPackages();
+  }, [enableUePackage]);
   
   // Подписка на изменения реестра
   useEffect(() => {

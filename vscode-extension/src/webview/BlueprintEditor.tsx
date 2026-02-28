@@ -65,6 +65,7 @@ import { VariableListPanel } from './VariableListPanel';
 import { PointerReferencePanel } from './PointerReferencePanel';
 import type { BlueprintFunction } from '../shared/blueprintTypes';
 import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
+import type { BundledPackageSettings } from '../shared/bundledPackages';
 import { resolveSymbolUiStatus, type SymbolBadgeState } from './externalSymbolUi';
 import {
   type AvailableVariableBinding,
@@ -1468,6 +1469,7 @@ export interface BlueprintEditorProps {
   integrations?: SourceIntegration[];
   activeFilePath?: string | null;
   resolveLocalizedSymbolName?: (symbol: SymbolDescriptor) => { value: string; stale: boolean };
+  packageSettings?: Partial<BundledPackageSettings>;
 }
 
 const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
@@ -1496,7 +1498,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     unloadPackage,
     registry,
     registryVersion,
-  } = usePackageRegistry();
+  } = usePackageRegistry(packageSettings);
 
   const packageRegistrySnapshot = useMemo(() => {
     const packageNodeTypes = Array.from(registry.getAllNodeDefinitions().keys()) as NodeType[];

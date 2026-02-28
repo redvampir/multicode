@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "savedAt": "2026-02-20T10:00:00.000Z",
+  "data": {
+    "id": "legacy-no-ue",
+    "name": "Legacy No UE",
+    "language": "cpp",
+    "displayLanguage": "ru",
+    "nodes": [
+      { "id": "n1", "label": "Start", "type": "Start" },
+      { "id": "n2", "label": "Print", "type": "Function" }
+    ],
+    "edges": [
+      { "id": "e1", "source": "n1", "target": "n2", "kind": "execution" }
+    ],
+    "updatedAt": "2026-02-20T10:00:00.000Z"
+  }
+}

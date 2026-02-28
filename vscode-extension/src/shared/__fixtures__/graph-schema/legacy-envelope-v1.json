@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "savedAt": "2026-02-19T09:30:00.000Z",
+  "graph": {
+    "id": "legacy-envelope",
+    "name": "Legacy Envelope",
+    "language": "cpp",
+    "displayLanguage": "en",
+    "nodes": [
+      { "id": "n1", "label": "Start", "type": "Start" }
+    ],
+    "edges": [],
+    "updatedAt": "2026-02-19T09:30:00.000Z"
+  }
+}

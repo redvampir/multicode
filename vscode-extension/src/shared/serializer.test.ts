@@ -12,6 +12,7 @@ import {
 import type { GraphState } from './graphState';
 import {
   legacyGraphWithoutUeFixture,
+  legacyEnvelopeGraphFixture,
   legacySerializedExportFixture,
   modernUeGraphFixture,
 } from './__fixtures__/graph-schema/regressionFixtures';
@@ -475,6 +476,16 @@ describe('serializer', () => {
       expect(migrated.language).toBe('cpp');
       expect(migrated.graphVersion).toBe(3);
       expect(migrated.classes).toBeUndefined();
+      expect(migrated.integrationBindings).toEqual([]);
+      expect(migrated.symbolLocalization).toEqual({});
+    });
+
+
+    it('мигрирует legacy envelope формата { graph } в новый контракт', () => {
+      const migrated = deserializeGraphState(legacyEnvelopeGraphFixture);
+
+      expect(migrated.id).toBe('legacy-envelope');
+      expect(migrated.graphVersion).toBe(3);
       expect(migrated.integrationBindings).toEqual([]);
       expect(migrated.symbolLocalization).toEqual({});
     });

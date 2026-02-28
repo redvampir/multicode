@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type GraphState } from './graphState';
+import type { SourceIntegration, SymbolLocalizationEntry } from './externalSymbols';
 
 const positionSchema = z.object({
   x: z.number(),
@@ -30,9 +31,27 @@ const graphEdgeSchema = z.object({
   blueprintEdge: z.unknown().optional()
 });
 
+const sourceIntegrationSchema: z.ZodType<SourceIntegration> = z.object({
+  integrationId: z.string(),
+  attachedFiles: z.array(z.string()),
+  mode: z.enum(['explicit', 'implicit']),
+  kind: z.enum(['library', 'framework', 'file']).optional(),
+  displayName: z.string().optional(),
+  version: z.string().optional(),
+});
+
+const symbolLocalizationEntrySchema: z.ZodType<SymbolLocalizationEntry> = z.object({
+  integrationId: z.string(),
+  symbolId: z.string(),
+  signatureHash: z.string().optional(),
+  localizedNameRu: z.string().optional(),
+  localizedNameEn: z.string().optional(),
+});
+
 export const graphStateSchema: z.ZodType<GraphState> = z.object({
   id: z.string(),
   name: z.string(),
+  graphVersion: z.number().int().positive().optional(),
   language: graphLanguageSchema,
   displayLanguage: graphDisplayLanguageSchema,
   nodes: z.array(graphNodeSchema),
@@ -42,6 +61,8 @@ export const graphStateSchema: z.ZodType<GraphState> = z.object({
   // Blueprint-style расширения
   variables: z.array(z.unknown()).optional(),
   functions: z.array(z.unknown()).optional(),
+  integrationBindings: z.array(sourceIntegrationSchema).optional(),
+  symbolLocalization: z.record(z.string(), symbolLocalizationEntrySchema).optional(),
 });
 
 const translationDirectionSchema = z.enum(['ru-en', 'en-ru']);

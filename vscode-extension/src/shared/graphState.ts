@@ -1,3 +1,5 @@
+import type { SourceIntegration, SymbolLocalizationEntry } from './externalSymbols';
+
 export type GraphLanguage = 'cpp' | 'rust' | 'asm';
 export type GraphDisplayLanguage = 'ru' | 'en';
 
@@ -26,6 +28,7 @@ export interface GraphEdge {
 export interface GraphState {
   id: string;
   name: string;
+  graphVersion?: number;
   language: GraphLanguage;
   displayLanguage: GraphDisplayLanguage;
   nodes: GraphNode[];
@@ -36,6 +39,10 @@ export interface GraphState {
   variables?: unknown[];
   /** Пользовательские функции (Blueprint-style) */
   functions?: unknown[];
+  /** Привязки графа к внешним источникам символов */
+  integrationBindings?: SourceIntegration[];
+  /** Локализация внешних символов по ключу symbolId/signatureHash */
+  symbolLocalization?: Record<string, SymbolLocalizationEntry>;
 }
 
 export const createDefaultGraphState = (): GraphState => {

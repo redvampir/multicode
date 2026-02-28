@@ -2,10 +2,11 @@
  * Тесты для хука usePackageRegistry
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { usePackageRegistry } from './usePackageRegistry';
 import { globalRegistry } from '../../shared/packageLoader';
+import * as bundledPackagesModule from '../../shared/bundledPackages';
 
 // Мок для стандартного пакета
 vi.mock('../../../../packages/std/package.json', () => ({
@@ -52,6 +53,10 @@ describe('usePackageRegistry', () => {
     globalRegistry.clear();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('должен загрузить стандартный пакет при монтировании', async () => {
     const { result } = renderHook(() => usePackageRegistry());
 
@@ -89,6 +94,53 @@ describe('usePackageRegistry', () => {
     expect(result.current.packages).toContainEqual(
       expect.objectContaining({ name: '@multicode/ue' })
     );
+  });
+
+
+  it('smoke: ошибка загрузки UE-пакета не ломает базовый реестр', async () => {
+    vi
+      .spyOn(bundledPackagesModule, 'resolveBundledPackages')
+      .mockReturnValue([
+        {
+          manifest: {
+            name: '@multicode/std',
+            version: '0.5.0',
+            displayName: 'Standard Library',
+            displayNameRu: 'Стандартная библиотека',
+            nodes: [
+              {
+                type: 'TestNode',
+                label: 'Test Node',
+                labelRu: 'Тестовый узел',
+                category: 'flow',
+                inputs: [],
+                outputs: [{ id: 'exec-out', name: '', dataType: 'execution' }],
+              },
+            ],
+          },
+          name: '@multicode/std',
+          enabledByDefault: true,
+        },
+        {
+          manifest: { name: '@multicode/ue' },
+          name: '@multicode/ue',
+          enabledByDefault: false,
+        },
+      ]);
+
+    const { result } = renderHook(() => usePackageRegistry({ enableUePackage: true }));
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    expect(result.current.getNode('TestNode')).toBeDefined();
+    expect(result.current.getNode('SpawnActor')).toBeUndefined();
+    expect(result.current.packages).toContainEqual(
+      expect.objectContaining({ name: '@multicode/std' })
+    );
+    expect(result.current.errors.length).toBeGreaterThan(0);
+
   });
 
   it('должен предоставить nodeDefinitions', async () => {

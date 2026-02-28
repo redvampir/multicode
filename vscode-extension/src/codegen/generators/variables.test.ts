@@ -11,6 +11,10 @@ import {
   SetVariableNodeGenerator,
   TypeConversionNodeGenerator,
   ClassMethodCallNodeGenerator,
+  ClassConstructorCallNodeGenerator,
+  GetMemberNodeGenerator,
+  SetMemberNodeGenerator,
+  StaticMethodCallNodeGenerator,
   createVariableGenerators,
 } from './variables';
 import type { BlueprintNode } from '../../shared/blueprintTypes';
@@ -1176,6 +1180,175 @@ describe('ClassMethodCallNodeGenerator', () => {
     expect(result.lines[0]).toContain('auto class_method_result_classmethodcall1 = player.jump(2.5);');
     expect((helpers.addError as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
+
+  it('should report error when configured class is missing', () => {
+    const node = createMockNode('ClassMethodCall', 'Call Method', {
+      properties: {
+        classId: 'class-missing',
+        methodId: 'method-jump',
+      },
+    });
+    const helpers = createMockHelpers();
+    const context = createMockContext();
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      node.id,
+      'TYPE_MISMATCH',
+      expect.stringContaining('Класс для вызова не найден'),
+      expect.stringContaining('Class not found')
+    );
+  });
+});
+
+describe('Class nodes generators', () => {
+  it('should generate constructor call for class', () => {
+    const generator = new ClassConstructorCallNodeGenerator();
+    const node = createMockNode('ClassConstructorCall', 'Construct', {
+      id: 'ctor-1',
+      properties: { classId: 'class-player' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      { id: 'class-player', name: 'Player', members: [], methods: [] },
+    ];
+    const helpers = createMockHelpers();
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines[0]).toContain('player class_instance_ctor1{};');
+  });
+
+  it('should generate member access expression for GetMember', () => {
+    const generator = new GetMemberNodeGenerator();
+    const node = createMockNode('GetMember', 'Get Member', {
+      properties: { classId: 'class-player', memberId: 'member-score' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [{ id: 'member-score', name: 'Score', dataType: 'int32', access: 'public' }],
+        methods: [],
+      },
+    ];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => (suffix === 'target' ? 'player' : null)),
+    });
+
+    const expr = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expr).toBe('player.score');
+  });
+
+  it('should report error for GetMember when member binding is invalid', () => {
+    const generator = new GetMemberNodeGenerator();
+    const node = createMockNode('GetMember', 'Get Member', {
+      properties: { classId: 'class-player', memberId: 'member-missing' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      { id: 'class-player', name: 'Player', members: [], methods: [] },
+    ];
+    const helpers = createMockHelpers();
+
+    const expr = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expr).toBe('0');
+    expect(helpers.addError).toHaveBeenCalledWith(
+      node.id,
+      'TYPE_MISMATCH',
+      expect.stringContaining('Поле класса не найдено'),
+      expect.stringContaining('Class member not found')
+    );
+  });
+
+  it('should generate SetMember assignment', () => {
+    const generator = new SetMemberNodeGenerator();
+    const node = createMockNode('SetMember', 'Set Member', {
+      properties: { classId: 'class-player', memberId: 'member-score' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [{ id: 'member-score', name: 'Score', dataType: 'int32', access: 'public' }],
+        methods: [],
+      },
+    ];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => {
+        if (suffix === 'target') return 'player';
+        if (suffix === 'value') return '42';
+        return null;
+      }),
+    });
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines[0]).toContain('player.score = 42;');
+  });
+
+  it('should generate static method call', () => {
+    const generator = new StaticMethodCallNodeGenerator();
+    const node = createMockNode('StaticMethodCall', 'Call Static', {
+      id: 'static-1',
+      properties: { classId: 'class-player', methodId: 'method-make' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [],
+        methods: [
+          {
+            id: 'method-make',
+            name: 'Create',
+            isStatic: true,
+            returnType: 'int32',
+            params: [],
+            access: 'public',
+          },
+        ],
+      },
+    ];
+    const helpers = createMockHelpers();
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines[0]).toContain('auto static_method_result_static1 = player::create();');
+  });
+
+  it('should report error for StaticMethodCall when method is not static', () => {
+    const generator = new StaticMethodCallNodeGenerator();
+    const node = createMockNode('StaticMethodCall', 'Call Static', {
+      properties: { classId: 'class-player', methodId: 'method-run' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [],
+        methods: [
+          { id: 'method-run', name: 'Run', returnType: 'execution', params: [], access: 'public' },
+        ],
+      },
+    ];
+    const helpers = createMockHelpers();
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines).toHaveLength(0);
+    expect(helpers.addError).toHaveBeenCalledWith(
+      node.id,
+      'TYPE_MISMATCH',
+      expect.stringContaining('не является статическим'),
+      expect.stringContaining('is not static')
+    );
+  });
 });
 
 // ============================================
@@ -1186,11 +1359,15 @@ describe('createVariableGenerators', () => {
   it('should return array with all variable generators', () => {
     const generators = createVariableGenerators();
 
-    expect(generators).toHaveLength(5);
+    expect(generators).toHaveLength(9);
     expect(generators[0]).toBeInstanceOf(VariableNodeGenerator);
     expect(generators[1]).toBeInstanceOf(GetVariableNodeGenerator);
     expect(generators[2]).toBeInstanceOf(SetVariableNodeGenerator);
     expect(generators[3]).toBeInstanceOf(ClassMethodCallNodeGenerator);
-    expect(generators[4]).toBeInstanceOf(TypeConversionNodeGenerator);
+    expect(generators[4]).toBeInstanceOf(ClassConstructorCallNodeGenerator);
+    expect(generators[5]).toBeInstanceOf(GetMemberNodeGenerator);
+    expect(generators[6]).toBeInstanceOf(SetMemberNodeGenerator);
+    expect(generators[7]).toBeInstanceOf(StaticMethodCallNodeGenerator);
+    expect(generators[8]).toBeInstanceOf(TypeConversionNodeGenerator);
   });
 });

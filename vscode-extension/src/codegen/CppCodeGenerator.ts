@@ -25,6 +25,9 @@ import type {
   BlueprintNodeType,
   BlueprintFunction,
   BlueprintVariable,
+  BlueprintClass,
+  BlueprintClassMember,
+  BlueprintClassMethod,
   VectorElementType,
 } from '../shared/blueprintTypes';
 import { NODE_TYPE_DEFINITIONS, normalizePointerMeta } from '../shared/blueprintTypes';
@@ -43,6 +46,7 @@ import {
   DEFAULT_CODEGEN_OPTIONS,
   indent,
   toValidIdentifier,
+  getCppType,
   getCppVariableType,
   getDefaultValue,
   normalizeArrayRank,
@@ -449,6 +453,13 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     // Генерировать тело кода (нужно сделать до headers, чтобы собрать includes)
     const bodyLines: string[] = [];
+
+    // Объявления и определения классов должны появиться до тела графа,
+    // чтобы вызовы узлов Class* могли ссылаться на корректные C++ типы.
+    bodyLines.push(...this.generateClassDeclarationsAndDefinitions(graph));
+    if (bodyLines.length > 0) {
+      bodyLines.push('');
+    }
     
     // Генерируем пользовательские функции перед main()
     if (graph.functions && graph.functions.length > 0) {
@@ -653,6 +664,130 @@ export class CppCodeGenerator implements ICodeGenerator {
         generationTimeMs: performance.now() - startTime,
       },
     };
+  }
+
+  private resolveCppType(dataType: PortDataType, typeName?: string): string {
+    const resolvedTypeName = typeof typeName === 'string' ? typeName.trim() : '';
+    if ((dataType === 'class' || dataType === 'pointer') && resolvedTypeName.length > 0) {
+      return resolvedTypeName;
+    }
+    return getCppType(dataType);
+  }
+
+  private formatClassMemberDefault(member: BlueprintClassMember): string {
+    if (member.defaultValue === undefined || member.defaultValue === null) {
+      return '';
+    }
+
+    if (member.dataType === 'string') {
+      return ` = ${this.formatPortLiteral(String(member.defaultValue))}`;
+    }
+
+    if (member.dataType === 'bool') {
+      return ` = ${Boolean(member.defaultValue) ? 'true' : 'false'}`;
+    }
+
+    if (typeof member.defaultValue === 'number') {
+      return ` = ${String(member.defaultValue)}`;
+    }
+
+    return '';
+  }
+
+  private formatMethodSignature(method: BlueprintClassMethod, className: string, withClassScope: boolean): string {
+    const returnType = this.resolveCppType(method.returnType, method.returnTypeName);
+    const methodName = toValidIdentifier(method.name);
+    const params = method.params
+      .map((param, index) => {
+        const paramType = this.resolveCppType(param.dataType, param.typeName);
+        const paramName = toValidIdentifier(param.name || `arg_${index}`);
+        return `${paramType} ${paramName}`;
+      })
+      .join(', ');
+
+    if (withClassScope) {
+      return `${returnType} ${className}::${methodName}(${params})`;
+    }
+
+    const constSuffix = method.isConst ? ' const' : '';
+    const staticPrefix = method.isStatic ? 'static ' : '';
+    const virtualPrefix = method.isVirtual ? 'virtual ' : '';
+    const overrideSuffix = method.isOverride ? ' override' : '';
+    return `${virtualPrefix}${staticPrefix}${returnType} ${methodName}(${params})${constSuffix}${overrideSuffix}`;
+  }
+
+  private generateClassDeclarationsAndDefinitions(graph: BlueprintGraphState): string[] {
+    const classes: BlueprintClass[] = Array.isArray(graph.classes) ? graph.classes : [];
+    if (classes.length === 0) {
+      return [];
+    }
+
+    const lines: string[] = [];
+    for (const blueprintClass of classes) {
+      const className = toValidIdentifier(blueprintClass.name || 'UnnamedClass');
+      lines.push(`class ${className} {`);
+
+      const membersByAccess = new Map<string, BlueprintClassMember[]>();
+      const methodsByAccess = new Map<string, BlueprintClassMethod[]>();
+
+      for (const member of blueprintClass.members) {
+        const access = member.access || 'private';
+        const list = membersByAccess.get(access) ?? [];
+        list.push(member);
+        membersByAccess.set(access, list);
+      }
+
+      for (const method of blueprintClass.methods) {
+        const access = method.access || 'private';
+        const list = methodsByAccess.get(access) ?? [];
+        list.push(method);
+        methodsByAccess.set(access, list);
+      }
+
+      for (const access of ['public', 'protected', 'private'] as const) {
+        const members = membersByAccess.get(access) ?? [];
+        const methods = methodsByAccess.get(access) ?? [];
+
+        if (members.length === 0 && methods.length === 0) {
+          continue;
+        }
+
+        lines.push(`${access}:`);
+        for (const member of members) {
+          const memberType = this.resolveCppType(member.dataType, member.typeName);
+          const memberName = toValidIdentifier(member.name);
+          lines.push(indent(1) + `${memberType} ${memberName}${this.formatClassMemberDefault(member)};`);
+        }
+
+        for (const method of methods) {
+          lines.push(indent(1) + `${this.formatMethodSignature(method, className, false)};`);
+        }
+      }
+
+      lines.push('};');
+      lines.push('');
+    }
+
+    for (const blueprintClass of classes) {
+      const className = toValidIdentifier(blueprintClass.name || 'UnnamedClass');
+      for (const method of blueprintClass.methods) {
+        lines.push(`${this.formatMethodSignature(method, className, true)} {`);
+        if (method.returnType !== 'execution') {
+          const returnType = this.resolveCppType(method.returnType, method.returnTypeName);
+          if (returnType !== 'void') {
+            lines.push(indent(1) + `return ${getDefaultValue(method.returnType)};`);
+          }
+        }
+        lines.push('}');
+        lines.push('');
+      }
+    }
+
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+
+    return lines;
   }
 
   private getRequiredHelperSet(context: CodeGenContext): Set<TypeConversionHelperId> {

@@ -220,6 +220,69 @@ describe('CppCodeGenerator', () => {
       expect(result.code).not.toContain('// Вывод строки');
     });
   });
+
+  describe('generate - Class declarations and class nodes', () => {
+    it('should generate class declarations before graph body', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const graph = createTestGraph([startNode]);
+      graph.classes = [
+        {
+          id: 'class-player',
+          name: 'Player',
+          members: [
+            {
+              id: 'member-score',
+              name: 'Score',
+              dataType: 'int32',
+              access: 'public',
+              defaultValue: 0,
+            },
+          ],
+          methods: [
+            {
+              id: 'method-jump',
+              name: 'Jump',
+              returnType: 'bool',
+              params: [],
+              access: 'public',
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('class player {');
+      expect(result.code).toContain('public:');
+      expect(result.code).toContain('int score = 0;');
+      expect(result.code).toContain('bool jump();');
+      expect(result.code).toContain('bool player::jump() {');
+      expect(result.code.indexOf('class player {')).toBeLessThan(result.code.indexOf('int main() {'));
+    });
+
+    it('should return explicit error for invalid class method binding', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const methodNode = createNode('ClassMethodCall', { x: 200, y: 0 }, 'call');
+      methodNode.properties = {
+        classId: 'class-missing',
+        methodId: 'method-missing',
+      };
+
+      const graph = createTestGraph(
+        [startNode, methodNode],
+        [createEdge('start', 'start-exec-out', 'call', 'exec-in')]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(false);
+      expect(result.errors.some((error) =>
+        error.code === CodeGenErrorCode.TYPE_MISMATCH &&
+        error.message.includes('Класс для вызова не найден')
+      )).toBe(true);
+    });
+  });
   
   describe('generate - Input node', () => {
     it('should generate Input with prompt', () => {

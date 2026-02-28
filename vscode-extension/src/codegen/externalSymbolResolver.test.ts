@@ -66,4 +66,24 @@ describe('validateExternalSymbols', () => {
     expect(result.errors[0].code).toBe(CodeGenErrorCode.EXTERNAL_SYMBOL_SIGNATURE_MISMATCH);
     expect(result.brokenNodeIds).toContain('node-1');
   });
+
+  it('codegen использует canonical name даже при наличии UI-локализации в узле', () => {
+    const graph = createGraph();
+    const node = graph.nodes[0];
+    if (!node.properties || typeof node.properties !== 'object') {
+      throw new Error('Ожидались properties у узла');
+    }
+    node.properties = {
+      ...node.properties,
+      externalSymbol: {
+        ...(node.properties as { externalSymbol: Record<string, unknown> }).externalSymbol,
+        localizedNameRu: 'печать',
+      },
+    };
+
+    const result = validateExternalSymbols(graph, symbols, integrations, () => 'hash-1');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.resolvedSymbolsByNodeId.get('node-1')?.name).toBe('print');
+  });
 });

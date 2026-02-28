@@ -63,6 +63,8 @@ import { FunctionListPanel } from './FunctionListPanel';
 import { VariableListPanel } from './VariableListPanel';
 import { PointerReferencePanel } from './PointerReferencePanel';
 import type { BlueprintFunction } from '../shared/blueprintTypes';
+import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
+import { resolveSymbolUiStatus, type SymbolBadgeState } from './externalSymbolUi';
 import {
   type AvailableVariableBinding,
   bindVariableToNode,
@@ -1159,6 +1161,10 @@ interface NodePaletteProps {
   categories: { id: string; label: string; labelRu: string }[];
   /** Пользовательские функции для отображения в палитре */
   userFunctions?: BlueprintFunction[];
+  externalSymbols?: SymbolDescriptor[];
+  integrations?: SourceIntegration[];
+  activeFilePath?: string | null;
+  resolveLocalizedSymbolName?: (symbol: SymbolDescriptor) => { value: string; stale: boolean };
 }
 
 const normalizePaletteSearchToken = (value: string): string =>
@@ -1175,10 +1181,21 @@ const NodePalette: React.FC<NodePaletteProps> = ({
   nodeDefinitions,
   categories,
   userFunctions = [],
+  externalSymbols = [],
+  integrations = [],
+  activeFilePath = null,
+  resolveLocalizedSymbolName,
 }) => {
   const [search, setSearch] = useState('');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [externalScopeFilter, setExternalScopeFilter] = useState<'all' | 'explicit' | 'implicit'>('all');
+  const [externalStatusFilter, setExternalStatusFilter] = useState<'all' | SymbolBadgeState>('all');
   const { screenToFlowPosition } = useReactFlow();
+
+  const integrationById = useMemo(
+    () => new Map(integrations.map((integration) => [integration.integrationId, integration])),
+    [integrations]
+  );
   
   const filteredCategories = useMemo(() => {
     const term = search.toLowerCase().trim();
@@ -1231,6 +1248,49 @@ const NodePalette: React.FC<NodePaletteProps> = ({
     
     return baseCats.filter(cat => cat.nodes.length > 0 || cat.userFunctions.length > 0);
   }, [search, displayLanguage, nodeDefinitions, categories, userFunctions]);
+
+  const filteredExternalSymbols = useMemo(() => {
+    const term = search.toLowerCase().trim();
+
+    return externalSymbols
+      .map((symbol) => {
+        const localized = resolveLocalizedSymbolName ? resolveLocalizedSymbolName(symbol) : { value: symbol.name, stale: false };
+        const integration = integrationById.get(symbol.integrationId);
+        const status = resolveSymbolUiStatus({
+          symbol,
+          integration,
+          localizationStale: localized.stale,
+          activeFilePath,
+        });
+
+        return { symbol, localized, integration, status };
+      })
+      .filter(({ symbol, localized, integration, status }) => {
+        if (externalScopeFilter !== 'all' && integration?.mode !== externalScopeFilter) {
+          return false;
+        }
+        if (externalStatusFilter !== 'all' && status.state !== externalStatusFilter) {
+          return false;
+        }
+        if (!term) {
+          return true;
+        }
+
+        return [symbol.name, symbol.id, symbol.integrationId, localized.value]
+          .join(' ')
+          .toLowerCase()
+          .includes(term);
+      })
+      .sort((left, right) => left.localized.value.localeCompare(right.localized.value, 'ru'));
+  }, [
+    externalSymbols,
+    resolveLocalizedSymbolName,
+    integrationById,
+    activeFilePath,
+    externalScopeFilter,
+    externalStatusFilter,
+    search,
+  ]);
   
   const handleDragStart = useCallback((e: React.DragEvent, type: NodeType) => {
     e.dataTransfer.setData('application/reactflow', type);
@@ -1351,6 +1411,32 @@ const NodePalette: React.FC<NodePaletteProps> = ({
             )}
           </div>
         ))}
+
+        {filteredExternalSymbols.length > 0 && (
+          <div>
+            <div style={editorStyles.categoryHeader}>{displayLanguage === 'ru' ? 'Внешние символы' : 'External symbols'}</div>
+            <div style={{ display: 'grid', gap: 6, padding: '0 12px 8px' }}>
+              <select value={externalScopeFilter} onChange={(event) => setExternalScopeFilter(event.currentTarget.value as 'all' | 'explicit' | 'implicit')}>
+                <option value="all">{displayLanguage === 'ru' ? 'Скоуп: все' : 'Scope: all'}</option>
+                <option value="explicit">{displayLanguage === 'ru' ? 'Скоуп: explicit' : 'Scope: explicit'}</option>
+                <option value="implicit">{displayLanguage === 'ru' ? 'Скоуп: implicit' : 'Scope: implicit'}</option>
+              </select>
+              <select value={externalStatusFilter} onChange={(event) => setExternalStatusFilter(event.currentTarget.value as 'all' | SymbolBadgeState)}>
+                <option value="all">{displayLanguage === 'ru' ? 'Статус: все' : 'Status: all'}</option>
+                <option value="ok">ok</option>
+                <option value="stale">stale</option>
+                <option value="broken">broken</option>
+                <option value="disabled">disabled</option>
+              </select>
+            </div>
+            {filteredExternalSymbols.map(({ symbol, localized, status }) => (
+              <div key={`${symbol.integrationId}:${symbol.id}`} style={editorStyles.nodeItem} title={symbol.name}>
+                <span>🔗 {localized.value}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.8 }}>{status.state}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1375,6 +1461,10 @@ export interface BlueprintEditorProps {
    * - `function-modal` — редактор графа функции (скрывает панель функций и вкладки графа).
    */
   uiMode?: 'default' | 'function-modal';
+  externalSymbols?: SymbolDescriptor[];
+  integrations?: SourceIntegration[];
+  activeFilePath?: string | null;
+  resolveLocalizedSymbolName?: (symbol: SymbolDescriptor) => { value: string; stale: boolean };
 }
 
 const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
@@ -1383,6 +1473,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   displayLanguage,
   forcedActiveFunctionId,
   uiMode = 'default',
+  externalSymbols = [],
+  integrations = [],
+  activeFilePath = null,
+  resolveLocalizedSymbolName,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -3887,6 +3981,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             nodeDefinitions={packageNodeDefinitions}
             categories={packageCategories}
             userFunctions={graph.functions ?? []}
+            externalSymbols={externalSymbols}
+            integrations={integrations}
+            activeFilePath={activeFilePath}
+            resolveLocalizedSymbolName={resolveLocalizedSymbolName}
           />
         </ReactFlow>
       </div>
@@ -3977,4 +4075,3 @@ export function BlueprintEditor(props: BlueprintEditorProps) {
 }
 
 export default BlueprintEditor;
-

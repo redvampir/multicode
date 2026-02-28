@@ -33,6 +33,7 @@ import {
 } from '../shared/graphSnapshot';
 import {
   extensionToWebviewMessageSchema,
+  type ExternalIpcResponse,
   parseGraphState,
   parseWebviewMessage,
   type ExtensionToWebviewMessage,
@@ -83,6 +84,14 @@ import {
   patchBindingBlock,
   type ParsedBindingBlock
 } from './codeBinding';
+import {
+  handleDependencyMapGet as orchestrateDependencyMapGet,
+  handleIntegrationAdd as orchestrateIntegrationAdd,
+  handleIntegrationReindex as orchestrateIntegrationReindex,
+  handleSymbolsQuery as orchestrateSymbolsQuery,
+  mapToIpcError,
+  safeExternalIpcResponse,
+} from './ipcOrchestration';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 type GeneratedCodeWriteResult =
@@ -163,6 +172,7 @@ export class GraphPanel {
   private graphBindingLoadSeq = 0;
   private graphBindingAutoSaveTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly extensionUri: vscode.Uri;
+  private reindexIntegrationSymbols: (integrationId: string | undefined, force: boolean) => Promise<number>;
 
   private readonly GRAPH_BINDING_AUTOSAVE_DELAY_MS = 450;
 
@@ -192,6 +202,14 @@ export class GraphPanel {
     this.translator = undefined;
     this.boundCodeDocumentUri = this.resolveWritableEditorUri(vscode.window.activeTextEditor);
     this.boundGraphBinding = undefined;
+    this.reindexIntegrationSymbols = async (integrationId: string | undefined) => {
+      const bindings = this.graphState.integrationBindings ?? [];
+      if (integrationId) {
+        const target = bindings.find((item) => item.integrationId === integrationId);
+        return target ? target.attachedFiles.length : 0;
+      }
+      return bindings.reduce((sum, item) => sum + item.attachedFiles.length, 0);
+    };
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
@@ -1296,27 +1314,15 @@ export class GraphPanel {
   }
 
   private handleMessageError(context: string, error: unknown): void {
-    const details = this.extractErrorDetails(error);
-    const composed = `${context}: ${details}`;
+    const mapped = mapToIpcError(error, 'E_MESSAGE_HANDLING', context);
+    const composed = `${context}: ${mapped.message}`;
     this.outputChannel.appendLine(composed);
     void vscode.window.showErrorMessage(composed);
     this.postLog('error', composed);
   }
 
   private extractErrorDetails(error: unknown): string {
-    if (typeof error === 'string') {
-      return error;
-    }
-    if (error && typeof error === 'object' && 'issues' in error) {
-      const issues = (error as { issues?: Array<{ message: string }> }).issues ?? [];
-      if (issues.length) {
-        return issues.map((issue) => issue.message).join('; ');
-      }
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return 'Неизвестная ошибка валидации сообщения';
+    return mapToIpcError(error, 'E_UNKNOWN', 'Неизвестная ошибка').message;
   }
 
   private postLog(level: 'info' | 'warn' | 'error', message: string): void {
@@ -1338,6 +1344,39 @@ export class GraphPanel {
       return;
     }
     void this.panel.webview.postMessage(parsed.data);
+  }
+
+  private postExternalIpcResponse(response: ExternalIpcResponse): void {
+    const parsed = safeExternalIpcResponse(response);
+    if (!parsed.success) {
+      this.handleMessageError('IPC-ответ не прошёл схему', parsed.error);
+      return;
+    }
+
+    void this.panel.webview.postMessage(parsed.data);
+  }
+
+  private handleIntegrationAdd(payload: { integration: { integrationId: string; attachedFiles: string[]; mode: 'explicit' | 'implicit'; kind?: 'library' | 'framework' | 'file'; displayName?: string; version?: string } }): Promise<Extract<ExternalIpcResponse, { type: 'integration/add' }>> {
+    return orchestrateIntegrationAdd(this.graphState, payload, (patch) => {
+      this.markState(patch);
+      this.postState();
+    });
+  }
+
+  private handleIntegrationReindex(payload?: { integrationId?: string; force?: boolean }): Promise<Extract<ExternalIpcResponse, { type: 'integration/reindex' }>> {
+    return orchestrateIntegrationReindex(payload, (integrationId, force) => this.reindexIntegrationSymbols(integrationId, force));
+  }
+
+  private handleSymbolsQuery(payload: { query: string; integrationId?: string; limit?: number }): Promise<Extract<ExternalIpcResponse, { type: 'symbols/query' }>> {
+    return orchestrateSymbolsQuery(this.graphState, payload);
+  }
+
+  private handleDependencyMapGet(payload?: { rootFile?: string; includeSystem?: boolean }): Promise<Extract<ExternalIpcResponse, { type: 'dependency-map/get' }>> {
+    return orchestrateDependencyMapGet(
+      this.graphState,
+      payload,
+      this.boundCodeDocumentUri?.fsPath ?? 'graph-root'
+    );
   }
 
   private handleMessage(message: WebviewToExtensionMessage): void {
@@ -1409,6 +1448,59 @@ export class GraphPanel {
         this.outputChannel.appendLine(
           `[MultiCode][trace] ${message.payload.category}: ${message.payload.message}`
         );
+        break;
+      case 'integration/add':
+        void this.handleIntegrationAdd(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'integration/remove': {
+        const current = this.graphState.integrationBindings ?? [];
+        const next = current.filter((item) => item.integrationId !== message.payload.integrationId);
+        this.markState({ integrationBindings: next });
+        this.postState();
+        this.postExternalIpcResponse({
+          type: 'integration/remove',
+          ok: true,
+          payload: {
+            integrationId: message.payload.integrationId,
+            removed: next.length !== current.length,
+          },
+        });
+        break;
+      }
+      case 'integration/list':
+        this.postExternalIpcResponse({
+          type: 'integration/list',
+          ok: true,
+          payload: {
+            integrations: (this.graphState.integrationBindings ?? []).filter(
+              (item) => message.payload?.includeImplicit || item.mode === 'explicit'
+            ),
+          },
+        });
+        break;
+      case 'integration/reindex':
+        void this.handleIntegrationReindex(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'integration/diagnostics':
+        this.postExternalIpcResponse({
+          type: 'integration/diagnostics',
+          ok: true,
+          payload: {
+            diagnostics: (this.graphState.integrationBindings ?? [])
+              .filter((item) => !message.payload?.integrationId || item.integrationId === message.payload.integrationId)
+              .map((item) => ({
+                integrationId: item.integrationId,
+                level: 'info' as const,
+                message: `Интеграция ${item.integrationId} активна`,
+              })),
+          },
+        });
+        break;
+      case 'symbols/query':
+        void this.handleSymbolsQuery(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'dependency-map/get':
+        void this.handleDependencyMapGet(message.payload).then((response) => this.postExternalIpcResponse(response));
         break;
       default:
         break;
@@ -2322,7 +2414,6 @@ const getNonce = (): string => {
     .map(() => possible.charAt(Math.floor(Math.random() * possible.length)))
     .join('');
 };
-
 
 
 

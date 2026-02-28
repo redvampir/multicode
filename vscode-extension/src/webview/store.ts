@@ -3,6 +3,16 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { GraphEdge, GraphNode, GraphState } from '../shared/graphState';
 import { addNode, applyLayout as applyLayoutAction, connect, deleteItems } from './storeActions';
 import type { GraphStoreApi } from './storeActions';
+import { createDependencyMapSlice, type DependencyMapSlice } from './store/slices/dependencyMapSlice';
+import { createIntegrationSlice, type IntegrationSlice } from './store/slices/integrationSlice';
+import {
+  createSymbolCatalogSlice,
+  type SymbolCatalogSlice
+} from './store/slices/symbolCatalogSlice';
+import {
+  createSymbolLocalizationSlice,
+  type SymbolLocalizationSlice
+} from './store/slices/symbolLocalizationSlice';
 
 export type SearchResult = {
   id: string;
@@ -63,7 +73,11 @@ export const normalizeLayoutSettings = (
 
 type GraphClipboard = { nodes: GraphNode[]; edges: GraphEdge[] } | null;
 
-export interface GraphStore {
+export interface GraphStore
+  extends IntegrationSlice,
+    SymbolCatalogSlice,
+    DependencyMapSlice,
+    SymbolLocalizationSlice {
   graph: GraphState;
   layout: LayoutSettings;
   lastChangeOrigin: ChangeOrigin;
@@ -194,7 +208,13 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
       };
 
       return {
+      ...createIntegrationSlice(set, get, api as never),
+      ...createDependencyMapSlice(set, get, api as never),
+      ...createSymbolCatalogSlice(set, get, api as never),
+      ...createSymbolLocalizationSlice(set, get, api as never),
       graph: withTimestamp({ ...initialGraph, nodes: ensurePosition(initialGraph.nodes) }),
+      integrations: initialGraph.integrationBindings ?? [],
+      symbolLocalizations: initialGraph.symbolLocalization ?? {},
       layout: normalizeLayoutSettings(initialLayout),
       lastChangeOrigin: 'remote',
       historyPast: [],
@@ -233,6 +253,8 @@ export const createGraphStore = (initialGraph: GraphState, initialLayout?: Parti
 
         set({
           graph: { ...normalized, dirty },
+          integrations: normalized.integrationBindings ?? get().integrations,
+          symbolLocalizations: normalized.symbolLocalization ?? get().symbolLocalizations,
           lastChangeOrigin: options?.origin ?? 'local',
           selectedNodeIds: allowedSelection,
           selectedEdgeIds: allowedEdges,

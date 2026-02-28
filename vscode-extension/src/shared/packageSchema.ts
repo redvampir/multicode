@@ -4,21 +4,20 @@
  */
 
 import { z } from 'zod';
-import { NODE_CATEGORIES, PORT_DATA_TYPES } from './portTypeContract';
+import {
+  NodeCategorySchema,
+  PortDataTypeSchema,
+  type NodeCategory,
+  type PortDataType,
+} from './dataTypeCategoryRegistry';
 
 // ============================================
 // Базовые типы
 // ============================================
 
-/** Типы данных портов */
-export const PortDataTypeSchema = z.enum(PORT_DATA_TYPES);
-
-export type PortDataType = z.infer<typeof PortDataTypeSchema>;
-
-/** Категории узлов */
-export const NodeCategorySchema = z.enum(NODE_CATEGORIES);
-
-export type NodeCategory = z.infer<typeof NodeCategorySchema>;
+/** Типы данных портов и категории узлов берутся из единого реестра. */
+export { PortDataTypeSchema, NodeCategorySchema };
+export type { PortDataType, NodeCategory };
 
 // ============================================
 // Порты

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { type GraphState } from './graphState';
 import type { SourceIntegration, SymbolDescriptor, SymbolLocalizationEntry } from './externalSymbols';
-import { PortDataTypeSchema } from './packageSchema';
+import { PortDataTypeSchema } from './dataTypeCategoryRegistry';
 
 const positionSchema = z.object({
   x: z.number(),

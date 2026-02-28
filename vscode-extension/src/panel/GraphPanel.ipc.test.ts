@@ -136,6 +136,64 @@ describe('GraphPanel IPC orchestration', () => {
     }
   });
 
+
+  it('возвращает class/upsert с валидным payload и сохраняет members/methods', async () => {
+    const state = createBaseState();
+
+    const response = await handleClassUpsert(
+      state,
+      {
+        classItem: {
+          id: 'class-weapon',
+          name: 'Weapon',
+          members: [{ id: 'member-damage', name: 'damage', dataType: 'int32', access: 'private' }],
+          methods: [
+            {
+              id: 'method-fire',
+              name: 'fire',
+              returnType: 'void',
+              params: [{ id: 'param-burst', name: 'burst', dataType: 'int32' }],
+              access: 'public',
+            },
+          ],
+        },
+      },
+      (patch) => {
+        state.classes = patch.classes;
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.payload.classItem.members).toHaveLength(1);
+      expect(response.payload.classItem.methods).toHaveLength(1);
+    }
+    expect(state.classes).toHaveLength(1);
+  });
+
+  it('возвращает E_VALIDATION для class/upsert с невалидным payload', async () => {
+    const state = createBaseState();
+
+    const response = await handleClassUpsert(
+      state,
+      {
+        classItem: {
+          id: 'class-invalid',
+          name: 'Invalid',
+          members: 'broken',
+          methods: [],
+        },
+      },
+      () => undefined
+    );
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) {
+      expect(response.error.code).toBe('E_VALIDATION');
+      expect(response.error.message.length).toBeGreaterThan(0);
+    }
+  });
+
   it('успешно удаляет класс через class/delete', async () => {
     const state = createBaseState();
     state.classes = [{ id: 'class-player', name: 'Player', members: [], methods: [] }];

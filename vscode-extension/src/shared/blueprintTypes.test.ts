@@ -730,6 +730,22 @@ describe('blueprintTypes - Migration', () => {
       expect(newState.nodes[2].type).toBe('Variable');
       expect(newState.nodes[3].type).toBe('Custom'); // Unknown maps to Custom
     });
+
+    it('should migrate legacy graph without classes into empty classes array', () => {
+      const oldState: GraphState = {
+        id: 'legacy-no-classes',
+        name: 'Legacy Graph',
+        language: 'cpp',
+        displayLanguage: 'ru',
+        nodes: [],
+        edges: [],
+        updatedAt: '2024-01-01',
+      };
+
+      const migrated = migrateToBlueprintFormat(oldState);
+
+      expect(migrated.classes).toEqual([]);
+    });
   });
 
 
@@ -775,6 +791,44 @@ describe('blueprintTypes - Migration', () => {
 
     expect(restored.classes).toHaveLength(1);
     expect(restored.classes?.[0].name).toBe('Player');
+  });
+
+  it('should preserve class members and methods through migrate round-trip', () => {
+    const oldState: GraphState = {
+      id: 'legacy-class-roundtrip',
+      name: 'Legacy Class Graph',
+      language: 'cpp',
+      displayLanguage: 'ru',
+      nodes: [],
+      edges: [],
+      updatedAt: '2024-01-01',
+      classes: [
+        {
+          id: 'class-enemy',
+          name: 'Enemy',
+          members: [
+            { id: 'member-health', name: 'health', dataType: 'int32', access: 'private', defaultValue: 100 },
+          ],
+          methods: [
+            {
+              id: 'method-attack',
+              name: 'Attack',
+              returnType: 'bool',
+              params: [{ id: 'param-damage', name: 'damage', dataType: 'int32' }],
+              access: 'public',
+              isConst: true,
+            },
+          ],
+        },
+      ],
+    };
+
+    const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(migrateToBlueprintFormat(oldState)));
+
+    expect(restored.classes).toHaveLength(1);
+    const legacyClass = oldState.classes?.[0] as { members: unknown[]; methods: unknown[] } | undefined;
+    expect(restored.classes?.[0].members).toEqual(legacyClass?.members);
+    expect(restored.classes?.[0].methods).toEqual(legacyClass?.methods);
   });
 
   describe('migrateFromBlueprintFormat', () => {

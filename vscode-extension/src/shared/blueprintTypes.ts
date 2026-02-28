@@ -126,8 +126,12 @@ export interface NodePort extends PortDefinition {
   typeName?: string;
   /** Идентификатор класса для портов dataType='class' */
   classId?: string;
-  /** Идентификатор целевого класса для dataType='pointer' (если указатель указывает на class) */
+  /** Идентификатор целевого класса для dataType='pointer/object-reference' */
   targetClassId?: string;
+  /** Единый идентификатор типа для policy-валидации */
+  typeId?: string;
+  /** Версия policy-правил совместимости */
+  compatibilityPolicyVersion?: string;
   /** Позиция на узле (индекс сверху вниз) */
   index: number;
   /** Текущее значение (если задано пользователем) */
@@ -395,6 +399,7 @@ export const VARIABLE_TYPE_COLORS: Record<PortDataType, string> = {
   vector: '#FFC107',     // 🎨 Жёлтый — vector<T>
   pointer: '#2196F3',    // 🎨 Синий — умный указатель (std::shared_ptr)
   class: '#3F51B5',      // 🎨 Индиго — класс/экземпляр по значению
+  'object-reference': '#4A148C', // 🎨 Фиолетовый — ссылка на объект
   array: '#FF9800',      // 🎨 Оранжевый — массив
   any: '#9E9E9E',
 };
@@ -411,13 +416,14 @@ export const VARIABLE_TYPE_LABELS: Record<PortDataType, { ru: string; en: string
   vector: { ru: 'Вектор', en: 'Vector' },
   pointer: { ru: 'Указатель', en: 'Pointer' },
   class: { ru: 'Класс', en: 'Class' },
+  'object-reference': { ru: 'Ссылка на объект', en: 'Object Reference' },
   array: { ru: 'Массив', en: 'Array' },
   any: { ru: 'Любой', en: 'Any' },
 };
 
 /** Типы данных для переменных (без execution) */
 export const VARIABLE_DATA_TYPES: PortDataType[] = [
-  'bool', 'int32', 'int64', 'float', 'double', 'string', 'vector', 'pointer', 'class', 'array'
+  'bool', 'int32', 'int64', 'float', 'double', 'string', 'vector', 'pointer', 'class', 'object-reference', 'array'
 ];
 
 
@@ -606,6 +612,14 @@ const isNodePort = (value: unknown): value is NodePort => {
   }
 
   if (value.targetClassId !== undefined && typeof value.targetClassId !== 'string') {
+    return false;
+  }
+
+  if (value.typeId !== undefined && typeof value.typeId !== 'string') {
+    return false;
+  }
+
+  if (value.compatibilityPolicyVersion !== undefined && typeof value.compatibilityPolicyVersion !== 'string') {
     return false;
   }
 

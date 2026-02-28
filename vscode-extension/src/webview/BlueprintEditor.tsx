@@ -51,6 +51,7 @@ import {
   formatTypeConversionLabel,
   validateDataPortCompatibility,
 } from '../shared/typeConversions';
+import { TYPE_COMPATIBILITY_POLICY_VERSION, type CompatibilityPolicyContext } from '../shared/typeCompatibilityPolicy';
 import { CodePreviewPanel } from './CodePreviewPanel';
 import { PackageManagerPanel } from './PackageManagerPanel';
 import { useUndoRedo, useClipboard, useAutoLayout, usePackageRegistry } from './hooks';
@@ -1482,6 +1483,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   integrations = [],
   activeFilePath = null,
   resolveLocalizedSymbolName,
+  packageSettings,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -1499,6 +1501,36 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     registry,
     registryVersion,
   } = usePackageRegistry(packageSettings);
+
+  const compatibilityPolicyContext = useMemo<CompatibilityPolicyContext>(() => {
+    const inheritance: Record<string, string[]> = {};
+    for (const info of registry.getPackageList()) {
+      const pkg = registry.getPackage(info.name);
+      const policy = pkg?.manifest.contributes?.typeCompatibilityPolicy;
+      if (!policy) {
+        continue;
+      }
+      for (const entry of policy.hierarchy) {
+        inheritance[entry.typeId] = [...entry.parents];
+      }
+    }
+
+    if (Object.keys(inheritance).length === 0) {
+      return {
+        hierarchy: {
+          policyVersion: TYPE_COMPATIBILITY_POLICY_VERSION,
+          inheritance: {},
+        },
+      };
+    }
+
+    return {
+      hierarchy: {
+        policyVersion: TYPE_COMPATIBILITY_POLICY_VERSION,
+        inheritance,
+      },
+    };
+  }, [registry, registryVersion]);
 
   const packageRegistrySnapshot = useMemo(() => {
     const packageNodeTypes = Array.from(registry.getAllNodeDefinitions().keys()) as NodeType[];
@@ -2510,7 +2542,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
     if (sourcePort.dataType === 'execution' || targetPort.dataType === 'execution') {
       if (sourcePort.dataType !== 'execution' || targetPort.dataType !== 'execution') {
-        const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
+        const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
         setNormalizationToast(message);
         return;
       }
@@ -2544,9 +2576,10 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       return;
     }
 
-    const dataPortCompatibility = validateDataPortCompatibility(sourcePort, targetPort);
+    const dataPortCompatibility = validateDataPortCompatibility(sourcePort, targetPort, compatibilityPolicyContext);
     if (!dataPortCompatibility.compatible) {
-      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
+      console.warn('[TypeCompatibility]', dataPortCompatibility.diagnostic);
       setNormalizationToast(message);
       return;
     }
@@ -2586,7 +2619,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
     const conversionRule = findTypeConversionRule(sourcePort.dataType, targetPort.dataType);
     if (!conversionRule) {
-      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
       setNormalizationToast(message);
       return;
     }
@@ -2678,7 +2711,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
 
     if (!conversionInputPortId || !conversionOutputPortId) {
-      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage);
+      const message = formatIncompatiblePortMessage(sourcePort, targetPort, displayLanguage, compatibilityPolicyContext);
       setNormalizationToast(message);
       return;
     }

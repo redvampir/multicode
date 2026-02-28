@@ -152,6 +152,8 @@ export class PackageLoader {
       dataType: portDef.dataType as PortDataType,
       direction,
       typeName: portDef.typeName,
+      typeId: (portDef as PortDefinition & { typeId?: string }).typeId,
+      compatibilityPolicyVersion: (portDef as PortDefinition & { compatibilityPolicyVersion?: string }).compatibilityPolicyVersion,
       defaultValue: portDef.defaultValue ?? undefined,
       hidden: portDef.hidden,
     };

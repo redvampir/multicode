@@ -71,7 +71,9 @@
           "name": "Class",
           "nameRu": "Класс",
           "dataType": "class",
-          "typeName": "UClass*"
+          "typeName": "UClass*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
         }
       ],
       "outputs": [
@@ -85,9 +87,40 @@
           "name": "Actor",
           "nameRu": "Actor",
           "dataType": "pointer",
-          "typeName": "AActor*"
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
         }
       ]
     }
-  ]
+  ],
+  "contributes": {
+    "typeCompatibilityPolicy": {
+      "version": "2.0.0",
+      "hierarchy": [
+        {
+          "typeId": "UE.Object",
+          "parents": []
+        },
+        {
+          "typeId": "UE.Actor",
+          "parents": [
+            "UE.Object"
+          ]
+        },
+        {
+          "typeId": "UE.Pawn",
+          "parents": [
+            "UE.Actor"
+          ]
+        },
+        {
+          "typeId": "UE.Character",
+          "parents": [
+            "UE.Pawn"
+          ]
+        }
+      ]
+    }
+  }
 }

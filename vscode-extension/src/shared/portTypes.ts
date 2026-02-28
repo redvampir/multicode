@@ -37,6 +37,7 @@ export const PORT_TYPE_COLORS: Record<PortDataType, { main: string; light: strin
   vector:    { main: '#FFC107', light: '#FFCA28', dark: '#FFB300' },
   pointer:   { main: '#2196F3', light: '#42A5F5', dark: '#1E88E5' },
   class:     { main: '#3F51B5', light: '#5C6BC0', dark: '#303F9F' },
+  'object-reference': { main: '#4A148C', light: '#6A1B9A', dark: '#311B92' },
   array:     { main: '#FF9800', light: '#FFA726', dark: '#FB8C00' },
   any:       { main: '#9E9E9E', light: '#BDBDBD', dark: '#757575' },
 };
@@ -53,6 +54,7 @@ export const PORT_TYPE_ICONS: Record<PortDataType, string> = {
   vector:    '↗',
   pointer:   '◆',
   class:     '■',
+  'object-reference': '⬢',
   array:     '[]',
   any:       '*',
 };
@@ -84,7 +86,7 @@ export function areTypesCompatible(from: PortDataType, to: PortDataType): boolea
   }
   
   // Объектные типы совместимы между собой
-  const objectLikeTypes: PortDataType[] = ['pointer', 'class'];
+  const objectLikeTypes: PortDataType[] = ['pointer', 'class', 'object-reference'];
   if (objectLikeTypes.includes(from) && objectLikeTypes.includes(to)) {
     return true;
   }
@@ -110,6 +112,7 @@ export function getTypeDisplayName(type: PortDataType): string {
     vector:    'Vector',
     pointer:   'Pointer',
     class:     'Class',
+    'object-reference': 'Object Reference',
     array:     'Array',
     any:       'Wildcard',
   };

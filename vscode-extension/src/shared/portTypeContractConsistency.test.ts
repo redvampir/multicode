@@ -27,13 +27,13 @@ describe('portTypeContract consistency', () => {
     expect(nodeSchema.$defs?.port?.properties?.dataType?.enum).toEqual([...PORT_DATA_TYPES]);
   });
 
-  it('явно покрывает UE-типы pointer/class в schema и zod', () => {
+  it('явно покрывает UE-типы pointer/class/object-reference в schema и zod', () => {
     const nodeSchema = readNodeSchema();
     const schemaDataTypes = nodeSchema.$defs?.port?.properties?.dataType?.enum ?? [];
     const schemaCategories = nodeSchema.properties?.category?.enum ?? [];
 
-    expect(schemaDataTypes).toEqual(expect.arrayContaining(['pointer', 'class']));
-    expect(PortDataTypeSchema.options).toEqual(expect.arrayContaining(['pointer', 'class']));
+    expect(schemaDataTypes).toEqual(expect.arrayContaining(['pointer', 'class', 'object-reference']));
+    expect(PortDataTypeSchema.options).toEqual(expect.arrayContaining(['pointer', 'class', 'object-reference']));
     expect(schemaCategories).toEqual(expect.arrayContaining(['pointer', 'class', 'collection']));
     expect(NodeCategorySchema.options).toEqual(expect.arrayContaining(['pointer', 'class', 'collection']));
   });

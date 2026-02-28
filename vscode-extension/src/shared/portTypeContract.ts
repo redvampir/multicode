@@ -14,6 +14,7 @@ export const PORT_DATA_TYPES = [
   'vector',
   'pointer',
   'class',
+  'object-reference',
   'array',
   'any',
 ] as const;

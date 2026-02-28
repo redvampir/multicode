@@ -31,6 +31,8 @@ export const PortDefinitionSchema = z.object({
   nameRu: z.string().optional(),
   dataType: PortDataTypeSchema,
   typeName: z.string().optional(),
+  typeId: z.string().min(1).optional(),
+  compatibilityPolicyVersion: z.string().regex(/^\d+\.\d+\.\d+$/).optional(),
   defaultValue: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
   hidden: z.boolean().default(false),
   multi: z.boolean().default(false),
@@ -184,10 +186,26 @@ export type Theme = z.infer<typeof ThemeSchema>;
 // Contributes (дополнительные вклады)
 // ============================================
 
+
+export const TypeHierarchyEntrySchema = z.object({
+  typeId: z.string().min(1),
+  parents: z.array(z.string().min(1)).default([]),
+});
+
+export type TypeHierarchyEntry = z.infer<typeof TypeHierarchyEntrySchema>;
+
+export const TypeCompatibilityPolicySchema = z.object({
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  hierarchy: z.array(TypeHierarchyEntrySchema).default([]),
+});
+
+export type TypeCompatibilityPolicy = z.infer<typeof TypeCompatibilityPolicySchema>;
+
 export const ContributesSchema = z.object({
   portTypes: z.array(CustomPortTypeSchema).optional(),
   themes: z.array(ThemeSchema).optional(),
   snippets: z.array(SnippetSchema).optional(),
+  typeCompatibilityPolicy: TypeCompatibilityPolicySchema.optional(),
 });
 
 export type Contributes = z.infer<typeof ContributesSchema>;

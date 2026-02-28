@@ -13,6 +13,7 @@ const graphDisplayLanguageSchema = z.enum(['ru', 'en']);
 const graphEdgeKindSchema = z.enum(['execution', 'data']);
 const cppStandardSchema = z.enum(['cpp14', 'cpp17', 'cpp20', 'cpp23']);
 const codegenOutputProfileSchema = z.enum(['clean', 'learn', 'debug', 'recovery']);
+const blueprintClassAccessSchema = z.enum(['public', 'protected', 'private']);
 
 const graphNodeSchema = z.object({
   id: z.string(),
@@ -138,6 +139,31 @@ const validationIssueSchema = z.object({
   edges: z.array(z.string()).optional()
 });
 
+export const blueprintClassMemberSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  dataType: z.string().min(1),
+  typeName: z.string().min(1).optional(),
+  access: blueprintClassAccessSchema,
+});
+
+export const blueprintClassMethodSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  returnType: z.string().min(1),
+  returnTypeName: z.string().min(1).optional(),
+  access: blueprintClassAccessSchema,
+  signature: z.string().min(1).optional(),
+});
+
+export const blueprintClassSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  namespace: z.string().min(1).optional(),
+  members: z.array(blueprintClassMemberSchema),
+  methods: z.array(blueprintClassMethodSchema),
+});
+
 export const validationResultSchema = z.object({
   ok: z.boolean(),
   errors: z.array(z.string()),
@@ -215,6 +241,38 @@ const dependencyMapGetRequestSchema = z.object({
   }).optional(),
 });
 
+export const classUpsertRequestSchema = z.object({
+  type: z.literal('class/upsert'),
+  payload: z.object({
+    classItem: blueprintClassSchema,
+  }),
+});
+
+export const classDeleteRequestSchema = z.object({
+  type: z.literal('class/delete'),
+  payload: z.object({
+    classId: z.string().min(1),
+  }),
+});
+
+export const classReorderMemberRequestSchema = z.object({
+  type: z.literal('class/reorderMember'),
+  payload: z.object({
+    classId: z.string().min(1),
+    memberId: z.string().min(1),
+    targetIndex: z.number().int().nonnegative(),
+  }),
+});
+
+export const classReorderMethodRequestSchema = z.object({
+  type: z.literal('class/reorderMethod'),
+  payload: z.object({
+    classId: z.string().min(1),
+    methodId: z.string().min(1),
+    targetIndex: z.number().int().nonnegative(),
+  }),
+});
+
 const integrationAddResponseSchema = makeIpcResponseSchema(
   'integration/add',
   z.object({ integration: sourceIntegrationSchema })
@@ -265,6 +323,39 @@ const dependencyMapGetResponseSchema = makeIpcResponseSchema(
   })
 );
 
+const classUpsertResponseSchema = makeIpcResponseSchema(
+  'class/upsert',
+  z.object({
+    classItem: blueprintClassSchema,
+  })
+);
+
+const classDeleteResponseSchema = makeIpcResponseSchema(
+  'class/delete',
+  z.object({
+    classId: z.string(),
+    removed: z.boolean(),
+  })
+);
+
+const classReorderMemberResponseSchema = makeIpcResponseSchema(
+  'class/reorderMember',
+  z.object({
+    classId: z.string(),
+    memberId: z.string(),
+    targetIndex: z.number().int().nonnegative(),
+  })
+);
+
+const classReorderMethodResponseSchema = makeIpcResponseSchema(
+  'class/reorderMethod',
+  z.object({
+    classId: z.string(),
+    methodId: z.string(),
+    targetIndex: z.number().int().nonnegative(),
+  })
+);
+
 export const externalIpcRequestSchema = z.discriminatedUnion('type', [
   integrationAddRequestSchema,
   integrationRemoveRequestSchema,
@@ -273,6 +364,10 @@ export const externalIpcRequestSchema = z.discriminatedUnion('type', [
   integrationDiagnosticsRequestSchema,
   symbolsQueryRequestSchema,
   dependencyMapGetRequestSchema,
+  classUpsertRequestSchema,
+  classDeleteRequestSchema,
+  classReorderMemberRequestSchema,
+  classReorderMethodRequestSchema,
 ]);
 
 export const externalIpcResponseSchema = z.union([
@@ -283,9 +378,13 @@ export const externalIpcResponseSchema = z.union([
   integrationDiagnosticsResponseSchema,
   symbolsQueryResponseSchema,
   dependencyMapGetResponseSchema,
+  classUpsertResponseSchema,
+  classDeleteResponseSchema,
+  classReorderMemberResponseSchema,
+  classReorderMethodResponseSchema,
 ]);
 
-export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
+export const extensionToWebviewMessageSchema = z.union([
   z.object({ type: z.literal('setState'), payload: graphStateSchema }),
   z.object({ type: z.literal('toast'), payload: toastPayloadSchema }),
   z.object({ type: z.literal('validationResult'), payload: validationResultSchema }),
@@ -314,7 +413,55 @@ export const extensionToWebviewMessageSchema = z.discriminatedUnion('type', [
     payload: z.object({
       profile: codegenOutputProfileSchema
     })
-  })
+  }),
+  z.object({
+    type: z.literal('class/upsert'),
+    ok: z.literal(true),
+    payload: z.object({ classItem: blueprintClassSchema }),
+  }),
+  z.object({
+    type: z.literal('class/upsert'),
+    ok: z.literal(false),
+    error: ipcErrorSchema,
+  }),
+  z.object({
+    type: z.literal('class/delete'),
+    ok: z.literal(true),
+    payload: z.object({ classId: z.string(), removed: z.boolean() }),
+  }),
+  z.object({
+    type: z.literal('class/delete'),
+    ok: z.literal(false),
+    error: ipcErrorSchema,
+  }),
+  z.object({
+    type: z.literal('class/reorderMember'),
+    ok: z.literal(true),
+    payload: z.object({
+      classId: z.string(),
+      memberId: z.string(),
+      targetIndex: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    type: z.literal('class/reorderMember'),
+    ok: z.literal(false),
+    error: ipcErrorSchema,
+  }),
+  z.object({
+    type: z.literal('class/reorderMethod'),
+    ok: z.literal(true),
+    payload: z.object({
+      classId: z.string(),
+      methodId: z.string(),
+      targetIndex: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    type: z.literal('class/reorderMethod'),
+    ok: z.literal(false),
+    error: ipcErrorSchema,
+  }),
 ]);
 
 export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
@@ -325,6 +472,10 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   integrationDiagnosticsRequestSchema,
   symbolsQueryRequestSchema,
   dependencyMapGetRequestSchema,
+  classUpsertRequestSchema,
+  classDeleteRequestSchema,
+  classReorderMemberRequestSchema,
+  classReorderMethodRequestSchema,
   z.object({ type: z.literal('ready') }),
   z.object({
     type: z.literal('addNode'),

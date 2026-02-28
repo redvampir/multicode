@@ -78,6 +78,43 @@ describe('messages IPC схемы', () => {
           includeSystem: false,
         },
       },
+      {
+        type: 'class/upsert',
+        payload: {
+          classItem: {
+            id: 'class-player',
+            name: 'Player',
+            members: [
+              { id: 'member-health', name: 'health', dataType: 'int32', access: 'private' },
+            ],
+            methods: [
+              { id: 'method-attack', name: 'attack', returnType: 'void', access: 'public', signature: 'void attack()' },
+            ],
+          },
+        },
+      },
+      {
+        type: 'class/delete',
+        payload: {
+          classId: 'class-player',
+        },
+      },
+      {
+        type: 'class/reorderMember',
+        payload: {
+          classId: 'class-player',
+          memberId: 'member-health',
+          targetIndex: 0,
+        },
+      },
+      {
+        type: 'class/reorderMethod',
+        payload: {
+          classId: 'class-player',
+          methodId: 'method-attack',
+          targetIndex: 0,
+        },
+      },
     ] as const;
 
     for (const entry of payloads) {
@@ -108,6 +145,31 @@ describe('messages IPC схемы', () => {
         type: 'dependency-map/get',
         payload: {
           includeSystem: 'yes',
+        },
+      },
+      {
+        type: 'class/upsert',
+        payload: {
+          classItem: {
+            id: 'class-player',
+            name: '',
+            members: [],
+            methods: [],
+          },
+        },
+      },
+      {
+        type: 'class/reorderMember',
+        payload: {
+          classId: 'class-player',
+          memberId: 'member-health',
+          targetIndex: -1,
+        },
+      },
+      {
+        type: 'class/delete',
+        payload: {
+          classId: '',
         },
       },
     ] as const;
@@ -170,6 +232,27 @@ describe('messages IPC схемы', () => {
         payload: {
           nodes: [],
           edges: [{ from: 'a' }],
+        },
+      },
+      {
+        type: 'class/upsert',
+        ok: true,
+        payload: {
+          classItem: {
+            id: 'class-player',
+            name: 'Player',
+            members: [{ id: 'm1', name: 'health', access: 'private' }],
+            methods: [],
+          },
+        },
+      },
+      {
+        type: 'class/reorderMethod',
+        ok: true,
+        payload: {
+          classId: 'class-player',
+          methodId: 'method-attack',
+          targetIndex: -1,
         },
       },
     ] as const;

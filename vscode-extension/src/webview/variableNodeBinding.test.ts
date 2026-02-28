@@ -96,6 +96,40 @@ describe('variableNodeBinding', () => {
     expect(boundGet.outputs.find((port) => port.id.endsWith('value-out'))?.dataType).toBe('pointer');
   });
 
+
+
+  it('bindVariableToNode сохраняет class/pointer type metadata в порты', () => {
+    const classVariable = makeVariable({
+      dataType: 'class',
+      typeName: 'Gameplay::Player',
+      classId: 'cls.player',
+      defaultValue: null,
+    });
+    const classGetNode = bindVariableToNode(createNode('GetVariable', { x: 0, y: 0 }, 'node-get-class'), classVariable, 'ru');
+    const classPort = classGetNode.outputs.find((port) => port.id.endsWith('value-out'));
+
+    expect(classPort?.dataType).toBe('class');
+    expect(classPort?.typeName).toBe('Gameplay::Player');
+    expect(classPort?.classId).toBe('cls.player');
+
+    const pointerVariable = makeVariable({
+      dataType: 'pointer',
+      defaultValue: null,
+      pointerMeta: {
+        mode: 'shared',
+        pointeeDataType: 'class',
+        typeName: 'Gameplay::Player',
+        targetClassId: 'cls.player',
+      },
+    });
+    const pointerGetNode = bindVariableToNode(createNode('GetVariable', { x: 0, y: 0 }, 'node-get-pointer-class'), pointerVariable, 'ru');
+    const pointerPort = pointerGetNode.outputs.find((port) => port.id.endsWith('value-out'));
+
+    expect(pointerPort?.dataType).toBe('pointer');
+    expect(pointerPort?.typeName).toBe('Gameplay::Player');
+    expect(pointerPort?.targetClassId).toBe('cls.player');
+  });
+
   it('getEffectiveSetInputValue соблюдает правило override', () => {
     const variable = makeVariable({ defaultValue: 21, dataType: 'int32' });
     const setNode = bindVariableToNode(createNode('SetVariable', { x: 0, y: 0 }, 'node-set'), variable, 'ru');

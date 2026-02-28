@@ -120,6 +120,12 @@ export type GraphEdgeKind = 'execution' | 'data';
 
 /** Определение порта на узле (для React Flow) */
 export interface NodePort extends PortDefinition {
+  /** Полное имя типа (`Namespace::Type`) для class/pointer-портов */
+  typeName?: string;
+  /** Идентификатор класса для портов dataType='class' */
+  classId?: string;
+  /** Идентификатор целевого класса для dataType='pointer' (если указатель указывает на class) */
+  targetClassId?: string;
   /** Позиция на узле (индекс сверху вниз) */
   index: number;
   /** Текущее значение (если задано пользователем) */
@@ -180,6 +186,10 @@ export interface PointerMeta {
   mode: PointerMode;
   pointeeDataType: PointerPointeeDataType;
   pointeeVectorElementType?: VectorElementType;
+  /** Полное имя pointee-типа (`Namespace::Type`) для class-пойнтеров */
+  typeName?: string;
+  /** ID класса pointee-типа для class-пойнтеров */
+  targetClassId?: string;
   targetVariableId?: string;
 }
 
@@ -230,6 +240,12 @@ export const normalizePointerMeta = (value: unknown): PointerMeta => {
   const pointeeVectorElementType = pointeeDataType === 'vector' && isVectorElementType(source.pointeeVectorElementType)
     ? source.pointeeVectorElementType
     : undefined;
+  const typeName = typeof source.typeName === 'string' && source.typeName.trim().length > 0
+    ? source.typeName.trim()
+    : undefined;
+  const targetClassId = typeof source.targetClassId === 'string' && source.targetClassId.trim().length > 0
+    ? source.targetClassId.trim()
+    : undefined;
   const targetVariableId = typeof source.targetVariableId === 'string' && source.targetVariableId.trim().length > 0
     ? source.targetVariableId.trim()
     : undefined;
@@ -238,6 +254,8 @@ export const normalizePointerMeta = (value: unknown): PointerMeta => {
     mode,
     pointeeDataType,
     pointeeVectorElementType,
+    typeName,
+    targetClassId,
     targetVariableId,
   };
 };
@@ -280,6 +298,10 @@ export interface BlueprintVariable {
   codeName?: string;
   /** Тип данных */
   dataType: PortDataType;
+  /** Полное имя типа (`Namespace::Type`) для class/pointer переменных */
+  typeName?: string;
+  /** ID класса для переменных dataType='class' */
+  classId?: string;
   /** Метаданные для pointer/reference переменной */
   pointerMeta?: PointerMeta;
   /** Тип элемента для vector<T> (по умолчанию: double) */
@@ -323,6 +345,8 @@ export function createVariable(
     nameRu: options?.nameRu || name,
     codeName: options?.codeName,
     dataType,
+    typeName: options?.typeName,
+    classId: options?.classId,
     pointerMeta:
       dataType === 'pointer'
         ? normalizePointerMeta(options?.pointerMeta)
@@ -582,6 +606,18 @@ const isNodePort = (value: unknown): value is NodePort => {
   }
 
   if (value.connected !== undefined && typeof value.connected !== 'boolean') {
+    return false;
+  }
+
+  if (value.typeName !== undefined && typeof value.typeName !== 'string') {
+    return false;
+  }
+
+  if (value.classId !== undefined && typeof value.classId !== 'string') {
+    return false;
+  }
+
+  if (value.targetClassId !== undefined && typeof value.targetClassId !== 'string') {
     return false;
   }
 

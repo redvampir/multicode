@@ -52,6 +52,10 @@ interface SymbolDescriptor {
   integrationId: string;
   symbolKind: 'function' | 'variable' | 'class' | 'struct' | 'method' | 'enum';
   name: string;
+  localizedName?: {
+    ru?: string;
+    source: 'original' | 'user_override' | 'auto_translate';
+  };
   namespacePath?: string[];
   signature: {
     args: Array<{ name: string; type: string; optional?: boolean; defaultValue?: string }>;
@@ -72,6 +76,7 @@ interface SymbolDescriptor {
 - Одна точка истины для палитры, инспектора и codegen.
 - Упрощение миграций форматов графа.
 - Диагностика и объяснимость («узел недоступен, потому что источник отключён»).
+- Поддержка русскоязычного отображения внешних символов без потери оригинальных имён для codegen.
 
 ---
 
@@ -168,6 +173,29 @@ interface RuntimeNodeDefinition {
 
 ---
 
+## 2.6 Локализация внешних символов (RU overlay)
+
+Для внешних источников нужно разделить **отображаемое имя** и **каноническое имя**:
+- `name` — оригинальный идентификатор из источника (используется в генерации кода).
+- `localizedName.ru` — пользовательский перевод для UI в Blueprint.
+
+### Модель перевода
+1. По умолчанию символ отображается как есть (`source = original`).
+2. Пользователь может вручную задать RU-имя (`source = user_override`).
+3. Опционально доступен автоперевод как черновик (`source = auto_translate`), но только как предложение до подтверждения пользователем.
+
+### UX-правила
+- В ноде и палитре показывать `localizedName.ru`, если оно есть и включён RU-язык.
+- В подсказке/tooltip всегда показывать оригинал: `Оригинал: std::filesystem::copy`.
+- В инспекторе символа добавить action: `Сбросить перевод к оригиналу`.
+
+### Инварианты
+- Локализация не меняет `symbolId`, `type` ноды и сигнатуру портов.
+- При реиндексации сохранять `user_override` по ключу `(integrationId, symbolId, signatureHash)`.
+- Если сигнатура изменилась и hash не совпал, перевод помечается как `stale` и требует подтверждения.
+
+---
+
 ## 3. Изменения по слоям системы
 
 ## 3.1 IPC и валидация (обязательно через Zod)
@@ -191,6 +219,7 @@ interface RuntimeNodeDefinition {
 - `integrationSlice`
 - `symbolCatalogSlice`
 - `dependencyMapSlice`
+- `symbolLocalizationSlice`
 
 Инварианты:
 - состояние индексатора отдельно от UI-состояния,
@@ -214,6 +243,7 @@ interface RuntimeNodeDefinition {
 - сохранить сериализацию в общем формате графа,
 - обеспечить отображение external-узлов в Classic как legacy-блоков,
 - добавить migration layer: `graphVersion + integrationBindings`.
+- Добавить слой `symbolLocalization`, который опционален для старых графов (мягкая миграция без поломки).
 
 ---
 
@@ -272,6 +302,14 @@ interface RuntimeNodeDefinition {
       "mode": "explicit"
     }
   ],
+  "symbolLocalization": [
+    {
+      "integrationId": "boost_1_87",
+      "symbolId": "filesystem_copy",
+      "signatureHash": "sha256:...",
+      "localizedNameRu": "Копировать файл"
+    }
+  ],
   "nodes": [
     {
       "id": "node_42",
@@ -303,6 +341,7 @@ interface RuntimeNodeDefinition {
    - зелёный = валидно,
    - жёлтый = сигнатура изменилась,
    - красный = символ недоступен.
+6. В инспекторе символа: поле `RU-имя` и кнопка `Сбросить`.
 
 ---
 
@@ -313,6 +352,7 @@ interface RuntimeNodeDefinition {
 3. Поднять MVP для TS `.d.ts` (самый предсказуемый источник).
 4. Подключить runtime-генерацию нод только для `function` и `variable`.
 5. Сделать read-only версию Dependency View, чтобы проверить UX на реальных проектах.
+6. Добавить ручной RU-словарь для символов с сохранением в графе.
 
 ---
 
@@ -324,6 +364,7 @@ interface RuntimeNodeDefinition {
 - В отдельном режиме видно связи «файл ↔ источник ↔ символ».
 - При ошибке индексации UI показывает понятную диагностику и действие восстановления.
 - Сериализация графа не ломает существующие проекты и открывается в Blueprint + Classic.
+- Пользователь может задать RU-имя для внешнего символа, и это не влияет на codegen/сигнатуры.
 
 ---
 

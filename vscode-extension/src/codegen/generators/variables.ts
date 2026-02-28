@@ -1282,6 +1282,114 @@ export class SetVariableNodeGenerator extends BaseNodeGenerator {
   }
 }
 
+
+
+type ClassMethodCallProperties = {
+  classId?: unknown;
+  methodId?: unknown;
+  targetClassName?: unknown;
+};
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const findClassById = (graph: CodeGenContext['graph'], classId: string) => {
+  const classes = Array.isArray(graph.classes) ? graph.classes : [];
+  return classes.find((item) => item.id === classId);
+};
+
+const resolveClassNodeProperty = (node: BlueprintNode): ClassMethodCallProperties =>
+  (typeof node.properties === 'object' && node.properties !== null)
+    ? (node.properties as ClassMethodCallProperties)
+    : {};
+
+/**
+ * ClassMethodCall — вызов метода экземпляра класса
+ */
+export class ClassMethodCallNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ClassMethodCall'];
+
+  generate(
+    node: BlueprintNode,
+    context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): NodeGenerationResult {
+    const ind = helpers.indent();
+    const props = resolveClassNodeProperty(node);
+    const classId = isNonEmptyString(props.classId) ? props.classId.trim() : '';
+    const methodId = isNonEmptyString(props.methodId) ? props.methodId.trim() : '';
+
+    if (!classId || !methodId) {
+      helpers.addError(
+        node.id,
+        CodeGenErrorCode.UNCONNECTED_REQUIRED_PORT,
+        'Узел вызова метода класса не настроен: отсутствует classId/methodId.',
+        'Class method call node is not configured: missing classId/methodId.'
+      );
+      return this.noop();
+    }
+
+    const blueprintClass = findClassById(context.graph, classId);
+    if (!blueprintClass) {
+      helpers.addError(
+        node.id,
+        CodeGenErrorCode.TYPE_MISMATCH,
+        `Класс для вызова не найден: ${classId}.`,
+        `Class not found for method call: ${classId}.`
+      );
+      return this.noop();
+    }
+
+    const method = blueprintClass.methods.find((item) => item.id === methodId);
+    if (!method) {
+      helpers.addError(
+        node.id,
+        CodeGenErrorCode.TYPE_MISMATCH,
+        `Метод класса не найден: ${methodId}.`,
+        `Class method not found: ${methodId}.`
+      );
+      return this.noop();
+    }
+
+    const targetExpr =
+      helpers.getInputExpression(node, 'target') ??
+      helpers.getInputExpression(node, 'instance');
+
+    if (!targetExpr) {
+      helpers.addError(
+        node.id,
+        CodeGenErrorCode.UNCONNECTED_REQUIRED_PORT,
+        'Не подключён target для вызова метода класса.',
+        'Target is not connected for class method call.'
+      );
+      return this.noop();
+    }
+
+    const args = method.params.map((_, index) =>
+      helpers.getInputExpression(node, `arg-${index}`) ?? '0'
+    );
+
+    const methodName = toValidIdentifier(method.name);
+    const callExpr = `${targetExpr}.${methodName}(${args.join(', ')})`;
+
+    if (method.returnType === 'execution') {
+      return this.code([`${ind}${callExpr};`]);
+    }
+
+    const resultVar = `class_method_result_${toValidIdentifier(node.id)}`;
+    return this.code([`${ind}auto ${resultVar} = ${callExpr};`]);
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    _helpers: GeneratorHelpers
+  ): string {
+    return `class_method_result_${toValidIdentifier(node.id)}`;
+  }
+}
+
 /**
  * TypeConversion — явное преобразование типов между data-портами
  */
@@ -1361,6 +1469,7 @@ export function createVariableGenerators(): BaseNodeGenerator[] {
     new VariableNodeGenerator(),
     new GetVariableNodeGenerator(),
     new SetVariableNodeGenerator(),
+    new ClassMethodCallNodeGenerator(),
     new TypeConversionNodeGenerator(),
   ];
 }

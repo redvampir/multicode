@@ -10,6 +10,7 @@ import {
   GetVariableNodeGenerator,
   SetVariableNodeGenerator,
   TypeConversionNodeGenerator,
+  ClassMethodCallNodeGenerator,
   createVariableGenerators,
 } from './variables';
 import type { BlueprintNode } from '../../shared/blueprintTypes';
@@ -1110,6 +1111,73 @@ describe('TypeConversionNodeGenerator', () => {
   });
 });
 
+
+
+// ============================================
+// ClassMethodCallNodeGenerator Tests
+// ============================================
+
+describe('ClassMethodCallNodeGenerator', () => {
+  const generator = new ClassMethodCallNodeGenerator();
+
+  it('should support ClassMethodCall node type', () => {
+    expect(generator.nodeTypes).toContain('ClassMethodCall');
+  });
+
+  it('should generate class method call for configured node', () => {
+    const node = createMockNode('ClassMethodCall', 'Call Method', {
+      properties: {
+        classId: 'class-player',
+        methodId: 'method-jump',
+      },
+      inputs: [
+        { id: 'exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'target', name: 'Target', dataType: 'class', direction: 'input', index: 1 },
+        { id: 'arg-0', name: 'Height', dataType: 'double', direction: 'input', index: 2 },
+      ],
+      outputs: [
+        { id: 'exec-out', name: 'Out', dataType: 'execution', direction: 'output', index: 0 },
+        { id: 'result', name: 'Result', dataType: 'bool', direction: 'output', index: 1 },
+      ],
+    });
+
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((n: BlueprintNode, suffix: string) => {
+        if (n.id !== node.id) {
+          return null;
+        }
+        if (suffix === 'target') return 'player';
+        if (suffix === 'arg-0') return '2.5';
+        return null;
+      }),
+    });
+
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        methods: [
+          {
+            id: 'method-jump',
+            name: 'Jump',
+            returnType: 'bool',
+            params: [{ id: 'param-height', name: 'height', dataType: 'double' }],
+            access: 'public',
+          },
+        ],
+        members: [],
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toContain('auto class_method_result_classmethodcall1 = player.jump(2.5);');
+    expect((helpers.addError as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+});
+
 // ============================================
 // createVariableGenerators Tests
 // ============================================
@@ -1118,10 +1186,11 @@ describe('createVariableGenerators', () => {
   it('should return array with all variable generators', () => {
     const generators = createVariableGenerators();
 
-    expect(generators).toHaveLength(4);
+    expect(generators).toHaveLength(5);
     expect(generators[0]).toBeInstanceOf(VariableNodeGenerator);
     expect(generators[1]).toBeInstanceOf(GetVariableNodeGenerator);
     expect(generators[2]).toBeInstanceOf(SetVariableNodeGenerator);
-    expect(generators[3]).toBeInstanceOf(TypeConversionNodeGenerator);
+    expect(generators[3]).toBeInstanceOf(ClassMethodCallNodeGenerator);
+    expect(generators[4]).toBeInstanceOf(TypeConversionNodeGenerator);
   });
 });

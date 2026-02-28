@@ -50,6 +50,11 @@ export type BlueprintNodeType =
   | 'GetVariable'
   | 'SetVariable'
   | 'TypeConversion'
+  | 'ClassMethodCall'
+  | 'ClassConstructorCall'
+  | 'GetMember'
+  | 'SetMember'
+  | 'StaticMethodCall'
   // Math
   | 'ConstNumber'
   | 'ConstString'
@@ -389,6 +394,46 @@ export const VARIABLE_DATA_TYPES: PortDataType[] = [
   'bool', 'int32', 'int64', 'float', 'double', 'string', 'vector', 'pointer', 'class', 'array'
 ];
 
+
+export type BlueprintClassAccess = 'public' | 'protected' | 'private';
+
+export interface BlueprintClassMethodParameter {
+  id: string;
+  name: string;
+  dataType: PortDataType;
+  typeName?: string;
+}
+
+export interface BlueprintClassMethod {
+  id: string;
+  name: string;
+  isConst?: boolean;
+  isStatic?: boolean;
+  returnType: PortDataType;
+  returnTypeName?: string;
+  params: BlueprintClassMethodParameter[];
+  access: BlueprintClassAccess;
+  isVirtual?: boolean;
+  isOverride?: boolean;
+}
+
+export interface BlueprintClassMember {
+  id: string;
+  name: string;
+  dataType: PortDataType;
+  typeName?: string;
+  access: BlueprintClassAccess;
+  defaultValue?: BlueprintVariableDefaultValue;
+}
+
+export interface BlueprintClass {
+  id: string;
+  name: string;
+  namespace?: string;
+  members: BlueprintClassMember[];
+  methods: BlueprintClassMethod[];
+}
+
 /** Полное состояние Blueprint-графа */
 export interface BlueprintGraphState {
   id: string;
@@ -411,6 +456,8 @@ export interface BlueprintGraphState {
   activeFunctionId?: string | null;
   /** Переменные графа */
   variables?: BlueprintVariable[];
+  /** Реестр классов для классовых узлов */
+  classes?: BlueprintClass[];
 }
 
 // ============================================
@@ -632,6 +679,26 @@ const normalizeMigratedVariables = (variables: unknown[] | undefined): Blueprint
         pointerMeta: normalizePointerMeta(variable.pointerMeta),
       };
     });
+};
+
+
+
+const normalizeMigratedClasses = (classes: unknown[] | undefined): BlueprintClass[] => {
+  if (!Array.isArray(classes)) {
+    return [];
+  }
+
+  return classes
+    .filter((value): value is Record<string, unknown> => isRecord(value))
+    .map((rawClass) => {
+      const blueprintClass = rawClass as unknown as BlueprintClass;
+      return {
+        ...blueprintClass,
+        members: Array.isArray(blueprintClass.members) ? blueprintClass.members : [],
+        methods: Array.isArray(blueprintClass.methods) ? blueprintClass.methods : [],
+      };
+    })
+    .filter((item) => typeof item.id === 'string' && typeof item.name === 'string');
 };
 
 const normalizeMigratedFunctions = (functions: unknown[] | undefined): BlueprintFunction[] => {
@@ -1165,6 +1232,7 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
     // Восстанавливаем переменные и функции
     variables: normalizeMigratedVariables(oldState.variables as unknown[] | undefined),
     functions: normalizeMigratedFunctions(oldState.functions as unknown[] | undefined),
+    classes: normalizeMigratedClasses(oldState.classes as unknown[] | undefined),
   };
 }
 
@@ -1629,7 +1697,86 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'value-out', name: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
-  TypeConversion: {
+  ClassMethodCall: {
+    type: 'ClassMethodCall',
+    label: 'Call Method',
+    labelRu: 'Вызов метода класса',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'target', name: 'Target', nameRu: 'Объект', dataType: 'class', direction: 'input' },
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'any', direction: 'output' }
+    ],
+  },
+  ClassConstructorCall: {
+    type: 'ClassConstructorCall',
+    label: 'Construct Class',
+    labelRu: 'Создать класс',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'instance', name: 'Instance', nameRu: 'Экземпляр', dataType: 'class', direction: 'output' }
+    ],
+  },
+  GetMember: {
+    type: 'GetMember',
+    label: 'Get Member',
+    labelRu: 'Получить поле',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'target', name: 'Target', nameRu: 'Объект', dataType: 'class', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  SetMember: {
+    type: 'SetMember',
+    label: 'Set Member',
+    labelRu: 'Установить поле',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'target', name: 'Target', nameRu: 'Объект', dataType: 'class', direction: 'input' },
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
+  StaticMethodCall: {
+    type: 'StaticMethodCall',
+    label: 'Call Static Method',
+    labelRu: 'Вызов статического метода',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'any', direction: 'output' }
+    ],
+  },
+    TypeConversion: {
     type: 'TypeConversion',
     label: 'Type Conversion',
     labelRu: 'Преобразование типа',
@@ -2533,6 +2680,7 @@ export function createDefaultBlueprintState(): BlueprintGraphState {
     ],
     updatedAt: new Date().toISOString(),
     dirty: false,
+    classes: [],
   };
 }
 
@@ -2567,13 +2715,14 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
     // Сохраняем переменные и функции
     variables: blueprintState.variables,
     functions: blueprintState.functions,
+    classes: blueprintState.classes,
   };
 }
 
 function mapBlueprintNodeTypeToOld(type: BlueprintNodeType): GraphNode['type'] {
   // Маппинг расширенных типов на базовые
   const functionTypes: BlueprintNodeType[] = ['Function', 'FunctionCall', 'Event', 'FunctionEntry', 'FunctionReturn', 'CallUserFunction'];
-  const variableTypes: BlueprintNodeType[] = ['Variable', 'GetVariable', 'SetVariable'];
+  const variableTypes: BlueprintNodeType[] = ['Variable', 'GetVariable', 'SetVariable', 'ClassMethodCall', 'ClassConstructorCall', 'GetMember', 'SetMember', 'StaticMethodCall'];
   
   if (type === 'Start') return 'Start';
   if (type === 'End' || type === 'Return') return 'End';

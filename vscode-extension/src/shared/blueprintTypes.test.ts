@@ -732,6 +732,51 @@ describe('blueprintTypes - Migration', () => {
     });
   });
 
+
+
+  it('should migrate classes from legacy graph state', () => {
+    const oldState = {
+      id: 'graph-classes',
+      name: 'Classes',
+      language: 'cpp' as const,
+      displayLanguage: 'ru' as const,
+      nodes: [],
+      edges: [],
+      updatedAt: new Date().toISOString(),
+      classes: [
+        {
+          id: 'class-player',
+          name: 'Player',
+          members: [{ id: 'member-hp', name: 'hp', dataType: 'int32', access: 'public' }],
+          methods: [{ id: 'method-jump', name: 'Jump', returnType: 'bool', params: [], access: 'public' }],
+        },
+      ],
+    };
+
+    const migrated = migrateToBlueprintFormat(oldState);
+
+    expect(migrated.classes).toHaveLength(1);
+    expect(migrated.classes?.[0].id).toBe('class-player');
+    expect(migrated.classes?.[0].methods[0].name).toBe('Jump');
+  });
+
+  it('should preserve classes through round-trip migration', () => {
+    const blueprintState = createDefaultBlueprintState();
+    blueprintState.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        members: [],
+        methods: [{ id: 'method-jump', name: 'Jump', returnType: 'bool', params: [], access: 'public' }],
+      },
+    ];
+
+    const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(blueprintState));
+
+    expect(restored.classes).toHaveLength(1);
+    expect(restored.classes?.[0].name).toBe('Player');
+  });
+
   describe('migrateFromBlueprintFormat', () => {
     it('should convert BlueprintGraphState back to GraphState', () => {
       const blueprintState = createDefaultBlueprintState();
@@ -1133,7 +1178,7 @@ describe('blueprintTypes - Node Definitions', () => {
       const expectedTypes = [
         'Start', 'End', 'Branch', 'ForLoop', 'WhileLoop', 'Sequence',
         'Function', 'FunctionCall', 'Event',
-        'Variable', 'GetVariable', 'SetVariable', 'TypeConversion',
+        'Variable', 'GetVariable', 'SetVariable', 'TypeConversion', 'ClassMethodCall', 'ClassConstructorCall', 'GetMember', 'SetMember', 'StaticMethodCall',
         'ConstNumber', 'ConstString', 'ConstBool', 'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
         'Equal', 'NotEqual', 'Greater', 'Less', 'GreaterEqual', 'LessEqual',
         'And', 'Or', 'Not',
@@ -1154,7 +1199,7 @@ describe('blueprintTypes - Node Definitions', () => {
     });
 
     it('should have category for all types', () => {
-      const validCategories = ['flow', 'function', 'variable', 'math', 'comparison', 'logic', 'io', 'other'];
+      const validCategories = ['flow', 'function', 'variable', 'math', 'comparison', 'logic', 'io', 'string', 'collection', 'other'];
       
       Object.values(NODE_TYPE_DEFINITIONS).forEach(def => {
         expect(validCategories).toContain(def.category);

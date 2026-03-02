@@ -5,6 +5,7 @@ import {
   handleClassReorderMember,
   handleClassReorderMethod,
   handleClassUpsert,
+  handleDependencyMapGet,
   handleIntegrationAdd,
   handleIntegrationReindex,
   handleSymbolsQuery,
@@ -89,6 +90,39 @@ describe('GraphPanel IPC orchestration', () => {
       expect(response.error.code).toBe('E_INTEGRATION_REINDEX');
       expect(response.error.message).toContain('Indexer unavailable');
       expect(response.error.details).toBeTruthy();
+    }
+  });
+
+  it('строит dependency-map только для привязанных к rootFile интеграций', async () => {
+    const state = createBaseState();
+    state.integrationBindings = [
+      {
+        integrationId: 'dep-a',
+        attachedFiles: ['f:/workspace/dep-a.hpp'],
+        consumerFiles: ['f:/workspace/a.cpp'],
+        mode: 'explicit',
+        kind: 'file',
+      },
+      {
+        integrationId: 'dep-b',
+        attachedFiles: ['f:/workspace/dep-b.hpp'],
+        consumerFiles: ['f:/workspace/b.cpp'],
+        mode: 'explicit',
+        kind: 'file',
+      },
+    ];
+
+    const response = await handleDependencyMapGet(
+      state,
+      { rootFile: 'F:\\workspace\\a.cpp', includeSystem: false },
+      'graph-root'
+    );
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.payload.nodes.some((node) => node.id === 'dep-a')).toBe(true);
+      expect(response.payload.nodes.some((node) => node.id === 'dep-b')).toBe(false);
+      expect(response.payload.edges).toEqual([{ from: 'F:\\workspace\\a.cpp', to: 'dep-a' }]);
     }
   });
 

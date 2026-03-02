@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import type { SourceIntegration, SymbolDescriptor } from '../../shared/externalSymbols';
 import { sha1 } from './hash';
 
@@ -48,14 +49,39 @@ export class SymbolIndexCache {
   }
 
   private buildIntegrationRevision(integration: SourceIntegration): string {
+    const sortedFiles = [...integration.attachedFiles].sort((left, right) => left.localeCompare(right));
     const payload = JSON.stringify({
       integrationId: integration.integrationId,
-      attachedFiles: [...integration.attachedFiles].sort(),
+      attachedFiles: sortedFiles.map((filePath) => this.buildPathRevisionToken(filePath)),
       mode: integration.mode,
       kind: integration.kind,
       version: integration.version,
-      location: integration.location,
+      location: this.buildLocationRevisionToken(integration.location),
     });
     return sha1(payload);
+  }
+
+  private buildLocationRevisionToken(location: SourceIntegration['location']): unknown {
+    if (!location) {
+      return null;
+    }
+
+    if (location.type === 'local_file' || location.type === 'local_folder') {
+      return {
+        ...location,
+        revision: this.buildPathRevisionToken(location.value),
+      };
+    }
+
+    return location;
+  }
+
+  private buildPathRevisionToken(targetPath: string): string {
+    try {
+      const stat = fs.statSync(targetPath);
+      return `${targetPath}:${Math.trunc(stat.mtimeMs)}:${stat.size}`;
+    } catch {
+      return `${targetPath}:missing`;
+    }
   }
 }

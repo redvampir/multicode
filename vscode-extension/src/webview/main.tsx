@@ -14,7 +14,7 @@ import { BlueprintEditor } from './BlueprintEditor';
 import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
 import { DependencyViewPanel } from './DependencyViewPanel';
 import { ClassPanel } from './ClassPanel';
-import type { SymbolDescriptor } from '../shared/externalSymbols';
+import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
 import {
   BlueprintGraphState,
   BlueprintNodeType,
@@ -35,9 +35,12 @@ import {
   type ThemeTokens
 } from './theme';
 import {
+  parseExternalIpcResponse,
   parseExtensionMessage,
   parseThemeMessage,
   webviewToExtensionMessageSchema,
+  type ExternalIpcRequest,
+  type ExternalIpcResponse,
   type GraphMutationPayload,
   type ThemeMessage,
   type TranslationDirection,
@@ -205,6 +208,7 @@ const formatIssues = (issues: Array<{ message: string }> = []): string =>
 const GRAPH_CHANGED_DEBOUNCE_MS = 120;
 
 const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload => ({
+  graphId: graphState.id,
   nodes: graphState.nodes,
   edges: graphState.edges,
   name: graphState.name,
@@ -214,6 +218,64 @@ const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload
   functions: graphState.functions,
   classes: graphState.classes,
 });
+
+const normalizeFilePath = (filePath: string): string => filePath.replace(/\\/g, '/');
+const normalizeFilePathForMatch = (filePath: string): string => normalizeFilePath(filePath).toLowerCase();
+
+const extractFileName = (filePath: string): string => {
+  const normalized = normalizeFilePath(filePath);
+  const segments = normalized.split('/');
+  return segments[segments.length - 1] || filePath;
+};
+
+const stripFileExtension = (fileName: string): string => fileName.replace(/\.[^/.]+$/, '');
+
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
+
+const toSafeIdSegment = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48) || 'file';
+
+const dedupePaths = (paths: string[]): string[] => {
+  const unique = new Set<string>();
+  for (const filePath of paths) {
+    const trimmed = filePath.trim();
+    if (!trimmed) {
+      continue;
+    }
+    unique.add(normalizeFilePath(trimmed));
+  }
+  return Array.from(unique);
+};
+
+const buildFileIntegration = (sourceFilePath: string, consumerFiles: string[]): SourceIntegration => {
+  const normalizedPath = normalizeFilePath(sourceFilePath);
+  const fileName = extractFileName(normalizedPath);
+  const stem = stripFileExtension(fileName);
+  const integrationId = `file_${toSafeIdSegment(stem)}_${hashString(normalizedPath.toLowerCase())}`;
+
+  return {
+    integrationId,
+    attachedFiles: [normalizedPath],
+    consumerFiles: dedupePaths(consumerFiles),
+    mode: 'explicit',
+    kind: 'file',
+    displayName: fileName,
+    location: {
+      type: 'local_file',
+      value: normalizedPath,
+    },
+  };
+};
 
 const sendToExtension = (message: WebviewToExtensionMessage): void => {
   console.log('[WEBVIEW DEBUG] sendToExtension called with:', message);
@@ -249,6 +311,11 @@ const Toolbar: React.FC<{
   onShowHelp: () => void;
   boundFileName: string | null;
   boundFilePath: string | null;
+  editableFiles: Array<{ fileName: string; filePath: string }>;
+  dependencySourceFilePath: string;
+  onDependencySourceFileChange: (filePath: string) => void;
+  onBindFile: (filePath: string) => void;
+  onAddCurrentFileDependency: () => void;
   codegenProfile: CodegenOutputProfile;
   onCodegenProfileChange: (profile: CodegenOutputProfile) => void;
 }> = ({
@@ -267,6 +334,11 @@ const Toolbar: React.FC<{
   onShowHelp,
   boundFileName,
   boundFilePath,
+  editableFiles,
+  dependencySourceFilePath,
+  onDependencySourceFileChange,
+  onBindFile,
+  onAddCurrentFileDependency,
   codegenProfile,
   onCodegenProfileChange,
 }) => {
@@ -360,6 +432,50 @@ const Toolbar: React.FC<{
           </button>
           <button onClick={() => send('requestSave')} disabled={pending} title={translate('tooltip.saveGraph', 'Сохранить')}>
             💾 {translate('toolbar.saveGraph', 'Сохранить')}
+          </button>
+          <select
+            value={boundFilePath ?? ''}
+            onChange={(event) => {
+              const nextPath = event.currentTarget.value;
+              if (nextPath) {
+                onBindFile(nextPath);
+              }
+            }}
+            className="toolbar-select"
+            title={translate('toolbar.bindFile' as TranslationKey, 'Переключить редактируемый файл')}
+            disabled={pending || editableFiles.length === 0}
+          >
+            <option value="">
+              {translate('toolbar.bindFile.placeholder' as TranslationKey, 'Выбрать файл')}
+            </option>
+            {editableFiles.map((file) => (
+              <option key={file.filePath} value={file.filePath}>
+                {file.fileName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={dependencySourceFilePath}
+            onChange={(event) => onDependencySourceFileChange(event.currentTarget.value)}
+            className="toolbar-select"
+            title={translate('toolbar.dependencySource' as TranslationKey, 'Какой файл добавить в зависимости')}
+            disabled={pending || editableFiles.length === 0}
+          >
+            <option value="">
+              {translate('toolbar.dependencySource.placeholder' as TranslationKey, 'Файл зависимости')}
+            </option>
+            {editableFiles.map((file) => (
+              <option key={`dep:${file.filePath}`} value={file.filePath}>
+                {file.fileName}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={onAddCurrentFileDependency}
+            disabled={pending || !boundFilePath || !dependencySourceFilePath}
+            title={translate('toolbar.addDependencyFromFile' as TranslationKey, 'Прикрепить файл зависимости к активному файлу')}
+          >
+            🧩 {translate('toolbar.addDependencyShort' as TranslationKey, 'Прикрепить')}
           </button>
         </div>
         
@@ -973,7 +1089,15 @@ const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
   const integrations = useGraphStore((state) => state.integrations);
+  const setIntegrations = useGraphStore((state) => state.setIntegrations);
+  const upsertIntegration = useGraphStore((state) => state.upsertIntegration);
+  const removeIntegration = useGraphStore((state) => state.removeIntegration);
   const symbolCatalog = useGraphStore((state) => state.symbolCatalog);
+  const setSymbolsForIntegration = useGraphStore((state) => state.setSymbolsForIntegration);
+  const clearSymbolsForIntegration = useGraphStore((state) => state.clearSymbolsForIntegration);
+  const setDependencyMap = useGraphStore((state) => state.setDependencyMap);
+  const setIndexerStatus = useGraphStore((state) => state.setIndexerStatus);
+  const updateIndexerData = useGraphStore((state) => state.updateIndexerData);
   const resolveLocalizedSymbol = useGraphStore((state) => state.resolveLocalizedSymbol);
   const [locale, setLocale] = useState<GraphDisplayLanguage>(bootLocale);
   const localeRef = useRef<GraphDisplayLanguage>(bootLocale);
@@ -1013,6 +1137,8 @@ const App: React.FC = () => {
     fileName: null,
     filePath: null,
   });
+  const [editableFiles, setEditableFiles] = useState<Array<{ fileName: string; filePath: string }>>([]);
+  const [dependencySourceFilePath, setDependencySourceFilePath] = useState<string>('');
   const graphChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGraphMutationRef = useRef<GraphMutationPayload | null>(null);
   const lastUiTraceSignatureRef = useRef<string | null>(null);
@@ -1028,17 +1154,132 @@ const App: React.FC = () => {
     };
   }, [registryVersion]);
 
-  const translate = (
+  const translate = useCallback((
     key: TranslationKey,
     fallback: string,
     replacements?: Record<string, string>
-  ): string => getTranslation(localeRef.current, key, replacements, fallback);
+  ): string => getTranslation(localeRef.current, key, replacements, fallback), []);
 
-  const pushToast = (kind: ToastKind, message: string): void => {
+  const pushToast = useCallback((kind: ToastKind, message: string): void => {
     const id = Date.now() + Math.round(Math.random() * 1000);
     setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 3200);
-  };
+  }, []);
+
+  const requestExternalIpc = useCallback(
+    <TType extends ExternalIpcRequest['type']>(
+      request: Extract<ExternalIpcRequest, { type: TType }>,
+      timeoutMs = 10000
+    ): Promise<Extract<ExternalIpcResponse, { type: TType }>> =>
+      new Promise((resolve, reject) => {
+        let settled = false;
+
+        const cleanup = (timer: ReturnType<typeof setTimeout>): void => {
+          window.removeEventListener('message', handleMessage);
+          clearTimeout(timer);
+        };
+
+        const handleMessage = (event: MessageEvent<unknown>): void => {
+          const parsed = parseExternalIpcResponse(event.data);
+          if (!parsed.success) {
+            return;
+          }
+          if (parsed.data.type !== request.type) {
+            return;
+          }
+
+          settled = true;
+          cleanup(timeoutTimer);
+          resolve(parsed.data as Extract<ExternalIpcResponse, { type: TType }>);
+        };
+
+        const timeoutTimer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanup(timeoutTimer);
+          reject(new Error(`IPC timeout: ${request.type}`));
+        }, timeoutMs);
+
+        window.addEventListener('message', handleMessage);
+        sendToExtension(request as WebviewToExtensionMessage);
+      }),
+    []
+  );
+
+  const synchronizeDependencyState = useCallback(
+    async (targetIntegrationId?: string): Promise<void> => {
+      const listResponse = await requestExternalIpc({
+        type: 'integration/list',
+        payload: { includeImplicit: true },
+      });
+
+      if (!listResponse.ok) {
+        throw new Error(listResponse.error.message);
+      }
+
+      const listedIntegrations = listResponse.payload.integrations;
+      setIntegrations(listedIntegrations);
+
+      const listedIds = new Set(listedIntegrations.map((item) => item.integrationId));
+      for (const existingIntegrationId of Object.keys(useGraphStore.getState().symbolCatalog)) {
+        if (!listedIds.has(existingIntegrationId)) {
+          clearSymbolsForIntegration(existingIntegrationId);
+        }
+      }
+
+      const integrationIdsToSync = targetIntegrationId
+        ? [targetIntegrationId]
+        : listedIntegrations.map((item) => item.integrationId);
+
+      for (const integrationId of integrationIdsToSync) {
+        const symbolsResponse = await requestExternalIpc({
+          type: 'symbols/query',
+          payload: {
+            query: '',
+            integrationId,
+            limit: 500,
+          },
+        });
+
+        if (!symbolsResponse.ok) {
+          throw new Error(symbolsResponse.error.message);
+        }
+
+        setSymbolsForIntegration(
+          integrationId,
+          symbolsResponse.payload.symbols.filter((symbol) => symbol.integrationId === integrationId)
+        );
+      }
+
+      const dependencyMapResponse = await requestExternalIpc({
+        type: 'dependency-map/get',
+        payload: {
+          rootFile: boundFile.filePath ?? undefined,
+          includeSystem: false,
+        },
+      });
+
+      if (!dependencyMapResponse.ok) {
+        throw new Error(dependencyMapResponse.error.message);
+      }
+
+      setDependencyMap(dependencyMapResponse.payload);
+      updateIndexerData({ lastUpdated: new Date().toISOString() });
+      setIndexerStatus('ready');
+    },
+    [
+      boundFile.filePath,
+      clearSymbolsForIntegration,
+      requestExternalIpc,
+      setDependencyMap,
+      setIndexerStatus,
+      setIntegrations,
+      setSymbolsForIntegration,
+      updateIndexerData,
+    ]
+  );
 
   const flushPendingGraphMutation = useCallback((): void => {
     const payload = pendingGraphMutationRef.current;
@@ -1050,6 +1291,14 @@ const App: React.FC = () => {
       type: 'graphChanged',
       payload,
     });
+  }, []);
+
+  const resetPendingGraphMutation = useCallback((): void => {
+    pendingGraphMutationRef.current = null;
+    if (graphChangedTimerRef.current !== null) {
+      clearTimeout(graphChangedTimerRef.current);
+      graphChangedTimerRef.current = null;
+    }
   }, []);
 
   const enqueueGraphMutation = useCallback((graphState: GraphState): void => {
@@ -1218,6 +1467,66 @@ const App: React.FC = () => {
     applyUiTheme(themeTokens, effectiveTheme);
   }, [themeTokens, effectiveTheme]);
 
+  const handleExternalIpcResponse = useCallback((response: ExternalIpcResponse): void => {
+    if (!response.ok) {
+      setIndexerStatus('error', response.error.message);
+      return;
+    }
+
+    switch (response.type) {
+      case 'integration/add':
+        upsertIntegration(response.payload.integration);
+        break;
+      case 'integration/remove':
+        if (response.payload.removed) {
+          removeIntegration(response.payload.integrationId);
+          clearSymbolsForIntegration(response.payload.integrationId);
+        }
+        break;
+      case 'integration/list':
+        setIntegrations(response.payload.integrations);
+        break;
+      case 'integration/reindex':
+        updateIndexerData({ lastUpdated: new Date().toISOString() });
+        setIndexerStatus('ready');
+        break;
+      case 'integration/diagnostics':
+        updateIndexerData({
+          diagnostics: response.payload.diagnostics,
+          lastUpdated: new Date().toISOString(),
+        });
+        setIndexerStatus('ready');
+        break;
+      case 'symbols/query': {
+        const grouped = new Map<string, SymbolDescriptor[]>();
+        for (const symbol of response.payload.symbols) {
+          const bucket = grouped.get(symbol.integrationId) ?? [];
+          bucket.push(symbol);
+          grouped.set(symbol.integrationId, bucket);
+        }
+
+        for (const [integrationId, symbols] of grouped.entries()) {
+          setSymbolsForIntegration(integrationId, symbols);
+        }
+        break;
+      }
+      case 'dependency-map/get':
+        setDependencyMap(response.payload);
+        break;
+      default:
+        break;
+    }
+  }, [
+    clearSymbolsForIntegration,
+    removeIntegration,
+    setDependencyMap,
+    setIndexerStatus,
+    setIntegrations,
+    setSymbolsForIntegration,
+    updateIndexerData,
+    upsertIntegration,
+  ]);
+
   useEffect(() => {
     const handler = (event: MessageEvent<unknown>): void => {
       // В VS Code webview сообщения приходят от parent window или от самого window
@@ -1237,14 +1546,22 @@ const App: React.FC = () => {
       // В webview origin обычно пустой или начинается с "vscode-file://" (локальное превью)
       const parsed = parseExtensionMessage(event.data);
       if (!parsed.success) {
+        const externalParsed = parseExternalIpcResponse(event.data);
+        if (externalParsed.success) {
+          handleExternalIpcResponse(externalParsed.data);
+          return;
+        }
+
         reportWebviewError(
           `Некорректное сообщение от расширения: ${formatIssues(parsed.error.issues)}`
         );
         return;
       }
+
       const message = parsed.data;
       switch (message.type) {
         case 'setState':
+          resetPendingGraphMutation();
           setValidation(undefined);
           setGraph(message.payload, { origin: 'remote' });
           setLocale(message.payload.displayLanguage ?? 'ru');
@@ -1294,6 +1611,9 @@ const App: React.FC = () => {
             filePath: message.payload.filePath,
           });
           break;
+        case 'editableFilesChanged':
+          setEditableFiles(message.payload.files);
+          break;
         case 'codegenProfileChanged':
           setCodegenProfile(message.payload.profile);
           break;
@@ -1305,7 +1625,7 @@ const App: React.FC = () => {
     window.addEventListener('message', handler);
     sendToExtension({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
-  }, [setGraph]);
+  }, [handleExternalIpcResponse, pushToast, resetPendingGraphMutation, setGraph]);
 
   useEffect(() => {
     const unsubscribe = useGraphStore.subscribe((state) => {
@@ -1367,9 +1687,253 @@ const App: React.FC = () => {
     sendToExtension({ type: 'setCodegenProfile', payload: { profile } });
   };
 
+  const handleBindFile = useCallback((filePath: string): void => {
+    const trimmed = filePath.trim();
+    if (!trimmed) {
+      return;
+    }
+    sendToExtension({ type: 'bindFile', payload: { filePath: trimmed } });
+  }, []);
+
+  const handleAddCurrentFileDependency = useCallback(async (): Promise<void> => {
+    const targetFilePath = boundFile.filePath?.trim();
+    if (!targetFilePath) {
+      pushToast(
+        'warning',
+        translate('dependency.errors.noActiveFile' as TranslationKey, 'Сначала выберите активный файл для привязки')
+      );
+      return;
+    }
+
+    const sourceFilePath = dependencySourceFilePath.trim();
+    if (!sourceFilePath) {
+      pushToast(
+        'warning',
+        translate('dependency.errors.noSourceFile' as TranslationKey, 'Выберите файл зависимости')
+      );
+      return;
+    }
+
+    const normalizedTargetFilePath = normalizeFilePath(targetFilePath);
+    const normalizedSourceFilePath = normalizeFilePath(sourceFilePath);
+    const nextIntegration = buildFileIntegration(normalizedSourceFilePath, [normalizedTargetFilePath]);
+    const existingIntegration = integrations.find((item) => item.integrationId === nextIntegration.integrationId);
+    const integration: SourceIntegration = existingIntegration
+      ? {
+          ...existingIntegration,
+          ...nextIntegration,
+          attachedFiles: dedupePaths([...(existingIntegration.attachedFiles ?? []), ...nextIntegration.attachedFiles]),
+          consumerFiles: dedupePaths([...(existingIntegration.consumerFiles ?? []), normalizedTargetFilePath]),
+        }
+      : nextIntegration;
+
+    try {
+      setIndexerStatus('indexing');
+      const addResponse = await requestExternalIpc({
+        type: 'integration/add',
+        payload: { integration },
+      });
+
+      if (!addResponse.ok) {
+        throw new Error(addResponse.error.message);
+      }
+
+      upsertIntegration(addResponse.payload.integration);
+
+      const reindexResponse = await requestExternalIpc({
+        type: 'integration/reindex',
+        payload: { integrationId: integration.integrationId, force: true },
+      });
+
+      if (!reindexResponse.ok) {
+        throw new Error(reindexResponse.error.message);
+      }
+
+      await synchronizeDependencyState(integration.integrationId);
+      pushToast(
+        'success',
+        translate('dependency.added' as TranslationKey, 'Зависимость прикреплена: {name}', {
+          name: integration.displayName ?? integration.integrationId,
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      setIndexerStatus('error', message);
+      pushToast(
+        'error',
+        `${translate('dependency.addFailed' as TranslationKey, 'Не удалось добавить зависимость')}: ${message}`
+      );
+    }
+  }, [
+    boundFile.filePath,
+    dependencySourceFilePath,
+    integrations,
+    pushToast,
+    requestExternalIpc,
+    setIndexerStatus,
+    synchronizeDependencyState,
+    translate,
+    upsertIntegration,
+  ]);
+
+  const handleDetachDependency = useCallback(async (integrationId: string): Promise<void> => {
+    const integration = integrations.find((item) => item.integrationId === integrationId);
+    if (!integration) {
+      pushToast(
+        'warning',
+        translate('dependency.errors.notFound' as TranslationKey, 'Зависимость уже удалена')
+      );
+      return;
+    }
+
+    const normalizedActiveFilePath = boundFile.filePath ? normalizeFilePath(boundFile.filePath) : null;
+    const currentConsumerFiles = dedupePaths(integration.consumerFiles ?? []);
+
+    if (
+      normalizedActiveFilePath &&
+      currentConsumerFiles.length > 0 &&
+      !currentConsumerFiles.some(
+        (filePath) => normalizeFilePathForMatch(filePath) === normalizeFilePathForMatch(normalizedActiveFilePath)
+      )
+    ) {
+      pushToast(
+        'info',
+        translate(
+          'dependency.detach.notBoundToActive' as TranslationKey,
+          'Эта зависимость не прикреплена к активному файлу'
+        )
+      );
+      return;
+    }
+
+    const hasScopedConsumers = currentConsumerFiles.length > 0;
+    let shouldRemoveIntegration = !normalizedActiveFilePath || !hasScopedConsumers;
+    let nextIntegration: SourceIntegration | null = null;
+
+    if (normalizedActiveFilePath && hasScopedConsumers) {
+      const nextConsumerFiles = currentConsumerFiles.filter(
+        (filePath) => normalizeFilePathForMatch(filePath) !== normalizeFilePathForMatch(normalizedActiveFilePath)
+      );
+      shouldRemoveIntegration = nextConsumerFiles.length === 0;
+      if (!shouldRemoveIntegration) {
+        nextIntegration = {
+          ...integration,
+          consumerFiles: nextConsumerFiles,
+        };
+      }
+    }
+
+    try {
+      setIndexerStatus('indexing');
+
+      if (shouldRemoveIntegration) {
+        const removeResponse = await requestExternalIpc({
+          type: 'integration/remove',
+          payload: { integrationId: integration.integrationId },
+        });
+
+        if (!removeResponse.ok) {
+          throw new Error(removeResponse.error.message);
+        }
+
+        if (removeResponse.payload.removed) {
+          removeIntegration(integration.integrationId);
+          clearSymbolsForIntegration(integration.integrationId);
+        }
+      } else if (nextIntegration) {
+        const addResponse = await requestExternalIpc({
+          type: 'integration/add',
+          payload: { integration: nextIntegration },
+        });
+
+        if (!addResponse.ok) {
+          throw new Error(addResponse.error.message);
+        }
+
+        upsertIntegration(addResponse.payload.integration);
+      }
+
+      await synchronizeDependencyState(shouldRemoveIntegration ? undefined : integration.integrationId);
+      pushToast(
+        'success',
+        shouldRemoveIntegration
+          ? translate('dependency.detached' as TranslationKey, 'Зависимость откреплена')
+          : translate('dependency.detachedFromFile' as TranslationKey, 'Файл откреплён от зависимости')
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      setIndexerStatus('error', message);
+      pushToast(
+        'error',
+        `${translate('dependency.detachFailed' as TranslationKey, 'Не удалось открепить зависимость')}: ${message}`
+      );
+    }
+  }, [
+    boundFile.filePath,
+    clearSymbolsForIntegration,
+    integrations,
+    pushToast,
+    removeIntegration,
+    requestExternalIpc,
+    setIndexerStatus,
+    synchronizeDependencyState,
+    translate,
+    upsertIntegration,
+  ]);
+
+  useEffect(() => {
+    if (!dependencySourceFilePath && boundFile.filePath) {
+      setDependencySourceFilePath(boundFile.filePath);
+    }
+  }, [boundFile.filePath, dependencySourceFilePath]);
+
+  useEffect(() => {
+    if (editableFiles.length === 0) {
+      if (dependencySourceFilePath) {
+        setDependencySourceFilePath('');
+      }
+      return;
+    }
+
+    const knownPaths = new Set(editableFiles.map((file) => normalizeFilePathForMatch(file.filePath)));
+    const selectedPath = normalizeFilePathForMatch(dependencySourceFilePath);
+    if (selectedPath && knownPaths.has(selectedPath)) {
+      return;
+    }
+
+    const fallbackPath = boundFile.filePath && knownPaths.has(normalizeFilePathForMatch(boundFile.filePath))
+      ? boundFile.filePath
+      : editableFiles[0]?.filePath ?? '';
+
+    setDependencySourceFilePath(fallbackPath);
+  }, [boundFile.filePath, dependencySourceFilePath, editableFiles]);
+
   useEffect(() => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
   }, [graph.displayLanguage]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const sync = async (): Promise<void> => {
+      try {
+        setIndexerStatus('indexing');
+        await synchronizeDependencyState();
+      } catch (error) {
+        if (disposed) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+        setIndexerStatus('error', message);
+      }
+    };
+
+    void sync();
+
+    return () => {
+      disposed = true;
+    };
+  }, [boundFile.filePath, setIndexerStatus, synchronizeDependencyState]);
 
   const handleCalculateLayout = (): void => {
     layoutRunnerRef.current();
@@ -1401,6 +1965,7 @@ const App: React.FC = () => {
           useGraphStore={useGraphStore}
           displayLanguage={locale}
           activeFilePath={boundFile.filePath}
+          onDetachDependency={handleDetachDependency}
         />
       );
     }
@@ -1438,6 +2003,11 @@ const App: React.FC = () => {
         onShowHelp={() => setShowHelp(true)}
         boundFileName={boundFile.fileName}
         boundFilePath={boundFile.filePath}
+        editableFiles={editableFiles}
+        dependencySourceFilePath={dependencySourceFilePath}
+        onDependencySourceFileChange={setDependencySourceFilePath}
+        onBindFile={handleBindFile}
+        onAddCurrentFileDependency={handleAddCurrentFileDependency}
         codegenProfile={codegenProfile}
         onCodegenProfileChange={handleCodegenProfileChange}
       />

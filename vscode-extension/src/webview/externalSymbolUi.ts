@@ -15,6 +15,8 @@ export interface SymbolUiContext {
   activeFilePath?: string | null;
 }
 
+const normalizePath = (filePath: string): string => filePath.replace(/\\/g, '/').toLowerCase();
+
 export const resolveSymbolUiStatus = ({
   symbol,
   integration,
@@ -38,10 +40,13 @@ export const resolveSymbolUiStatus = ({
   }
 
   const hasActiveFile = Boolean(activeFilePath && activeFilePath.trim().length > 0);
+  const normalizedActiveFilePath = hasActiveFile ? normalizePath(activeFilePath ?? '') : null;
+  const scopeFiles = (integration.consumerFiles ?? []).map(normalizePath);
+
   if (
-    hasActiveFile &&
-    integration.attachedFiles.length > 0 &&
-    !integration.attachedFiles.includes(activeFilePath ?? '')
+    normalizedActiveFilePath &&
+    scopeFiles.length > 0 &&
+    !scopeFiles.includes(normalizedActiveFilePath)
   ) {
     return {
       state: 'disabled',

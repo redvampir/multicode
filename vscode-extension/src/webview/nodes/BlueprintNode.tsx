@@ -570,9 +570,18 @@ const BlueprintNodeComponent: React.FC<BlueprintNodeComponentProps> = ({
     return '';
   })();
   
-  const defaultLabel = displayLanguage === 'ru' 
+  const localizedDefinitionLabel = displayLanguage === 'ru'
     ? (definition?.labelRu ?? node.label)
     : (definition?.label ?? node.label);
+  const hasExplicitNodeLabel = typeof node.label === 'string' && node.label.trim().length > 0;
+  const preferNodeLabel =
+    node.type === 'CallUserFunction' ||
+    node.type === 'FunctionCall' ||
+    node.type === 'Function' ||
+    node.type === 'Event';
+  const defaultLabel = preferNodeLabel && hasExplicitNodeLabel
+    ? node.label
+    : localizedDefinitionLabel;
   const nodeTitle = isVariableNode
     ? getVariableNodeTitle(node.type, variableName, defaultLabel)
     : defaultLabel;

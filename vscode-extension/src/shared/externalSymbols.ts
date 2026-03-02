@@ -11,6 +11,8 @@ export interface IntegrationLocation {
 export interface SourceIntegration {
   integrationId: string;
   attachedFiles: string[];
+  /** Файлы-потребители, для которых интеграция доступна в UI (по умолчанию: все). */
+  consumerFiles?: string[];
   mode: IntegrationMode;
   kind?: IntegrationKind;
   displayName?: string;
@@ -23,6 +25,7 @@ export interface SymbolDescriptor {
   integrationId: string;
   symbolKind: SymbolKind;
   name: string;
+  signature?: string;
   signatureHash?: string;
   namespacePath?: string[];
 }

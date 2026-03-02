@@ -49,6 +49,7 @@ import {
   type ThemeSetting,
   type ThemeTokens
 } from '../webview/theme';
+import type { SourceIntegration } from '../shared/externalSymbols';
 
 // Debug logging to file
 const DEBUG_LOG_ENABLED = true;
@@ -86,6 +87,11 @@ import {
   type ParsedBindingBlock
 } from './codeBinding';
 import { SymbolIndexerRegistry } from './symbol-indexer';
+import { buildCodeWithUnifiedIncludes } from './includeBlock';
+import {
+  createDetachedSourceGraphCacheKey,
+  createDetachedSourceGraphState,
+} from './sourceGraphFallback';
 import {
   handleDependencyMapGet as orchestrateDependencyMapGet,
   handleClassDelete as orchestrateClassDelete,
@@ -97,6 +103,7 @@ import {
   mapToIpcError,
   safeExternalIpcResponse,
 } from './ipcOrchestration';
+import type { ExternalIncludePathMode } from './externalIncludePath';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 type GeneratedCodeWriteResult =
@@ -114,6 +121,39 @@ const getVariablesStats = (variables: unknown): { hasVariables: boolean; variabl
   }
   return { hasVariables: true, variablesCount: variables.length };
 };
+
+const CPP_FILE_EXTENSIONS = new Set(['.h', '.hpp', '.hh', '.hxx', '.ipp', '.c', '.cc', '.cpp', '.cxx']);
+const LOCAL_INCLUDE_DIRECTIVE = /^\s*#\s*include\s*"([^"]+)"/gm;
+
+const normalizeFsPath = (filePath: string): string => filePath.replace(/\\/g, '/');
+const normalizeFsPathForMatch = (filePath: string): string => normalizeFsPath(filePath).toLowerCase();
+
+const dedupeNormalizedPaths = (paths: string[]): string[] => {
+  const unique = new Set<string>();
+  for (const filePath of paths) {
+    const trimmed = filePath.trim();
+    if (!trimmed) {
+      continue;
+    }
+    unique.add(normalizeFsPath(trimmed));
+  }
+  return Array.from(unique);
+};
+
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
+
+const toSafeIdSegment = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48) || 'file';
 
 export class GraphPanel {
   private static currentPanel: GraphPanel | undefined;
@@ -175,6 +215,7 @@ export class GraphPanel {
     | undefined;
   private readonly graphBindingIdUsage = new Map<string, Set<string>>();
   private readonly warnedDuplicateGraphIds = new Set<string>();
+  private readonly detachedGraphStateBySource = new Map<string, GraphState>();
   private graphBindingLoadSeq = 0;
   private graphBindingAutoSaveTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly extensionUri: vscode.Uri;
@@ -246,11 +287,14 @@ export class GraphPanel {
         }
       }),
       vscode.window.onDidChangeActiveColorTheme(() => this.postTheme()),
-      vscode.window.onDidChangeActiveTextEditor((editor) => this.bindActiveEditorDocument(editor))
+      vscode.window.onDidChangeActiveTextEditor((editor) => this.bindActiveEditorDocument(editor)),
+      vscode.window.onDidChangeVisibleTextEditors(() => this.postEditableFiles()),
+      vscode.workspace.onDidOpenTextDocument(() => this.postEditableFiles()),
+      vscode.workspace.onDidCloseTextDocument(() => this.postEditableFiles())
     );
 
     if (this.boundCodeDocumentUri) {
-      void this.tryLoadGraphFromBoundSource(this.boundCodeDocumentUri);
+      void this.handleBoundSourceChanged(this.boundCodeDocumentUri);
     }
   }
 
@@ -435,7 +479,7 @@ export class GraphPanel {
       try {
         const document = await vscode.workspace.openTextDocument(codeUri);
         const original = document.getText();
-        const next = injectOrReplaceMulticodeGraphBinding(original, bindingLine, graphBindingConfig.maxLines);
+        const next = this.injectOrReplaceGraphBindingLine(original, bindingLine, graphBindingConfig.maxLines);
         if (next !== original) {
           const fullRange = new vscode.Range(
             document.positionAt(0),
@@ -490,9 +534,8 @@ export class GraphPanel {
     if (graphBindingConfig.enabled && codeUri && codeUri.scheme === 'file') {
       try {
         const document = await vscode.workspace.openTextDocument(codeUri);
-        const limit = Math.min(graphBindingConfig.maxLines, document.lineCount);
-        const headerText = Array.from({ length: limit }, (_, idx) => document.lineAt(idx).text).join('\n');
-        const binding = findMulticodeGraphBindingInSource(headerText, graphBindingConfig.maxLines);
+        const sourceText = document.getText();
+        const binding = this.findGraphBindingInSource(sourceText, graphBindingConfig.maxLines);
         if (binding) {
           const status = await this.tryLoadGraphFromBoundSource(codeUri);
           if (status === 'loaded' || status === 'created') {
@@ -621,13 +664,21 @@ export class GraphPanel {
       return;
     }
 
-    const result = generator.generate(blueprintState, codegenOptions);
+    const blueprintStateForCodegen = this.applyResolvedExternalSymbolNamesForCodegen(
+      blueprintState,
+      externalValidation.resolvedSymbolsByNodeId
+    );
+    const result = generator.generate(blueprintStateForCodegen, codegenOptions);
     
     if (result.success) {
       const targetUri =
         this.boundCodeDocumentUri ?? this.resolveWritableEditorUri(vscode.window.activeTextEditor);
 
-      const codeWithIntegrationIncludes = this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes);
+      const codeWithIntegrationIncludes = this.prependRequiredIncludes(
+        result.code,
+        externalValidation.requiredIncludes,
+        targetUri
+      );
       const prepared = targetUri
         ? await this.prepareGeneratedCodeForWrite(codeWithIntegrationIncludes, targetUri, outputProfile)
         : { code: codeWithIntegrationIncludes };
@@ -741,7 +792,11 @@ export class GraphPanel {
       return;
     }
 
-    const result = generator.generate(blueprintState, this.resolveCodegenOptionsForProfile('clean'));
+    const blueprintStateForCodegen = this.applyResolvedExternalSymbolNamesForCodegen(
+      blueprintState,
+      externalValidation.resolvedSymbolsByNodeId
+    );
+    const result = generator.generate(blueprintStateForCodegen, this.resolveCodegenOptionsForProfile('clean'));
 
     if (!result.success) {
       this.outputChannel.appendLine('[Compile & Run] ✗ Ошибка генерации кода:');
@@ -969,6 +1024,7 @@ export class GraphPanel {
       payload: this.graphState
     });
     this.postBoundFile();
+    this.postEditableFiles();
     this.postCodegenProfile();
   }
 
@@ -981,6 +1037,53 @@ export class GraphPanel {
         filePath: uri ? uri.fsPath : null,
       }
     });
+  }
+
+  private postEditableFiles(): void {
+    this.sendToWebview({
+      type: 'editableFilesChanged',
+      payload: {
+        files: this.getEditableFiles(),
+      },
+    });
+  }
+
+  private getEditableFiles(): Array<{ fileName: string; filePath: string }> {
+    const expectedLanguageIds = this.getExpectedLanguageIds();
+    const seen = new Set<string>();
+    const files: Array<{ fileName: string; filePath: string }> = [];
+
+    const pushFile = (uri: vscode.Uri): void => {
+      if (uri.scheme !== 'file') {
+        return;
+      }
+      const filePath = uri.fsPath;
+      if (!filePath || seen.has(filePath)) {
+        return;
+      }
+      seen.add(filePath);
+      files.push({
+        fileName: path.basename(filePath),
+        filePath,
+      });
+    };
+
+    for (const document of vscode.workspace.textDocuments) {
+      if (document.uri.scheme !== 'file') {
+        continue;
+      }
+      if (expectedLanguageIds.length > 0 && !expectedLanguageIds.includes(document.languageId)) {
+        continue;
+      }
+      pushFile(document.uri);
+    }
+
+    if (this.boundCodeDocumentUri) {
+      pushFile(this.boundCodeDocumentUri);
+    }
+
+    files.sort((left, right) => left.fileName.localeCompare(right.fileName, 'ru'));
+    return files;
   }
 
   private postCodegenProfile(): void {
@@ -1273,13 +1376,89 @@ export class GraphPanel {
 
   private bindActiveEditorDocument(editor: vscode.TextEditor | undefined): void {
     const uri = this.resolveWritableEditorUri(editor);
-    if (uri) {
-      const prevUri = this.boundCodeDocumentUri;
-      this.boundCodeDocumentUri = uri;
-      this.postBoundFile();
-      if (!prevUri || prevUri.toString() !== uri.toString()) {
-        void this.tryLoadGraphFromBoundSource(uri);
+    if (!uri) {
+      return;
+    }
+
+    const prevUri = this.boundCodeDocumentUri;
+    const prevUriKey = prevUri?.toString();
+    const nextUriKey = uri.toString();
+    if (prevUri && prevUriKey !== nextUriKey) {
+      this.rememberDetachedGraphSnapshot(prevUri);
+    }
+
+    this.boundCodeDocumentUri = uri;
+    this.postBoundFile();
+    this.postEditableFiles();
+    if (!prevUri || prevUriKey !== nextUriKey) {
+      void this.handleBoundSourceChanged(uri);
+    }
+  }
+
+  private rememberDetachedGraphSnapshot(sourceUri: vscode.Uri): void {
+    if (sourceUri.scheme !== 'file') {
+      return;
+    }
+
+    const key = createDetachedSourceGraphCacheKey(sourceUri.fsPath);
+    const snapshot = JSON.parse(JSON.stringify(this.graphState)) as GraphState;
+    this.detachedGraphStateBySource.set(key, snapshot);
+  }
+
+  private restoreDetachedGraphSnapshot(sourceUri: vscode.Uri): GraphState | undefined {
+    if (sourceUri.scheme !== 'file') {
+      return undefined;
+    }
+    const key = createDetachedSourceGraphCacheKey(sourceUri.fsPath);
+    const snapshot = this.detachedGraphStateBySource.get(key);
+    return snapshot ? (JSON.parse(JSON.stringify(snapshot)) as GraphState) : undefined;
+  }
+
+  private async handleBoundSourceChanged(sourceUri: vscode.Uri): Promise<void> {
+    const loadStatus = await this.tryLoadGraphFromBoundSource(sourceUri);
+    if (this.boundCodeDocumentUri?.toString() !== sourceUri.toString()) {
+      return;
+    }
+
+    if (loadStatus === 'loaded' || loadStatus === 'created') {
+      this.rememberDetachedGraphSnapshot(sourceUri);
+      return;
+    }
+
+    const cachedGraph = this.restoreDetachedGraphSnapshot(sourceUri);
+    const fallbackGraph =
+      cachedGraph ??
+      createDetachedSourceGraphState(sourceUri.fsPath, {
+        language: this.graphState.language,
+        displayLanguage: this.locale,
+      });
+    this.boundGraphBinding = undefined;
+    this.graphState = this.normalizeState(fallbackGraph);
+    this.postState();
+    void this.validateAndDispatch(this.graphState);
+  }
+
+  private async bindFileFromWebview(filePath: string): Promise<void> {
+    const trimmedPath = filePath.trim();
+    if (!trimmedPath) {
+      this.postToast('warning', 'Не указан путь к файлу для привязки');
+      return;
+    }
+
+    try {
+      const targetUri = vscode.Uri.file(trimmedPath);
+      const document = await vscode.workspace.openTextDocument(targetUri);
+      const expectedLanguageIds = this.getExpectedLanguageIds();
+      if (expectedLanguageIds.length > 0 && !expectedLanguageIds.includes(document.languageId)) {
+        this.postToast('warning', `Файл ${path.basename(trimmedPath)} не соответствует текущей целевой платформе`);
+        return;
       }
+
+      const editor = await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      this.bindActiveEditorDocument(editor);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      this.postToast('warning', `Не удалось открыть файл: ${reason}`);
     }
   }
 
@@ -1402,7 +1581,174 @@ export class GraphPanel {
     void this.panel.webview.postMessage(parsed.data);
   }
 
-  private handleIntegrationAdd(payload: { integration: { integrationId: string; attachedFiles: string[]; mode: 'explicit' | 'implicit'; kind?: 'library' | 'framework' | 'file'; displayName?: string; version?: string; location?: { type: 'npm' | 'vcpkg' | 'local_file' | 'local_folder' | 'git'; value: string } } }): Promise<Extract<ExternalIpcResponse, { type: 'integration/add' }>> {
+  private extractQuotedIncludes(sourceText: string): string[] {
+    const includes: string[] = [];
+    for (const match of sourceText.matchAll(LOCAL_INCLUDE_DIRECTIVE)) {
+      const includeTarget = match[1]?.trim();
+      if (includeTarget) {
+        includes.push(includeTarget);
+      }
+    }
+    return Array.from(new Set(includes));
+  }
+
+  private resolveLocalIncludePath(rootFilePath: string, includeTarget: string): string | null {
+    const candidates = [path.resolve(path.dirname(rootFilePath), includeTarget)];
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      candidates.push(path.resolve(folder.uri.fsPath, includeTarget));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+          return candidate;
+        }
+      } catch {
+        // Ignore missing/unreadable candidate path.
+      }
+    }
+
+    return null;
+  }
+
+  private buildImplicitFileIntegration(sourceFilePath: string, rootFilePath: string): SourceIntegration {
+    const normalizedSourcePath = normalizeFsPath(sourceFilePath);
+    const normalizedRootPath = normalizeFsPath(rootFilePath);
+    const fileName = path.basename(normalizedSourcePath);
+    const stem = path.parse(fileName).name;
+    const integrationId = `file_${toSafeIdSegment(stem)}_${hashString(normalizedSourcePath.toLowerCase())}`;
+
+    return {
+      integrationId,
+      attachedFiles: [normalizedSourcePath],
+      consumerFiles: [normalizedRootPath],
+      mode: 'implicit',
+      kind: 'file',
+      displayName: fileName,
+      location: {
+        type: 'local_file',
+        value: normalizedSourcePath,
+      },
+    };
+  }
+
+  private async ensureIncludeAutoDependencies(rootFilePath?: string): Promise<void> {
+    if (!rootFilePath || !path.isAbsolute(rootFilePath)) {
+      return;
+    }
+
+    if (!CPP_FILE_EXTENSIONS.has(path.extname(rootFilePath).toLowerCase())) {
+      return;
+    }
+
+    let sourceText = '';
+    try {
+      sourceText = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(rootFilePath))).toString('utf8');
+    } catch {
+      return;
+    }
+
+    const includeTargets = this.extractQuotedIncludes(sourceText);
+    if (includeTargets.length === 0) {
+      return;
+    }
+
+    const currentBindings = this.graphState.integrationBindings ?? [];
+    const nextBindings = [...currentBindings];
+    const normalizedRootPath = normalizeFsPath(rootFilePath);
+    const normalizedRootPathMatch = normalizeFsPathForMatch(normalizedRootPath);
+    let changed = false;
+
+    for (const includeTarget of includeTargets) {
+      const resolvedIncludePath = this.resolveLocalIncludePath(rootFilePath, includeTarget);
+      const normalizedIncludeTarget = includeTarget.replace(/\\/g, '/').toLowerCase();
+      const includeBaseName = path.basename(normalizedIncludeTarget);
+      const normalizedResolvedPath = resolvedIncludePath ? normalizeFsPathForMatch(resolvedIncludePath) : null;
+
+      let integrationIndex = nextBindings.findIndex((integration) => {
+        if (integration.kind && integration.kind !== 'file') {
+          return false;
+        }
+
+        return integration.attachedFiles.some((attachedFile) => {
+          const normalizedAttachedFile = normalizeFsPathForMatch(attachedFile);
+          if (normalizedResolvedPath && normalizedAttachedFile === normalizedResolvedPath) {
+            return true;
+          }
+          if (normalizedAttachedFile.endsWith(`/${normalizedIncludeTarget}`)) {
+            return true;
+          }
+          return path.basename(normalizedAttachedFile) === includeBaseName;
+        });
+      });
+
+      if (integrationIndex < 0 && resolvedIncludePath) {
+        const autoIntegration = this.buildImplicitFileIntegration(resolvedIncludePath, rootFilePath);
+        integrationIndex = nextBindings.findIndex((item) => item.integrationId === autoIntegration.integrationId);
+        if (integrationIndex < 0) {
+          nextBindings.push(autoIntegration);
+          changed = true;
+          continue;
+        }
+      }
+
+      if (integrationIndex < 0) {
+        continue;
+      }
+
+      const integration = nextBindings[integrationIndex];
+      const isFileIntegration = (integration.kind ?? 'file') === 'file';
+      if (!isFileIntegration) {
+        continue;
+      }
+
+      const scopeFiles = dedupeNormalizedPaths(integration.consumerFiles ?? []);
+      const hasRootInScope = scopeFiles.some(
+        (filePath) => normalizeFsPathForMatch(filePath) === normalizedRootPathMatch
+      );
+      if (hasRootInScope) {
+        continue;
+      }
+
+      nextBindings[integrationIndex] = {
+        ...integration,
+        consumerFiles: [...scopeFiles, normalizedRootPath],
+      };
+      changed = true;
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    this.markState({ integrationBindings: nextBindings });
+    this.postState();
+  }
+
+  private async handleIntegrationList(
+    payload?: { includeImplicit?: boolean }
+  ): Promise<Extract<ExternalIpcResponse, { type: 'integration/list' }>> {
+    try {
+      await this.ensureIncludeAutoDependencies(this.boundCodeDocumentUri?.fsPath);
+      return {
+        type: 'integration/list',
+        ok: true,
+        payload: {
+          integrations: (this.graphState.integrationBindings ?? []).filter(
+            (item) => payload?.includeImplicit || item.mode === 'explicit'
+          ),
+        },
+      };
+    } catch (error) {
+      return {
+        type: 'integration/list',
+        ok: false,
+        error: mapToIpcError(error, 'E_INTEGRATION_LIST', 'Не удалось получить список интеграций'),
+      };
+    }
+  }
+
+  private handleIntegrationAdd(payload: { integration: SourceIntegration }): Promise<Extract<ExternalIpcResponse, { type: 'integration/add' }>> {
     return orchestrateIntegrationAdd(this.graphState, payload, (patch) => {
       this.markState(patch);
       this.postState();
@@ -1414,7 +1760,8 @@ export class GraphPanel {
   }
 
   private async handleSymbolsQuery(payload: { query: string; integrationId?: string; limit?: number }): Promise<Extract<ExternalIpcResponse, { type: 'symbols/query' }>> {
-    await this.reindexIntegrationSymbols(payload.integrationId, false);
+    const forceReindex = payload.query.trim().length === 0;
+    await this.reindexIntegrationSymbols(payload.integrationId, forceReindex);
     return {
       type: 'symbols/query',
       ok: true,
@@ -1424,7 +1771,8 @@ export class GraphPanel {
     };
   }
 
-  private handleDependencyMapGet(payload?: { rootFile?: string; includeSystem?: boolean }): Promise<Extract<ExternalIpcResponse, { type: 'dependency-map/get' }>> {
+  private async handleDependencyMapGet(payload?: { rootFile?: string; includeSystem?: boolean }): Promise<Extract<ExternalIpcResponse, { type: 'dependency-map/get' }>> {
+    await this.ensureIncludeAutoDependencies(payload?.rootFile ?? this.boundCodeDocumentUri?.fsPath);
     return orchestrateDependencyMapGet(
       this.graphState,
       payload,
@@ -1493,17 +1841,87 @@ export class GraphPanel {
     return validation;
   }
 
-  private prependRequiredIncludes(code: string, includes: string[]): string {
-    if (includes.length === 0) {
-      return code;
+  private resolveQualifiedExternalSymbolName(symbol: { name: string; namespacePath?: string[] }): string {
+    if (Array.isArray(symbol.namespacePath) && symbol.namespacePath.length > 0) {
+      return `${symbol.namespacePath.join('::')}::${symbol.name}`;
     }
-    const includeLines = includes.map((item) => `#include ${item}`);
-    const existingIncludes = new Set(code.split('\n').filter((line) => line.startsWith('#include ')));
-    const toInsert = includeLines.filter((line) => !existingIncludes.has(line));
-    if (toInsert.length === 0) {
-      return code;
+    return symbol.name;
+  }
+
+  private applyResolvedExternalSymbolNamesForCodegen(
+    blueprintState: ReturnType<typeof migrateToBlueprintFormat>,
+    resolvedSymbolsByNodeId: Map<string, { name: string; namespacePath?: string[] }>
+  ): ReturnType<typeof migrateToBlueprintFormat> {
+    if (resolvedSymbolsByNodeId.size === 0) {
+      return blueprintState;
     }
-    return `${toInsert.join('\n')}\n${code}`;
+
+    let changed = false;
+    const nextNodes = blueprintState.nodes.map((node) => {
+      if (node.type !== 'CallUserFunction' || !isRecord(node.properties)) {
+        return node;
+      }
+
+      const symbol = resolvedSymbolsByNodeId.get(node.id);
+      if (!symbol) {
+        return node;
+      }
+
+      const qualifiedName = this.resolveQualifiedExternalSymbolName(symbol);
+      const currentName =
+        typeof node.properties.functionName === 'string' ? node.properties.functionName : undefined;
+      const externalSymbol = isRecord(node.properties.externalSymbol)
+        ? node.properties.externalSymbol
+        : undefined;
+      const symbolRef = isRecord(node.properties.symbolRef) ? node.properties.symbolRef : undefined;
+      const currentQualifiedName =
+        (externalSymbol && typeof externalSymbol.qualifiedName === 'string' ? externalSymbol.qualifiedName : null) ??
+        (symbolRef && typeof symbolRef.qualifiedName === 'string' ? symbolRef.qualifiedName : null);
+
+      if (currentName === qualifiedName && currentQualifiedName === qualifiedName) {
+        return node;
+      }
+
+      changed = true;
+      return {
+        ...node,
+        properties: {
+          ...node.properties,
+          functionName: qualifiedName,
+          ...(externalSymbol
+            ? { externalSymbol: { ...externalSymbol, qualifiedName } }
+            : undefined),
+          ...(symbolRef
+            ? { symbolRef: { ...symbolRef, qualifiedName } }
+            : undefined),
+        },
+      };
+    });
+
+    if (!changed) {
+      return blueprintState;
+    }
+
+    return {
+      ...blueprintState,
+      nodes: nextNodes,
+    };
+  }
+
+  private prependRequiredIncludes(code: string, includes: string[], targetUri?: vscode.Uri): string {
+    const includePathMode = this.readExternalIncludePathMode();
+    return buildCodeWithUnifiedIncludes(code, {
+      requiredIncludes: includes,
+      includePathMode,
+      targetFilePath: targetUri?.scheme === 'file' ? targetUri.fsPath : undefined,
+    });
+  }
+
+  private readExternalIncludePathMode(): ExternalIncludePathMode {
+    const configured = vscode.workspace
+      .getConfiguration('multicode')
+      .get<'absolute' | 'relative'>('externalSymbols.includePathMode', 'relative');
+    return configured === 'absolute' ? 'absolute' : 'relative';
   }
 
   private handleMessage(message: WebviewToExtensionMessage): void {
@@ -1545,6 +1963,9 @@ export class GraphPanel {
         break;
       case 'requestLoad':
         void this.loadGraph();
+        break;
+      case 'bindFile':
+        void this.bindFileFromWebview(message.payload.filePath);
         break;
       case 'requestGenerate':
         void this.handleGenerateCode();
@@ -1595,15 +2016,7 @@ export class GraphPanel {
         break;
       }
       case 'integration/list':
-        this.postExternalIpcResponse({
-          type: 'integration/list',
-          ok: true,
-          payload: {
-            integrations: (this.graphState.integrationBindings ?? []).filter(
-              (item) => message.payload?.includeImplicit || item.mode === 'explicit'
-            ),
-          },
-        });
+        void this.handleIntegrationList(message.payload).then((response) => this.postExternalIpcResponse(response));
         break;
       case 'integration/reindex':
         void this.handleIntegrationReindex(message.payload).then((response) => this.postExternalIpcResponse(response));
@@ -1667,14 +2080,22 @@ export class GraphPanel {
         };
       }
 
-      const result = generator.generate(blueprintState);
+      const blueprintStateForCodegen = this.applyResolvedExternalSymbolNamesForCodegen(
+        blueprintState,
+        externalValidation.resolvedSymbolsByNodeId
+      );
+      const result = generator.generate(blueprintStateForCodegen);
       if (!result.success) {
         return result;
       }
 
       return {
         ...result,
-        code: this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes),
+        code: this.prependRequiredIncludes(
+          result.code,
+          externalValidation.requiredIncludes,
+          this.boundCodeDocumentUri
+        ),
       };
     } catch (error) {
       if (error instanceof UnsupportedLanguageError) {
@@ -1765,13 +2186,20 @@ export class GraphPanel {
   }
 
   private applyGraphMutation(payload: GraphMutationPayload): void {
+    if (payload.graphId && payload.graphId !== this.graphState.id) {
+      this.outputChannel.appendLine(
+        `[MultiCode] Игнорирован устаревший graphChanged: payload.graphId=${payload.graphId}, active.graphId=${this.graphState.id}`
+      );
+      return;
+    }
+
     const payloadStats = getVariablesStats(payload.variables);
     debugLog('applyGraphMutation received', {
       hasVariables: payloadStats.hasVariables,
       variablesCount: payloadStats.variablesCount,
       payloadKeys: Object.keys(payload),
     });
-    const { nodes, edges, ...rest } = payload;
+    const { graphId: _graphId, nodes, edges, ...rest } = payload;
     const restStats = getVariablesStats(rest.variables);
     debugLog('rest after destructuring', {
       hasVariables: restStats.hasVariables,
@@ -1831,9 +2259,39 @@ export class GraphPanel {
     const enabled = config.get<boolean>('graphBinding.enabled', true);
     const autoSave = config.get<boolean>('graphBinding.autoSave', true);
     const folder = (config.get<string>('graphBinding.folder', '.multicode') ?? '.multicode').trim() || '.multicode';
-    // Маркер @multicode:graph попадает в первые строки заголовка генератора. Меньше 4 строк не имеет смысла.
+    // Быстрый скан первых строк + fallback по всему файлу (для сценариев, когда marker ниже include-блока).
     const maxLines = Math.max(4, Math.min(200, config.get<number>('graphBinding.maxLines', 10)));
     return { enabled, autoSave, folder, maxLines };
+  }
+
+  private findGraphBindingInSource(sourceText: string, maxLines: number): MulticodeGraphBinding | null {
+    const headMatch = findMulticodeGraphBindingInSource(sourceText, maxLines);
+    if (headMatch) {
+      return headMatch;
+    }
+
+    const totalLines = sourceText.split(/\r?\n/).length;
+    if (totalLines <= maxLines) {
+      return null;
+    }
+
+    return findMulticodeGraphBindingInSource(sourceText, totalLines);
+  }
+
+  private injectOrReplaceGraphBindingLine(sourceText: string, bindingLine: string, maxLines: number): string {
+    const hasMarkerInHead = findMulticodeGraphBindingInSource(sourceText, maxLines) !== null;
+    if (hasMarkerInHead) {
+      return injectOrReplaceMulticodeGraphBinding(sourceText, bindingLine, maxLines);
+    }
+
+    const totalLines = sourceText.split(/\r?\n/).length;
+    const hasMarkerInWholeSource =
+      totalLines > maxLines ? findMulticodeGraphBindingInSource(sourceText, totalLines) !== null : false;
+    if (hasMarkerInWholeSource) {
+      return injectOrReplaceMulticodeGraphBinding(sourceText, bindingLine, totalLines);
+    }
+
+    return injectOrReplaceMulticodeGraphBinding(sourceText, bindingLine, maxLines);
   }
 
   private resolveGraphBindingRootFsPath(codeUri: vscode.Uri): string {
@@ -1909,7 +2367,7 @@ export class GraphPanel {
     };
 
     const bindingLine = formatMulticodeGraphBindingLine(binding);
-    const codeWithBinding = injectOrReplaceMulticodeGraphBinding(code, bindingLine, config.maxLines);
+    const codeWithBinding = this.injectOrReplaceGraphBindingLine(code, bindingLine, config.maxLines);
     const nextCode =
       outputProfile === 'recovery'
         ? injectOrReplaceMulticodeGraphSnapshot(codeWithBinding, {
@@ -1943,10 +2401,8 @@ export class GraphPanel {
     const seq = (this.graphBindingLoadSeq += 1);
     try {
       const document = await vscode.workspace.openTextDocument(codeUri);
-      const limit = Math.min(config.maxLines, document.lineCount);
-      const headerText = Array.from({ length: limit }, (_, idx) => document.lineAt(idx).text).join('\n');
       const sourceText = document.getText();
-      const binding = findMulticodeGraphBindingInSource(headerText, config.maxLines);
+      const binding = this.findGraphBindingInSource(sourceText, config.maxLines);
       if (seq !== this.graphBindingLoadSeq) {
         return 'failed';
       }

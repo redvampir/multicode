@@ -1,32 +1,31 @@
 {
   "version": 2,
-  "savedAt": "2026-03-02T10:23:34.976Z",
+  "savedAt": "2026-03-02T10:48:00.065Z",
   "data": {
-    "id": "graph-1771817389591",
-    "name": "Untitled Graph",
-    "graphVersion": 3,
+    "id": "graph-file-test_2-2142558f",
+    "name": "test_2",
     "language": "cpp",
     "displayLanguage": "ru",
     "nodes": [
       {
-        "id": "call-1772446695288-ggtbdvoig",
-        "label": "Сумма 1",
+        "id": "call-1772448445184-chtgku1yu",
+        "label": "Новая функция 2",
         "type": "Function",
         "position": {
-          "x": 432,
-          "y": -80
+          "x": 176,
+          "y": -48
         },
         "blueprintNode": {
-          "id": "call-1772446695288-ggtbdvoig",
-          "label": "Сумма 1",
+          "id": "call-1772448445184-chtgku1yu",
+          "label": "Новая функция 2",
           "type": "CallUserFunction",
           "position": {
-            "x": 432,
-            "y": -80
+            "x": 176,
+            "y": -48
           },
           "inputs": [
             {
-              "id": "call-1772446695288-ggtbdvoig-exec-in",
+              "id": "call-1772448445184-chtgku1yu-exec-in",
               "name": "",
               "dataType": "execution",
               "direction": "input",
@@ -34,7 +33,7 @@
               "connected": false
             },
             {
-              "id": "call-1772446695288-ggtbdvoig-param-1772446619608-we4275",
+              "id": "call-1772448445184-chtgku1yu-param-1772448397984-gd7fm7",
               "name": "param_1",
               "nameRu": "Параметр 1",
               "dataType": "int32",
@@ -43,7 +42,7 @@
               "connected": false
             },
             {
-              "id": "call-1772446695288-ggtbdvoig-param-1772446635096-piz1wn",
+              "id": "call-1772448445184-chtgku1yu-param-1772448400383-bnjhyl",
               "name": "param_2",
               "nameRu": "Параметр 2",
               "dataType": "int32",
@@ -54,7 +53,7 @@
           ],
           "outputs": [
             {
-              "id": "call-1772446695288-ggtbdvoig-exec-out",
+              "id": "call-1772448445184-chtgku1yu-exec-out",
               "name": "",
               "dataType": "execution",
               "direction": "output",
@@ -62,7 +61,7 @@
               "connected": false
             },
             {
-              "id": "call-1772446695288-ggtbdvoig-param-1772446639712-lm5y82",
+              "id": "call-1772448445184-chtgku1yu-param-1772448402543-i38ro5",
               "name": "result_1",
               "nameRu": "Результат 1",
               "dataType": "int32",
@@ -72,38 +71,38 @@
             }
           ],
           "properties": {
-            "functionId": "func-1772446559601-wxhrotbn9",
-            "functionName": "newFunction1"
+            "functionId": "func-1772448382055-40gxttyp6",
+            "functionName": "newFunction2"
           }
         }
       }
     ],
     "edges": [],
-    "updatedAt": "2026-03-02T10:23:34.523Z",
+    "updatedAt": "2026-03-02T10:47:53.921Z",
     "dirty": false,
     "variables": [],
     "functions": [
       {
-        "id": "func-1772446559601-wxhrotbn9",
-        "name": "newFunction1",
-        "nameRu": "Сумма 1",
+        "id": "func-1772448382055-40gxttyp6",
+        "name": "newFunction2",
+        "nameRu": "Новая функция 2",
         "parameters": [
           {
-            "id": "param-1772446619608-we4275",
+            "id": "param-1772448397984-gd7fm7",
             "name": "param_1",
             "nameRu": "Параметр 1",
             "dataType": "int32",
             "direction": "input"
           },
           {
-            "id": "param-1772446635096-piz1wn",
+            "id": "param-1772448400383-bnjhyl",
             "name": "param_2",
             "nameRu": "Параметр 2",
             "dataType": "int32",
             "direction": "input"
           },
           {
-            "id": "param-1772446639712-lm5y82",
+            "id": "param-1772448402543-i38ro5",
             "name": "result_1",
             "nameRu": "Результат 1",
             "dataType": "int32",
@@ -114,17 +113,17 @@
         "graph": {
           "nodes": [
             {
-              "id": "func-1772446559601-wxhrotbn9-entry",
+              "id": "func-1772448382055-40gxttyp6-entry",
               "label": "newFunction1",
               "type": "FunctionEntry",
               "position": {
-                "x": 32,
+                "x": -16,
                 "y": 208
               },
               "inputs": [],
               "outputs": [
                 {
-                  "id": "func-1772446559601-wxhrotbn9-entry-exec-out",
+                  "id": "func-1772448382055-40gxttyp6-entry-exec-out",
                   "name": "",
                   "dataType": "execution",
                   "direction": "output",
@@ -132,7 +131,7 @@
                   "connected": false
                 },
                 {
-                  "id": "func-1772446559601-wxhrotbn9-entry-param-1772446619608-we4275",
+                  "id": "func-1772448382055-40gxttyp6-entry-param-1772448397984-gd7fm7",
                   "name": "param_1",
                   "nameRu": "Параметр 1",
                   "dataType": "int32",
@@ -141,7 +140,7 @@
                   "connected": false
                 },
                 {
-                  "id": "func-1772446559601-wxhrotbn9-entry-param-1772446635096-piz1wn",
+                  "id": "func-1772448382055-40gxttyp6-entry-param-1772448400383-bnjhyl",
                   "name": "param_2",
                   "nameRu": "Параметр 2",
                   "dataType": "int32",
@@ -151,12 +150,12 @@
                 }
               ],
               "properties": {
-                "functionId": "func-1772446559601-wxhrotbn9",
+                "functionId": "func-1772448382055-40gxttyp6",
                 "body": ""
               }
             },
             {
-              "id": "func-1772446559601-wxhrotbn9-return",
+              "id": "func-1772448382055-40gxttyp6-return",
               "label": "Return",
               "type": "FunctionReturn",
               "position": {
@@ -165,7 +164,7 @@
               },
               "inputs": [
                 {
-                  "id": "func-1772446559601-wxhrotbn9-return-exec-in",
+                  "id": "func-1772448382055-40gxttyp6-return-exec-in",
                   "name": "",
                   "dataType": "execution",
                   "direction": "input",
@@ -173,7 +172,7 @@
                   "connected": false
                 },
                 {
-                  "id": "func-1772446559601-wxhrotbn9-return-param-1772446639712-lm5y82",
+                  "id": "func-1772448382055-40gxttyp6-return-param-1772448402543-i38ro5",
                   "name": "result_1",
                   "nameRu": "Результат 1",
                   "dataType": "int32",
@@ -184,20 +183,20 @@
               ],
               "outputs": [],
               "properties": {
-                "functionId": "func-1772446559601-wxhrotbn9"
+                "functionId": "func-1772448382055-40gxttyp6"
               }
             },
             {
-              "id": "node-1772446663793-nxm5r3dsz",
+              "id": "node-1772448425719-1ibodkc4f",
               "label": "",
               "type": "Add",
               "position": {
-                "x": 272,
+                "x": 240,
                 "y": 224
               },
               "inputs": [
                 {
-                  "id": "node-1772446663793-nxm5r3dsz-a",
+                  "id": "node-1772448425719-1ibodkc4f-a",
                   "name": "A",
                   "dataType": "int32",
                   "direction": "input",
@@ -207,7 +206,7 @@
                   "connected": false
                 },
                 {
-                  "id": "node-1772446663793-nxm5r3dsz-b",
+                  "id": "node-1772448425719-1ibodkc4f-b",
                   "name": "B",
                   "dataType": "int32",
                   "direction": "input",
@@ -219,7 +218,7 @@
               ],
               "outputs": [
                 {
-                  "id": "node-1772446663793-nxm5r3dsz-result",
+                  "id": "node-1772448425719-1ibodkc4f-result",
                   "name": "Result",
                   "nameRu": "Результат",
                   "dataType": "int32",
@@ -237,37 +236,37 @@
           ],
           "edges": [
             {
-              "id": "edge-1772446559601-9y24xcp1l",
-              "sourceNode": "func-1772446559601-wxhrotbn9-entry",
-              "sourcePort": "func-1772446559601-wxhrotbn9-entry-exec-out",
-              "targetNode": "func-1772446559601-wxhrotbn9-return",
-              "targetPort": "func-1772446559601-wxhrotbn9-return-exec-in",
+              "id": "edge-1772448382055-mj2zbbqpz",
+              "sourceNode": "func-1772448382055-40gxttyp6-entry",
+              "sourcePort": "func-1772448382055-40gxttyp6-entry-exec-out",
+              "targetNode": "func-1772448382055-40gxttyp6-return",
+              "targetPort": "func-1772448382055-40gxttyp6-return-exec-in",
               "kind": "execution"
             },
             {
-              "id": "edge-1772446668337-r399juj",
-              "sourceNode": "func-1772446559601-wxhrotbn9-entry",
-              "sourcePort": "func-1772446559601-wxhrotbn9-entry-param-1772446619608-we4275",
-              "targetNode": "node-1772446663793-nxm5r3dsz",
-              "targetPort": "node-1772446663793-nxm5r3dsz-a",
+              "id": "edge-1772448429512-9kitk5g",
+              "sourceNode": "func-1772448382055-40gxttyp6-entry",
+              "sourcePort": "func-1772448382055-40gxttyp6-entry-param-1772448397984-gd7fm7",
+              "targetNode": "node-1772448425719-1ibodkc4f",
+              "targetPort": "node-1772448425719-1ibodkc4f-a",
               "kind": "data",
               "dataType": "int32"
             },
             {
-              "id": "edge-1772446671272-yj4qg0m",
-              "sourceNode": "func-1772446559601-wxhrotbn9-entry",
-              "sourcePort": "func-1772446559601-wxhrotbn9-entry-param-1772446635096-piz1wn",
-              "targetNode": "node-1772446663793-nxm5r3dsz",
-              "targetPort": "node-1772446663793-nxm5r3dsz-b",
+              "id": "edge-1772448431391-zwfzc9z",
+              "sourceNode": "func-1772448382055-40gxttyp6-entry",
+              "sourcePort": "func-1772448382055-40gxttyp6-entry-param-1772448400383-bnjhyl",
+              "targetNode": "node-1772448425719-1ibodkc4f",
+              "targetPort": "node-1772448425719-1ibodkc4f-b",
               "kind": "data",
               "dataType": "int32"
             },
             {
-              "id": "edge-1772446675743-raloovf",
-              "sourceNode": "node-1772446663793-nxm5r3dsz",
-              "sourcePort": "node-1772446663793-nxm5r3dsz-result",
-              "targetNode": "func-1772446559601-wxhrotbn9-return",
-              "targetPort": "func-1772446559601-wxhrotbn9-return-param-1772446639712-lm5y82",
+              "id": "edge-1772448433311-y3v82ds",
+              "sourceNode": "node-1772448425719-1ibodkc4f",
+              "sourcePort": "node-1772448425719-1ibodkc4f-result",
+              "targetNode": "func-1772448382055-40gxttyp6-return",
+              "targetPort": "func-1772448382055-40gxttyp6-return-param-1772448402543-i38ro5",
               "kind": "data",
               "dataType": "int32"
             }
@@ -275,42 +274,10 @@
         },
         "isPure": false,
         "categoryColor": "#9C27B0",
-        "createdAt": "2026-03-02T10:15:59.601Z",
-        "updatedAt": "2026-03-02T10:17:55.750Z"
+        "createdAt": "2026-03-02T10:46:22.055Z",
+        "updatedAt": "2026-03-02T10:47:14.431Z"
       }
     ],
-    "classes": [],
-    "integrationBindings": [
-      {
-        "integrationId": "file_dep_check_math_efad1c9e",
-        "attachedFiles": [
-          "f:/MultiCode/MultiCode_VS/dep_check_math.hpp"
-        ],
-        "mode": "explicit",
-        "kind": "file",
-        "displayName": "dep_check_math.hpp",
-        "location": {
-          "type": "local_file",
-          "value": "f:/MultiCode/MultiCode_VS/dep_check_math.hpp"
-        }
-      },
-      {
-        "integrationId": "file_dep_check_text_a1eac043",
-        "attachedFiles": [
-          "f:/MultiCode/MultiCode_VS/dep_check_text.hpp"
-        ],
-        "consumerFiles": [
-          "f:/MultiCode/MultiCode_VS/test.cpp"
-        ],
-        "mode": "explicit",
-        "kind": "file",
-        "displayName": "dep_check_text.hpp",
-        "location": {
-          "type": "local_file",
-          "value": "f:/MultiCode/MultiCode_VS/dep_check_text.hpp"
-        }
-      }
-    ],
-    "symbolLocalization": {}
+    "classes": []
   }
 }

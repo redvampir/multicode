@@ -72,6 +72,32 @@ function transliterate(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
+function isQualifiedCppIdentifier(name: string): boolean {
+  return /^[A-Za-z_]\w*(::[A-Za-z_]\w*)*$/.test(name);
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+function readExternalQualifiedFunctionName(node: BlueprintNode): string | undefined {
+  if (!isRecord(node.properties)) {
+    return undefined;
+  }
+
+  const direct = node.properties.externalSymbol;
+  const fallback = node.properties.symbolRef;
+  const source = isRecord(direct) ? direct : isRecord(fallback) ? fallback : null;
+  if (!source) {
+    return undefined;
+  }
+
+  const qualifiedName = source.qualifiedName;
+  if (typeof qualifiedName !== 'string' || qualifiedName.trim().length === 0) {
+    return undefined;
+  }
+  return qualifiedName.trim();
+}
+
 /**
  * C++ тип возврата для функции с учётом multiple return
  */
@@ -414,7 +440,11 @@ export class CallUserFunctionNodeGenerator extends BaseNodeGenerator {
     
     // Получаем функцию для информации о параметрах
     const func = funcContext.functions?.find(f => f.id === functionId);
-    const cppFuncName = transliterate(functionName);
+    const preferredExternalQualifiedName = readExternalQualifiedFunctionName(node);
+    const resolvedFunctionName = preferredExternalQualifiedName ?? functionName;
+    const cppFuncName = isQualifiedCppIdentifier(resolvedFunctionName)
+      ? resolvedFunctionName
+      : transliterate(resolvedFunctionName);
     
     // Собираем аргументы
     const args: string[] = [];

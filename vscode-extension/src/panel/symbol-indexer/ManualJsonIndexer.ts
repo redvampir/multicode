@@ -45,6 +45,7 @@ export class ManualJsonIndexer implements SymbolIndexer {
         integrationId: integration.integrationId,
         symbolKind: item.symbolKind,
         name: item.name,
+        signature: item.signature,
         signatureHash: item.signatureHash ?? sha1(item.signature ?? `${item.symbolKind}:${item.name}`),
         namespacePath: item.namespacePath,
       }));

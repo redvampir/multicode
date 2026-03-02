@@ -36,6 +36,7 @@ const graphEdgeSchema = z.object({
 const sourceIntegrationSchema: z.ZodType<SourceIntegration> = z.object({
   integrationId: z.string(),
   attachedFiles: z.array(z.string()),
+  consumerFiles: z.array(z.string()).optional(),
   mode: z.enum(['explicit', 'implicit']),
   kind: z.enum(['library', 'framework', 'file']).optional(),
   displayName: z.string().optional(),
@@ -59,6 +60,7 @@ const symbolDescriptorSchema: z.ZodType<SymbolDescriptor> = z.object({
   integrationId: z.string(),
   symbolKind: z.enum(['function', 'variable', 'class', 'struct', 'method', 'enum']),
   name: z.string(),
+  signature: z.string().optional(),
   signatureHash: z.string().optional(),
   namespacePath: z.array(z.string()).optional(),
 });
@@ -90,6 +92,7 @@ export const graphStateSchema: z.ZodType<GraphState> = z.object({
 const translationDirectionSchema = z.enum(['ru-en', 'en-ru']);
 
 const graphMutationSchema = z.object({
+  graphId: z.string().optional(),
   nodes: z
     .array(
       z.object({
@@ -410,6 +413,17 @@ export const extensionToWebviewMessageSchema = z.union([
     })
   }),
   z.object({
+    type: z.literal('editableFilesChanged'),
+    payload: z.object({
+      files: z.array(
+        z.object({
+          fileName: z.string(),
+          filePath: z.string(),
+        })
+      ),
+    }),
+  }),
+  z.object({
     type: z.literal('codegenProfileChanged'),
     payload: z.object({
       profile: codegenOutputProfileSchema
@@ -507,6 +521,7 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('requestSave') }),
   z.object({ type: z.literal('requestLoad') }),
+  z.object({ type: z.literal('bindFile'), payload: z.object({ filePath: z.string() }) }),
   z.object({ type: z.literal('requestNewGraph') }),
   z.object({ type: z.literal('requestGenerate') }),
   z.object({ type: z.literal('requestGenerateBinding') }),

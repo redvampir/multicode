@@ -839,6 +839,37 @@ describe('CallUserFunctionNodeGenerator', () => {
 
       expect(result.lines[0]).toContain('vychislit()');
     });
+
+    it('сохраняет квалифицированное C++ имя с namespace', () => {
+      const func = createTestFunction({ name: 'depcheck::print_status' });
+      const node = createCallUserFunctionNode(func.id, func.name);
+      const context = createMockContext({ functions: [func] });
+      const helpers = createMockHelpers(context);
+
+      const result = generator.generate(node, context, helpers);
+
+      expect(result.lines[0]).toContain('depcheck::print_status()');
+    });
+
+    it('использует qualifiedName из externalSymbol при генерации вызова', () => {
+      const func = createTestFunction({ name: 'print_status' });
+      const node = createCallUserFunctionNode(func.id, func.name);
+      node.properties = {
+        ...node.properties,
+        functionName: 'print_status',
+        externalSymbol: {
+          integrationId: 'depcheck',
+          symbolId: 'depcheck::print_status',
+          qualifiedName: 'depcheck::print_status',
+        },
+      };
+      const context = createMockContext({ functions: [func] });
+      const helpers = createMockHelpers(context);
+
+      const result = generator.generate(node, context, helpers);
+
+      expect(result.lines[0]).toContain('depcheck::print_status()');
+    });
   });
 
   describe('getOutputExpression', () => {

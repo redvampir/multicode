@@ -11,6 +11,7 @@ interface DependencyViewProps {
   resolveLocalizedName: (symbol: SymbolDescriptor) => { value: string; stale: boolean };
   onRenameRu: (symbol: SymbolDescriptor, localizedNameRu: string) => Promise<void>;
   onResetRu: (symbol: SymbolDescriptor) => Promise<void>;
+  onDetachDependency: (integrationId: string) => Promise<void>;
 }
 
 type ScopeFilter = 'all' | 'explicit' | 'implicit';
@@ -30,6 +31,7 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
   resolveLocalizedName,
   onRenameRu,
   onResetRu,
+  onDetachDependency,
 }) => {
   const [query, setQuery] = useState('');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
@@ -117,6 +119,22 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
           </div>
         </div>
         <div style={{ overflow: 'auto', height: 'calc(100% - 90px)' }}>
+          {rows.length === 0 && (
+            <div style={{ padding: '14px 12px', color: '#7f849c', fontSize: 12, lineHeight: 1.45 }}>
+              <div>
+                {displayLanguage === 'ru'
+                  ? 'Символы пока не найдены для текущего фильтра.'
+                  : 'No symbols found for the current filter.'}
+              </div>
+              {integrations.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  {displayLanguage === 'ru'
+                    ? `Интеграции добавлены (${integrations.length}), но индексатор не вернул символы.`
+                    : `Integrations are added (${integrations.length}), but indexer returned no symbols.`}
+                </div>
+              )}
+            </div>
+          )}
           {rows.map((row) => {
             const isSelected = selectedRow?.symbol.id === row.symbol.id;
             const badgeColor = badgeColors[row.status.state];
@@ -157,9 +175,11 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
             displayLanguage={displayLanguage}
             activeFilePath={activeFilePath}
             symbol={selectedRow.symbol}
+            integration={selectedRow.integration}
             localizedValue={selectedRow.localized.value}
             onRenameRu={onRenameRu}
             onResetRu={onResetRu}
+            onDetachDependency={onDetachDependency}
           />
         )}
       </section>
@@ -170,12 +190,15 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
 const DependencySymbolInspector: React.FC<{
   displayLanguage: 'ru' | 'en';
   symbol: SymbolDescriptor;
+  integration: SourceIntegration | undefined;
   localizedValue: string;
   activeFilePath: string | null;
   onRenameRu: (symbol: SymbolDescriptor, localizedNameRu: string) => Promise<void>;
   onResetRu: (symbol: SymbolDescriptor) => Promise<void>;
-}> = ({ displayLanguage, symbol, localizedValue, activeFilePath, onRenameRu, onResetRu }) => {
+  onDetachDependency: (integrationId: string) => Promise<void>;
+}> = ({ displayLanguage, symbol, integration, localizedValue, activeFilePath, onRenameRu, onResetRu, onDetachDependency }) => {
   const [value, setValue] = useState(localizedValue === symbol.name ? '' : localizedValue);
+  const [detachPending, setDetachPending] = useState(false);
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -195,6 +218,23 @@ const DependencySymbolInspector: React.FC<{
         <button onClick={() => void onRenameRu(symbol, value)}>{displayLanguage === 'ru' ? 'Сохранить RU-имя' : 'Save RU name'}</button>
         <button onClick={() => { setValue(''); void onResetRu(symbol); }}>
           {displayLanguage === 'ru' ? 'Сбросить к оригиналу' : 'Reset to original'}
+        </button>
+        <button
+          onClick={() => {
+            if (!integration || detachPending) {
+              return;
+            }
+            setDetachPending(true);
+            void onDetachDependency(integration.integrationId).finally(() => setDetachPending(false));
+          }}
+          disabled={!integration || detachPending}
+          title={
+            displayLanguage === 'ru'
+              ? 'Открепить зависимость от текущего контекста'
+              : 'Detach dependency from current context'
+          }
+        >
+          {displayLanguage === 'ru' ? 'Открепить' : 'Detach'}
         </button>
       </div>
       <div style={{ fontSize: 12, color: '#7f849c' }}>

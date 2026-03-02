@@ -7,12 +7,14 @@ interface DependencyViewPanelProps {
   useGraphStore: GraphStoreHook;
   displayLanguage: 'ru' | 'en';
   activeFilePath: string | null;
+  onDetachDependency: (integrationId: string) => Promise<void>;
 }
 
 export const DependencyViewPanel: React.FC<DependencyViewPanelProps> = ({
   useGraphStore,
   displayLanguage,
   activeFilePath,
+  onDetachDependency,
 }) => {
   const integrations = useGraphStore((state) => state.integrations);
   const symbolCatalog = useGraphStore((state) => state.symbolCatalog);
@@ -52,6 +54,7 @@ export const DependencyViewPanel: React.FC<DependencyViewPanelProps> = ({
             async () => Promise.resolve()
           );
         }}
+        onDetachDependency={onDetachDependency}
       />
     </div>
   );

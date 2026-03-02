@@ -1,0 +1,266 @@
+{
+  "version": 2,
+  "savedAt": "2026-03-02T11:30:04.893Z",
+  "data": {
+    "id": "graph-1772448508528",
+    "name": "Untitled Graph",
+    "language": "cpp",
+    "displayLanguage": "ru",
+    "nodes": [
+      {
+        "id": "node-start",
+        "label": "Start",
+        "type": "Start",
+        "position": {
+          "x": 80,
+          "y": 80
+        },
+        "blueprintNode": {
+          "id": "node-start",
+          "label": "Start",
+          "type": "Start",
+          "position": {
+            "x": 80,
+            "y": 80
+          },
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "exec-out",
+              "name": "",
+              "dataType": "execution",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            }
+          ]
+        }
+      },
+      {
+        "id": "node-end",
+        "label": "End",
+        "type": "End",
+        "position": {
+          "x": 688,
+          "y": 64
+        },
+        "blueprintNode": {
+          "id": "node-end",
+          "label": "End",
+          "type": "End",
+          "position": {
+            "x": 688,
+            "y": 64
+          },
+          "inputs": [
+            {
+              "id": "exec-in",
+              "name": "",
+              "dataType": "execution",
+              "direction": "input",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "outputs": []
+        }
+      },
+      {
+        "id": "node-1772448617727-aw92u50u9",
+        "label": "",
+        "type": "Variable",
+        "position": {
+          "x": 160,
+          "y": 128
+        },
+        "blueprintNode": {
+          "id": "node-1772448617727-aw92u50u9",
+          "label": "",
+          "type": "GetVariable",
+          "position": {
+            "x": 160,
+            "y": 128
+          },
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "node-1772448617727-aw92u50u9-value-out",
+              "name": "",
+              "dataType": "string",
+              "direction": "output",
+              "hidden": false,
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "properties": {
+            "variableId": "var_1772448611935_lyfpz9d0r",
+            "dataType": "string",
+            "isArray": false,
+            "arrayRank": 0,
+            "defaultValue": "Тест",
+            "name": "test",
+            "nameRu": "Тест",
+            "codeName": "test",
+            "color": "#E91E63"
+          }
+        }
+      },
+      {
+        "id": "call-1772450991395-s7nhmlhaa",
+        "label": "Напечатать статус",
+        "type": "Function",
+        "position": {
+          "x": 416,
+          "y": 80
+        },
+        "blueprintNode": {
+          "id": "call-1772450991395-s7nhmlhaa",
+          "label": "Напечатать статус",
+          "type": "CallUserFunction",
+          "position": {
+            "x": 416,
+            "y": 80
+          },
+          "inputs": [
+            {
+              "id": "call-1772450991395-s7nhmlhaa-exec-in",
+              "name": "",
+              "dataType": "execution",
+              "direction": "input",
+              "index": 0,
+              "connected": false
+            },
+            {
+              "id": "call-1772450991395-s7nhmlhaa-ext_arg_1_message",
+              "name": "message",
+              "nameRu": "message",
+              "dataType": "string",
+              "direction": "input",
+              "index": 1,
+              "connected": false
+            }
+          ],
+          "outputs": [
+            {
+              "id": "call-1772450991395-s7nhmlhaa-exec-out",
+              "name": "",
+              "dataType": "execution",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "properties": {
+            "functionId": "external::file_dep_check_text_a1eac043::file_dep_check_text_a1eac043::print_status",
+            "functionName": "ContosoData::print_status",
+            "externalSymbol": {
+              "integrationId": "file_dep_check_text_a1eac043",
+              "symbolId": "file_dep_check_text_a1eac043::print_status",
+              "signature": "print_status(std::string_view message)",
+              "signatureHash": "73351b92c2cc05d843acdf29468acde0b3762310",
+              "qualifiedName": "ContosoData::print_status"
+            },
+            "symbolRef": {
+              "integrationId": "file_dep_check_text_a1eac043",
+              "symbolId": "file_dep_check_text_a1eac043::print_status",
+              "signature": "print_status(std::string_view message)",
+              "signatureHash": "73351b92c2cc05d843acdf29468acde0b3762310",
+              "qualifiedName": "ContosoData::print_status"
+            },
+            "symbolKind": "function"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-1772450995331-dy9d1fo",
+        "source": "node-start",
+        "target": "call-1772450991395-s7nhmlhaa",
+        "label": "flow",
+        "kind": "execution",
+        "blueprintEdge": {
+          "id": "edge-1772450995331-dy9d1fo",
+          "sourceNode": "node-start",
+          "sourcePort": "exec-out",
+          "targetNode": "call-1772450991395-s7nhmlhaa",
+          "targetPort": "call-1772450991395-s7nhmlhaa-exec-in",
+          "kind": "execution"
+        }
+      },
+      {
+        "id": "edge-1772450996866-fqhs0hh",
+        "source": "call-1772450991395-s7nhmlhaa",
+        "target": "node-end",
+        "label": "flow",
+        "kind": "execution",
+        "blueprintEdge": {
+          "id": "edge-1772450996866-fqhs0hh",
+          "sourceNode": "call-1772450991395-s7nhmlhaa",
+          "sourcePort": "call-1772450991395-s7nhmlhaa-exec-out",
+          "targetNode": "node-end",
+          "targetPort": "exec-in",
+          "kind": "execution"
+        }
+      },
+      {
+        "id": "edge-1772450998539-ce364j3",
+        "source": "node-1772448617727-aw92u50u9",
+        "target": "call-1772450991395-s7nhmlhaa",
+        "label": "data",
+        "kind": "data",
+        "blueprintEdge": {
+          "id": "edge-1772450998539-ce364j3",
+          "sourceNode": "node-1772448617727-aw92u50u9",
+          "sourcePort": "node-1772448617727-aw92u50u9-value-out",
+          "targetNode": "call-1772450991395-s7nhmlhaa",
+          "targetPort": "call-1772450991395-s7nhmlhaa-ext_arg_1_message",
+          "kind": "data",
+          "dataType": "string"
+        }
+      }
+    ],
+    "updatedAt": "2026-03-02T11:30:04.429Z",
+    "dirty": false,
+    "variables": [
+      {
+        "id": "var_1772448611935_lyfpz9d0r",
+        "name": "test",
+        "nameRu": "Тест",
+        "codeName": "test",
+        "dataType": "string",
+        "defaultValue": "Тест",
+        "category": "default",
+        "description": "",
+        "isArray": false,
+        "arrayRank": 0,
+        "isPrivate": false,
+        "color": "#E91E63",
+        "createdAt": "2026-03-02T10:50:11.935Z"
+      }
+    ],
+    "functions": [],
+    "classes": [],
+    "integrationBindings": [
+      {
+        "integrationId": "file_dep_check_text_a1eac043",
+        "attachedFiles": [
+          "f:/MultiCode/MultiCode_VS/dep_check_text.hpp"
+        ],
+        "consumerFiles": [
+          "f:/MultiCode/MultiCode_VS/test.cpp"
+        ],
+        "mode": "explicit",
+        "kind": "file",
+        "displayName": "dep_check_text.hpp",
+        "location": {
+          "type": "local_file",
+          "value": "f:/MultiCode/MultiCode_VS/dep_check_text.hpp"
+        }
+      }
+    ],
+    "graphVersion": 3,
+    "symbolLocalization": {}
+  }
+}

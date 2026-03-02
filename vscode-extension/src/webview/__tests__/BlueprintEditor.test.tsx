@@ -18,6 +18,7 @@ import {
   mutateGraphForEdgeDoubleClick,
 } from '../BlueprintEditor';
 import { createUserFunction, type BlueprintGraphState, type BlueprintNode, type BlueprintEdge, type BlueprintVariable } from '../../shared/blueprintTypes';
+import type { SourceIntegration, SymbolDescriptor } from '../../shared/externalSymbols';
 import type { BlueprintFlowEdge, BlueprintFlowNode } from '../nodes/BlueprintNode';
 
 // Mock ResizeObserver
@@ -886,6 +887,73 @@ describe('BlueprintEditor', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Цикл Do-While')).toBeTruthy();
+      });
+    });
+
+    it('should add external symbol as CallUserFunction node with binding metadata', async () => {
+      const graph = createEmptyGraph();
+      const onGraphChange = vi.fn();
+      const integrations: SourceIntegration[] = [
+        {
+          integrationId: 'depcheck',
+          attachedFiles: ['F:/MultiCode/MultiCode_VS/dep_check_text.hpp'],
+          mode: 'explicit',
+          kind: 'file',
+          location: {
+            type: 'local_file',
+            value: 'F:/MultiCode/MultiCode_VS/dep_check_text.hpp',
+          },
+        },
+      ];
+      const externalSymbols: SymbolDescriptor[] = [
+        {
+          id: 'depcheck::print_status',
+          integrationId: 'depcheck',
+          symbolKind: 'function',
+          name: 'print_status',
+          signature: 'print_status(std::string_view message)',
+          signatureHash: 'sig-1',
+          namespacePath: ['depcheck'],
+        },
+      ];
+
+      render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+            integrations={integrations}
+            externalSymbols={externalSymbols}
+          />
+        </TestWrapper>
+      );
+
+      const addButton = screen.getByRole('button', { name: /Добавить \(A\)/ });
+      fireEvent.click(addButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Внешние символы')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /print_status/i }));
+
+      await waitFor(() => {
+        const hasExternalBoundNode = onGraphChange.mock.calls.some((call) => {
+          const state = call[0] as BlueprintGraphState;
+          return state.nodes.some((node) => {
+            const props = node.properties as Record<string, unknown> | undefined;
+            const binding = props?.externalSymbol as Record<string, unknown> | undefined;
+            return (
+              node.type === 'CallUserFunction' &&
+              props?.functionName === 'depcheck::print_status' &&
+              node.inputs.some((inputPort) => inputPort.id.includes('ext_arg_1_message')) &&
+              binding?.integrationId === 'depcheck' &&
+              binding?.symbolId === 'depcheck::print_status'
+            );
+          });
+        });
+        expect(hasExternalBoundNode).toBe(true);
       });
     });
   });

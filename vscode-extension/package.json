@@ -304,6 +304,15 @@
           "maximum": 200,
           "description": "Сколько первых строк исходника сканировать в поиске @multicode:graph"
         },
+        "multicode.externalSymbols.includePathMode": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "Режим include для внешних символов: relative (относительно целевого файла) или absolute (полный путь)"
+        },
         "multicode.translation.engine": {
           "type": "string",
           "enum": [

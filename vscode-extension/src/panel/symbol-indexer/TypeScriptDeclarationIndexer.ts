@@ -64,6 +64,7 @@ export class TypeScriptDeclarationIndexer implements SymbolIndexer {
           integrationId: integration.integrationId,
           symbolKind,
           name,
+          signature: rawSignature,
           signatureHash,
           namespacePath: [path.basename(filePath)],
         });

@@ -11,6 +11,8 @@ import {
 import type { GraphState } from '../shared/graphState';
 import type { SourceIntegration } from '../shared/externalSymbols';
 
+const normalizePath = (filePath: string): string => filePath.replace(/\\/g, '/').toLowerCase();
+
 type BlueprintClass = ReturnType<typeof blueprintClassSchema.parse>;
 
 export const mapToIpcError = (error: unknown, fallbackCode: string, fallbackMessage: string): IpcError => {
@@ -105,6 +107,7 @@ export const handleDependencyMapGet = async (
 ): Promise<Extract<ExternalIpcResponse, { type: 'dependency-map/get' }>> => {
   try {
     const rootId = payload?.rootFile ?? fallbackRoot;
+    const normalizedRootId = normalizePath(rootId);
     const nodes: Array<{ id: string; kind: 'file' | 'library' | 'framework' }> = [{ id: rootId, kind: 'file' }];
     const edges: Array<{ from: string; to: string }> = [];
 
@@ -112,6 +115,13 @@ export const handleDependencyMapGet = async (
       const kind = binding.kind ?? 'library';
       if (!payload?.includeSystem && kind === 'framework') {
         continue;
+      }
+      const scopeFiles = binding.consumerFiles ?? [];
+      if (scopeFiles.length > 0) {
+        const reachable = scopeFiles.some((filePath) => normalizePath(filePath) === normalizedRootId);
+        if (!reachable) {
+          continue;
+        }
       }
       nodes.push({ id: binding.integrationId, kind });
       edges.push({ from: rootId, to: binding.integrationId });

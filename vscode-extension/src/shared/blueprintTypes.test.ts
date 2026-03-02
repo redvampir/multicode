@@ -1305,7 +1305,7 @@ describe('blueprintTypes - Node Definitions', () => {
       });
     });
 
-    it('should include flow, function, variable, math, comparison, logic, io, other', () => {
+    it('should include flow, function, variable, math, comparison, logic, io, string, collection, other', () => {
       const ids = NODE_CATEGORIES.map(c => c.id);
       
       expect(ids).toContain('flow');
@@ -1315,6 +1315,8 @@ describe('blueprintTypes - Node Definitions', () => {
       expect(ids).toContain('comparison');
       expect(ids).toContain('logic');
       expect(ids).toContain('io');
+      expect(ids).toContain('string');
+      expect(ids).toContain('collection');
       expect(ids).toContain('other');
     });
   });

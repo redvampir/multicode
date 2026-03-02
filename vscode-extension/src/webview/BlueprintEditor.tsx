@@ -33,6 +33,7 @@ import {
   BlueprintNode as BlueprintNodeType,
   BlueprintEdge,
   BlueprintVariable,
+  FunctionParameter,
   NodePort,
   createNode,
   createNodeFromDefinition,
@@ -1161,6 +1162,8 @@ interface NodePaletteProps {
   onAddNode: (type: NodeType, position: XYPosition) => void;
   /** Добавить узел вызова пользовательской функции */
   onAddCallFunction?: (functionId: string, position: XYPosition) => void;
+  /** Добавить узел внешнего символа */
+  onAddExternalSymbol?: (symbol: SymbolDescriptor, localizedName: string, position: XYPosition) => void;
   /** Определения узлов из реестра пакетов */
   nodeDefinitions: Record<string, NodeTypeDefinition>;
   /** Категории из реестра пакетов */
@@ -1178,12 +1181,125 @@ const normalizePaletteSearchToken = (value: string): string =>
     .toLowerCase()
     .replace(/[\s_-]+/g, '');
 
+const splitFunctionParameterList = (parametersRaw: string): string[] => {
+  const parts: string[] = [];
+  let buffer = '';
+  let angleDepth = 0;
+  let parenDepth = 0;
+
+  for (const char of parametersRaw) {
+    if (char === '<') {
+      angleDepth += 1;
+    } else if (char === '>') {
+      angleDepth = Math.max(0, angleDepth - 1);
+    } else if (char === '(') {
+      parenDepth += 1;
+    } else if (char === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+    }
+
+    if (char === ',' && angleDepth === 0 && parenDepth === 0) {
+      const token = buffer.trim();
+      if (token.length > 0) {
+        parts.push(token);
+      }
+      buffer = '';
+      continue;
+    }
+
+    buffer += char;
+  }
+
+  const tail = buffer.trim();
+  if (tail.length > 0) {
+    parts.push(tail);
+  }
+
+  return parts;
+};
+
+const mapExternalParameterTypeToPortDataType = (typeText: string): PortDataType => {
+  const normalized = typeText.toLowerCase();
+
+  if (normalized.includes('std::string') || normalized.includes('string_view') || normalized.includes('char')) {
+    return 'string';
+  }
+  if (normalized.includes('bool')) {
+    return 'bool';
+  }
+  if (normalized.includes('double')) {
+    return 'double';
+  }
+  if (normalized.includes('float')) {
+    return 'float';
+  }
+  if (normalized.includes('int64') || normalized.includes('long long')) {
+    return 'int64';
+  }
+  if (normalized.includes('int') || normalized.includes('short') || normalized.includes('size_t') || normalized.includes('unsigned')) {
+    return 'int32';
+  }
+  if (normalized.includes('std::vector')) {
+    return 'vector';
+  }
+  if (normalized.includes('std::array') || normalized.endsWith('[]')) {
+    return 'array';
+  }
+
+  return 'any';
+};
+
+const parseExternalInputParameters = (signature?: string): FunctionParameter[] => {
+  if (!signature) {
+    return [];
+  }
+
+  const signatureMatch = signature.match(/\((.*)\)/);
+  if (!signatureMatch) {
+    return [];
+  }
+
+  const rawParameters = signatureMatch[1]?.trim() ?? '';
+  if (!rawParameters || rawParameters === 'void') {
+    return [];
+  }
+
+  const parameterTokens = splitFunctionParameterList(rawParameters);
+  const parsedParameters: FunctionParameter[] = [];
+
+  for (const [index, parameterToken] of parameterTokens.entries()) {
+    const withoutDefault = parameterToken.split('=')[0]?.trim() ?? '';
+    if (!withoutDefault || withoutDefault === '...') {
+      continue;
+    }
+
+    const nameMatch = /([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?$/.exec(withoutDefault);
+    const rawName = nameMatch?.[1] ?? `arg${index + 1}`;
+    const safeId = rawName
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '') || `arg${index + 1}`;
+    const typeText = nameMatch ? withoutDefault.slice(0, nameMatch.index).trim() : withoutDefault;
+
+    parsedParameters.push({
+      id: `ext_arg_${index + 1}_${safeId}`,
+      name: rawName,
+      nameRu: rawName,
+      direction: 'input',
+      dataType: mapExternalParameterTypeToPortDataType(typeText),
+    });
+  }
+
+  return parsedParameters;
+};
+
 const NodePalette: React.FC<NodePaletteProps> = ({ 
   visible, 
   displayLanguage, 
   onClose,
   onAddNode,
   onAddCallFunction,
+  onAddExternalSymbol,
   nodeDefinitions,
   categories,
   userFunctions = [],
@@ -1435,12 +1551,39 @@ const NodePalette: React.FC<NodePaletteProps> = ({
                 <option value="disabled">disabled</option>
               </select>
             </div>
-            {filteredExternalSymbols.map(({ symbol, localized, status }) => (
-              <div key={`${symbol.integrationId}:${symbol.id}`} style={editorStyles.nodeItem} title={symbol.name}>
-                <span>🔗 {localized.value}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.8 }}>{status.state}</span>
-              </div>
-            ))}
+            {filteredExternalSymbols.map(({ symbol, localized, status }) => {
+              const isDisabled = status.state === 'disabled' || status.state === 'broken';
+              return (
+                <button
+                  key={`${symbol.integrationId}:${symbol.id}`}
+                  type="button"
+                  style={{
+                    ...editorStyles.nodeItem,
+                    width: '100%',
+                    border: 'none',
+                    textAlign: 'left',
+                    opacity: isDisabled ? 0.6 : 1,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                  title={symbol.name}
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (!onAddExternalSymbol || isDisabled) {
+                      return;
+                    }
+                    const position = screenToFlowPosition({
+                      x: window.innerWidth / 2,
+                      y: window.innerHeight / 2
+                    });
+                    onAddExternalSymbol(symbol, localized.value, position);
+                    onClose();
+                  }}
+                >
+                  <span>🔗 {localized.value}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.8 }}>{status.state}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -2928,6 +3071,58 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
   }, [graph.functions, setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
 
+  const handleAddExternalSymbol = useCallback((symbol: SymbolDescriptor, localizedName: string, position: XYPosition) => {
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(position, currentNodes, 20);
+      const timestamp = new Date().toISOString();
+      const qualifiedFunctionName = Array.isArray(symbol.namespacePath) && symbol.namespacePath.length > 0
+        ? `${symbol.namespacePath.join('::')}::${symbol.name}`
+        : symbol.name;
+      const inputParameters = parseExternalInputParameters(symbol.signature);
+      const syntheticFunction: BlueprintFunction = {
+        id: `external::${symbol.integrationId}::${symbol.id}`,
+        name: qualifiedFunctionName,
+        nameRu: localizedName || symbol.name,
+        parameters: inputParameters,
+        graph: {
+          nodes: [],
+          edges: [],
+        },
+        isPure: false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      const callNode = createCallUserFunctionNode(syntheticFunction, nonOverlappingPosition);
+      const nodeWithBinding: BlueprintNodeType = {
+        ...callNode,
+        properties: {
+          ...(callNode.properties ?? {}),
+          externalSymbol: {
+            integrationId: symbol.integrationId,
+            symbolId: symbol.id,
+            signature: symbol.signature,
+            signatureHash: symbol.signatureHash,
+            qualifiedName: qualifiedFunctionName,
+          },
+          symbolRef: {
+            integrationId: symbol.integrationId,
+            symbolId: symbol.id,
+            signature: symbol.signature,
+            signatureHash: symbol.signatureHash,
+            qualifiedName: qualifiedFunctionName,
+          },
+          symbolKind: symbol.symbolKind,
+        },
+      };
+
+      const flowNode = buildFlowNode(nodeWithBinding);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
+      return newNodes;
+    });
+  }, [setNodes, computeNodePosition, buildFlowNode, notifyGraphChange]);
+
   const handleCreateFunctionCallFromPanel = useCallback((functionId: string) => {
     // Вызов функции добавляется в основной EventGraph (как в UE Blueprints).
     setFunctionGraphDialogFunctionId(null);
@@ -4023,6 +4218,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             onClose={() => setPaletteVisible(false)}
             onAddNode={handleAddNode}
             onAddCallFunction={handleAddCallFunction}
+            onAddExternalSymbol={handleAddExternalSymbol}
             nodeDefinitions={packageNodeDefinitions}
             categories={packageCategories}
             userFunctions={graph.functions ?? []}

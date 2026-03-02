@@ -13,6 +13,7 @@ const makeSymbol = (): SymbolDescriptor => ({
 const makeIntegration = (): SourceIntegration => ({
   integrationId: 'fmt',
   attachedFiles: ['/workspace/main.cpp'],
+  consumerFiles: ['/workspace/main.cpp'],
   mode: 'explicit',
   kind: 'library',
 });
@@ -57,6 +58,20 @@ describe('resolveSymbolUiStatus', () => {
       integration: makeIntegration(),
       localizationStale: false,
       activeFilePath: '/workspace/main.cpp',
+    });
+
+    expect(status.state).toBe('ok');
+  });
+
+  it('сопоставляет пути с разными разделителями/регистром', () => {
+    const status = resolveSymbolUiStatus({
+      symbol: makeSymbol(),
+      integration: {
+        ...makeIntegration(),
+        consumerFiles: ['F:/MultiCode/MultiCode_VS/test.cpp'],
+      },
+      localizationStale: false,
+      activeFilePath: 'f:\\MultiCode\\MultiCode_VS\\test.cpp',
     });
 
     expect(status.state).toBe('ok');

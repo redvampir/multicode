@@ -1713,6 +1713,20 @@ describe('CppCodeGenerator', () => {
       expect(withHeaders.code).toContain('#include');
       expect(withoutHeaders.code).not.toContain('#include');
     });
+
+    it('should place include block before multicode metadata comments', () => {
+      const graph = createTestGraph([
+        createNode('Start', { x: 0, y: 0 }, 'start'),
+      ]);
+
+      const result = generator.generate(graph, { includeHeaders: true });
+      const includeIndex = result.code.indexOf('#include <iostream>');
+      const metaIndex = result.code.indexOf('// Сгенерировано MultiCode');
+
+      expect(includeIndex).toBeGreaterThanOrEqual(0);
+      expect(metaIndex).toBeGreaterThanOrEqual(0);
+      expect(includeIndex).toBeLessThan(metaIndex);
+    });
     
     it('should respect generateMainWrapper option', () => {
       const graph = createTestGraph([

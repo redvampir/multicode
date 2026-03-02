@@ -508,16 +508,6 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     // Заголовок с includes
     if (opts.includeHeaders) {
-      lines.push('// Сгенерировано MultiCode');
-      lines.push(`// Граф: ${graph.name}`);
-      lines.push(`// Дата: ${new Date().toLocaleString('ru-RU')}`);
-
-      // Служебная привязка к sidecar-файлу графа (для round-trip: код <-> ноды).
-      // Важно: эта строка должна попадать в первые строки файла, чтобы её можно было быстро найти.
-      const safeGraphId = String(graph.id ?? '').replace(/[^a-zA-Z0-9._-]+/g, '_');
-      lines.push(`// @multicode:graph id=${String(graph.id)} file=.multicode/${safeGraphId}.multicode`);
-      lines.push('');
-      
       // Стандартные includes
       const standardIncludes = new Set(['<iostream>', '<string>', '<vector>']);
       const hasPointerVariables = (graph.variables ?? []).some((variable) => variable.dataType === 'pointer');
@@ -617,6 +607,15 @@ export class CppCodeGenerator implements ICodeGenerator {
       for (const inc of sortedIncludes) {
         lines.push(`#include ${inc}`);
       }
+      lines.push('');
+
+      lines.push('// Сгенерировано MultiCode');
+      lines.push(`// Граф: ${graph.name}`);
+      lines.push(`// Дата: ${new Date().toLocaleString('ru-RU')}`);
+
+      // Служебная привязка к sidecar-файлу графа (для round-trip: код <-> ноды).
+      const safeGraphId = String(graph.id ?? '').replace(/[^a-zA-Z0-9._-]+/g, '_');
+      lines.push(`// @multicode:graph id=${String(graph.id)} file=.multicode/${safeGraphId}.multicode`);
       lines.push('');
     }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { GraphState } from '../../shared/graphState';
+import { createDefaultGraphState, type GraphState } from '../../shared/graphState';
 import type { ThemeMessage } from '../../shared/messages';
 
 type WebviewGlobals = typeof globalThis & {
@@ -26,7 +26,24 @@ const acquireVsCodeApiMock: WebviewGlobals['acquireVsCodeApi'] = <T,>() => ({
 });
 
 vi.mock('../BlueprintEditor', () => ({
-  BlueprintEditor: () => <div data-testid="blueprint-editor-mock">Blueprint Editor Mock</div>
+  BlueprintEditor: ({ graph, onGraphChange }: { graph: any; onGraphChange: (next: any) => void }) => (
+    <div data-testid="blueprint-editor-mock">
+      Blueprint Editor Mock
+      <button
+        type="button"
+        onClick={() =>
+          onGraphChange({
+            ...graph,
+            name: 'local-change',
+            dirty: true,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      >
+        Simulate Blueprint Change
+      </button>
+    </div>
+  )
 }));
 
 vi.mock('../GraphEditor', () => ({
@@ -60,6 +77,20 @@ const dispatchValidationResult = (): void => {
             issues: [{ severity: 'error', message: 'Тестовая ошибка' }]
           }
         }
+      })
+    );
+  });
+};
+
+const dispatchSetState = (graph: GraphState): void => {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: '',
+        data: {
+          type: 'setState',
+          payload: graph,
+        },
       })
     );
   });
@@ -134,5 +165,36 @@ describe('main.tsx integration', () => {
         payload: expect.objectContaining({ direction: 'ru-en' })
       })
     );
+  });
+
+  it('отправляет graphId вместе с graphChanged', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate Blueprint Change' }));
+
+      dispatchSetState({
+        ...createDefaultGraphState(),
+        id: 'graph-switched',
+        name: 'Switched graph',
+        displayLanguage: 'ru',
+        language: 'cpp',
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(220);
+      });
+
+      const graphChangedCalls = postMessageMock.mock.calls
+        .map((entry) => entry[0])
+        .filter((message) => message?.type === 'graphChanged');
+      expect(graphChangedCalls.length).toBeGreaterThan(0);
+      const payload = graphChangedCalls[graphChangedCalls.length - 1]?.payload as Record<string, unknown>;
+      expect(typeof payload.graphId).toBe('string');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

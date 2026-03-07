@@ -408,7 +408,7 @@ export const validateGraphState = (state: GraphState): ValidationResult => {
 
   const startNodes = state.nodes.filter((node) => node.type === 'Start');
   if (startNodes.length === 0) {
-    pushIssue('error', 'Graph must contain a Start node.');
+    pushIssue('warning', 'Graph has no Start node. Entry-point checks are skipped.');
   } else if (startNodes.length > 1) {
     pushIssue(
       'error',

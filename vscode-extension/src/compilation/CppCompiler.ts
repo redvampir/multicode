@@ -31,6 +31,8 @@ export interface CompilationOptions {
   env?: NodeJS.ProcessEnv;
   /** Доп. аргументы для компилятора (например, -isysroot на macOS) */
   extraArgs?: string[];
+  /** Дополнительные translation units для линковки вместе с sourceFile */
+  additionalSourceFiles?: string[];
 }
 
 export interface CompilationResult {
@@ -190,6 +192,7 @@ export async function compileCpp(
     compilerPath: options.compilerPath,
     env: options.env,
     extraArgs: options.extraArgs,
+    additionalSourceFiles: options.additionalSourceFiles,
   };
 
   if (opts.compilerPath && !opts.compiler) {
@@ -210,11 +213,27 @@ export async function compileCpp(
     }
   }
 
-  // Валидировать входной файл
-  if (!fs.existsSync(sourceFile)) {
+  const sourceFiles = [sourceFile, ...(opts.additionalSourceFiles ?? [])]
+    .map((filePath) => filePath.trim())
+    .filter((filePath) => filePath.length > 0);
+  const uniqueSourceFiles: string[] = [];
+  const seenSourceFiles = new Set<string>();
+  for (const filePath of sourceFiles) {
+    const normalized = path.normalize(filePath);
+    const matchKey = normalized.toLowerCase();
+    if (seenSourceFiles.has(matchKey)) {
+      continue;
+    }
+    seenSourceFiles.add(matchKey);
+    uniqueSourceFiles.push(normalized);
+  }
+
+  // Валидировать входные файлы (entry + дополнительные TU)
+  const missingFiles = uniqueSourceFiles.filter((filePath) => !fs.existsSync(filePath));
+  if (missingFiles.length > 0) {
     return {
       success: false,
-      errors: [`Файл не найден: ${sourceFile}`],
+      errors: missingFiles.map((filePath) => `Файл не найден: ${filePath}`),
       warnings: [],
       stdout: '',
       stderr: '',
@@ -258,9 +277,9 @@ export async function compileCpp(
       const extraArgs = opts.extraArgs ?? [];
 
       if (compilerType === 'msvc') {
-        args.push(standardFlag, '/utf-8', optimizationFlag, ...extraArgs, `/Fe${outputFile}`, sourceFile);
+        args.push(standardFlag, '/utf-8', optimizationFlag, ...extraArgs, `/Fe${outputFile}`, ...uniqueSourceFiles);
       } else {
-        args.push(standardFlag, optimizationFlag, ...extraArgs, '-o', outputFile, sourceFile);
+        args.push(standardFlag, optimizationFlag, ...extraArgs, '-o', outputFile, ...uniqueSourceFiles);
       }
 
       try {

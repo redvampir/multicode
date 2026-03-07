@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Расширенные типы для Blueprints-style графов
  * Совместимы с C++ ядром, но с дополнительной информацией для UI
  */
@@ -54,9 +54,22 @@ export type BlueprintNodeType =
   | 'TypeConversion'
   | 'ClassMethodCall'
   | 'ClassConstructorCall'
+  | 'ConstructorOverloadCall'
   | 'GetMember'
   | 'SetMember'
   | 'StaticMethodCall'
+  | 'StaticGetMember'
+  | 'StaticSetMember'
+  | 'CallBaseMethod'
+  | 'CastStatic'
+  | 'CastDynamic'
+  | 'CastConst'
+  | 'IsType'
+  | 'MakeUnique'
+  | 'MakeShared'
+  | 'DeleteObject'
+  | 'AddressOfMember'
+  | 'InitListCtor'
   // Math
   | 'ConstNumber'
   | 'ConstString'
@@ -398,7 +411,7 @@ export const VARIABLE_TYPE_COLORS: Record<PortDataType, string> = {
   string: '#E91E63',     // 🎨 Розовый/Пурпурный — строка
   vector: '#FFC107',     // 🎨 Жёлтый — vector<T>
   pointer: '#2196F3',    // 🎨 Синий — умный указатель (std::shared_ptr)
-  class: '#3F51B5',      // 🎨 Индиго — класс/экземпляр по значению
+  class: '#3F51B5',      // Индиго - класс/экземпляр по значению
   'object-reference': '#4A148C', // 🎨 Фиолетовый — ссылка на объект
   array: '#FF9800',      // 🎨 Оранжевый — массив
   any: '#9E9E9E',
@@ -428,10 +441,13 @@ export const VARIABLE_DATA_TYPES: PortDataType[] = [
 
 
 export type BlueprintClassAccess = 'public' | 'protected' | 'private';
+export type BlueprintClassType = 'class' | 'struct';
+export type BlueprintClassMethodKind = 'method' | 'constructor' | 'destructor';
 
 export interface BlueprintClassMethodParameter {
   id: string;
   name: string;
+  nameRu?: string;
   dataType: PortDataType;
   typeName?: string;
 }
@@ -439,8 +455,12 @@ export interface BlueprintClassMethodParameter {
 export interface BlueprintClassMethod {
   id: string;
   name: string;
+  nameRu?: string;
+  methodKind?: BlueprintClassMethodKind;
   isConst?: boolean;
   isStatic?: boolean;
+  isNoexcept?: boolean;
+  isPureVirtual?: boolean;
   returnType: PortDataType;
   returnTypeName?: string;
   params: BlueprintClassMethodParameter[];
@@ -452,8 +472,10 @@ export interface BlueprintClassMethod {
 export interface BlueprintClassMember {
   id: string;
   name: string;
+  nameRu?: string;
   dataType: PortDataType;
   typeName?: string;
+  isStatic?: boolean;
   access: BlueprintClassAccess;
   defaultValue?: BlueprintVariableDefaultValue;
 }
@@ -461,7 +483,13 @@ export interface BlueprintClassMember {
 export interface BlueprintClass {
   id: string;
   name: string;
+  nameRu?: string;
+  classType?: BlueprintClassType;
   namespace?: string;
+  baseClasses?: string[];
+  headerIncludes?: string[];
+  sourceIncludes?: string[];
+  forwardDecls?: string[];
   members: BlueprintClassMember[];
   methods: BlueprintClassMethod[];
 }
@@ -726,17 +754,152 @@ const normalizeMigratedClasses = (classes: unknown[] | undefined): BlueprintClas
     return [];
   }
 
+  const toNonEmpty = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const toAccess = (value: unknown): BlueprintClassAccess => {
+    if (value === 'private' || value === 'protected' || value === 'public') {
+      return value;
+    }
+    return 'public';
+  };
+
+  const toClassType = (value: unknown): BlueprintClassType => {
+    if (value === 'struct') {
+      return 'struct';
+    }
+    return 'class';
+  };
+
+  const toMethodKind = (value: unknown): BlueprintClassMethodKind => {
+    if (value === 'constructor' || value === 'destructor' || value === 'method') {
+      return value;
+    }
+    return 'method';
+  };
+
+  const toDataType = (value: unknown): PortDataType => {
+    if (isPortDataType(value)) {
+      return value;
+    }
+    return 'any';
+  };
+
+  const normalizeStringList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const unique = new Set<string>();
+    for (const entry of value) {
+      const next = toNonEmpty(entry);
+      if (next) {
+        unique.add(next);
+      }
+    }
+    return Array.from(unique);
+  };
+
+  const normalizeParam = (
+    rawParam: unknown,
+    fallbackIndex: number,
+  ): BlueprintClassMethodParameter | null => {
+    if (!isRecord(rawParam)) {
+      return null;
+    }
+    const name = toNonEmpty(rawParam.name) ?? `arg_${fallbackIndex + 1}`;
+    return {
+      id: toNonEmpty(rawParam.id) ?? `param-${Date.now()}-${fallbackIndex}`,
+      name,
+      nameRu: toNonEmpty(rawParam.nameRu) ?? name,
+      dataType: toDataType(rawParam.dataType),
+      typeName: toNonEmpty(rawParam.typeName) ?? undefined,
+    };
+  };
+
+  const normalizeMember = (
+    rawMember: unknown,
+    fallbackIndex: number,
+  ): BlueprintClassMember | null => {
+    if (!isRecord(rawMember)) {
+      return null;
+    }
+    const name = toNonEmpty(rawMember.name) ?? `field_${fallbackIndex + 1}`;
+    return {
+      id: toNonEmpty(rawMember.id) ?? `member-${Date.now()}-${fallbackIndex}`,
+      name,
+      nameRu: toNonEmpty(rawMember.nameRu) ?? name,
+      dataType: toDataType(rawMember.dataType),
+      typeName: toNonEmpty(rawMember.typeName) ?? undefined,
+      isStatic: rawMember.isStatic === true,
+      access: toAccess(rawMember.access),
+      defaultValue: rawMember.defaultValue as BlueprintVariableDefaultValue,
+    };
+  };
+
+  const normalizeMethod = (
+    rawMethod: unknown,
+    fallbackIndex: number,
+  ): BlueprintClassMethod | null => {
+    if (!isRecord(rawMethod)) {
+      return null;
+    }
+    const name = toNonEmpty(rawMethod.name) ?? `method_${fallbackIndex + 1}`;
+    const rawParams = Array.isArray(rawMethod.params) ? rawMethod.params : [];
+    return {
+      id: toNonEmpty(rawMethod.id) ?? `method-${Date.now()}-${fallbackIndex}`,
+      name,
+      nameRu: toNonEmpty(rawMethod.nameRu) ?? name,
+      methodKind: toMethodKind(rawMethod.methodKind),
+      isConst: rawMethod.isConst === true,
+      isStatic: rawMethod.isStatic === true,
+      isNoexcept: rawMethod.isNoexcept === true,
+      isPureVirtual: rawMethod.isPureVirtual === true,
+      returnType: toDataType(rawMethod.returnType),
+      returnTypeName: toNonEmpty(rawMethod.returnTypeName) ?? undefined,
+      params: rawParams
+        .map((rawParam, paramIndex) => normalizeParam(rawParam, paramIndex))
+        .filter((item): item is BlueprintClassMethodParameter => item !== null),
+      access: toAccess(rawMethod.access),
+      isVirtual: rawMethod.isVirtual === true,
+      isOverride: rawMethod.isOverride === true,
+    };
+  };
+
   return classes
     .filter((value): value is Record<string, unknown> => isRecord(value))
-    .map((rawClass) => {
-      const blueprintClass = rawClass as unknown as BlueprintClass;
-      return {
-        ...blueprintClass,
-        members: Array.isArray(blueprintClass.members) ? blueprintClass.members : [],
-        methods: Array.isArray(blueprintClass.methods) ? blueprintClass.methods : [],
-      };
-    })
-    .filter((item) => typeof item.id === 'string' && typeof item.name === 'string');
+    .reduce<BlueprintClass[]>((acc, rawClass) => {
+      const id = toNonEmpty(rawClass.id);
+      const name = toNonEmpty(rawClass.name);
+      if (!id || !name) {
+        return acc;
+      }
+
+      const rawMembers = Array.isArray(rawClass.members) ? rawClass.members : [];
+      const rawMethods = Array.isArray(rawClass.methods) ? rawClass.methods : [];
+      acc.push({
+        id,
+        name,
+        nameRu: toNonEmpty(rawClass.nameRu) ?? name,
+        classType: toClassType(rawClass.classType),
+        namespace: toNonEmpty(rawClass.namespace) ?? undefined,
+        baseClasses: normalizeStringList(rawClass.baseClasses),
+        headerIncludes: normalizeStringList(rawClass.headerIncludes),
+        sourceIncludes: normalizeStringList(rawClass.sourceIncludes),
+        forwardDecls: normalizeStringList(rawClass.forwardDecls),
+        members: rawMembers
+          .map((rawMember, memberIndex) => normalizeMember(rawMember, memberIndex))
+          .filter((item): item is BlueprintClassMember => item !== null),
+        methods: rawMethods
+          .map((rawMethod, methodIndex) => normalizeMethod(rawMethod, methodIndex))
+          .filter((item): item is BlueprintClassMethod => item !== null),
+      });
+      return acc;
+    }, []);
 };
 
 const normalizeMigratedFunctions = (functions: unknown[] | undefined): BlueprintFunction[] => {
@@ -1767,6 +1930,22 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'instance', name: 'Instance', nameRu: 'Экземпляр', dataType: 'class', direction: 'output' }
     ],
   },
+  ConstructorOverloadCall: {
+    type: 'ConstructorOverloadCall',
+    label: 'Construct Overload',
+    labelRu: 'Constructor Overload',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Arg 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'instance', name: 'Instance', nameRu: 'Instance', dataType: 'class', direction: 'output' }
+    ],
+  },
   GetMember: {
     type: 'GetMember',
     label: 'Get Member',
@@ -1798,6 +1977,34 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
     ],
   },
+  StaticGetMember: {
+    type: 'StaticGetMember',
+    label: 'Get Static Member',
+    labelRu: 'Get Static Member',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#3F51B5',
+    inputs: [],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Value', dataType: 'any', direction: 'output' }
+    ],
+  },
+  StaticSetMember: {
+    type: 'StaticSetMember',
+    label: 'Set Static Member',
+    labelRu: 'Set Static Member',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'value', name: 'Value', nameRu: 'Value', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'value', name: 'Value', nameRu: 'Value', dataType: 'any', direction: 'output' }
+    ],
+  },
   StaticMethodCall: {
     type: 'StaticMethodCall',
     label: 'Call Static Method',
@@ -1814,7 +2021,151 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'any', direction: 'output' }
     ],
   },
-    TypeConversion: {
+  CallBaseMethod: {
+    type: 'CallBaseMethod',
+    label: 'Call Base Method',
+    labelRu: 'Вызов метода базы',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'target', name: 'Target', nameRu: 'Объект', dataType: 'class', direction: 'input' },
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' },
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'any', direction: 'output' }
+    ],
+  },
+  CastStatic: {
+    type: 'CastStatic',
+    label: 'static_cast',
+    labelRu: 'static_cast',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'pointer', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  CastDynamic: {
+    type: 'CastDynamic',
+    label: 'dynamic_cast',
+    labelRu: 'dynamic_cast',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'pointer', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  CastConst: {
+    type: 'CastConst',
+    label: 'const_cast',
+    labelRu: 'const_cast',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'pointer', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  IsType: {
+    type: 'IsType',
+    label: 'Is Type',
+    labelRu: 'Проверить тип',
+    icon: 'comparison',
+    category: 'comparison',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'pointer', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'bool', direction: 'output' }
+    ],
+  },
+  MakeUnique: {
+    type: 'MakeUnique',
+    label: 'Make Unique',
+    labelRu: 'Создать unique_ptr',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  MakeShared: {
+    type: 'MakeShared',
+    label: 'Make Shared',
+    labelRu: 'Создать shared_ptr',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  DeleteObject: {
+    type: 'DeleteObject',
+    label: 'Delete Object',
+    labelRu: 'Удалить объект',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#B91C1C',
+    inputs: [
+      { id: 'exec-in', name: '', dataType: 'execution', direction: 'input' },
+      { id: 'target', name: 'Target', nameRu: 'Указатель', dataType: 'pointer', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'exec-out', name: '', dataType: 'execution', direction: 'output' }
+    ],
+  },
+  AddressOfMember: {
+    type: 'AddressOfMember',
+    label: 'Address Of Member',
+    labelRu: 'Адрес поля',
+    icon: 'variable',
+    category: 'variable',
+    headerColor: '#3F51B5',
+    inputs: [
+      { id: 'target', name: 'Target', nameRu: 'Объект', dataType: 'class', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'pointer', direction: 'output' }
+    ],
+  },
+  InitListCtor: {
+    type: 'InitListCtor',
+    label: 'Init List Ctor',
+    labelRu: 'Инициализация списком',
+    icon: 'function',
+    category: 'function',
+    headerColor: '#5E81AC',
+    inputs: [
+      { id: 'arg-0', name: 'Arg 1', nameRu: 'Аргумент 1', dataType: 'any', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'instance', name: 'Instance', nameRu: 'Экземпляр', dataType: 'class', direction: 'output' }
+    ],
+  },
+  TypeConversion: {
     type: 'TypeConversion',
     label: 'Type Conversion',
     labelRu: 'Преобразование типа',
@@ -2762,8 +3113,37 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
 
 function mapBlueprintNodeTypeToOld(type: BlueprintNodeType): GraphNode['type'] {
   // Маппинг расширенных типов на базовые
-  const functionTypes: BlueprintNodeType[] = ['Function', 'FunctionCall', 'Event', 'FunctionEntry', 'FunctionReturn', 'CallUserFunction'];
-  const variableTypes: BlueprintNodeType[] = ['Variable', 'GetVariable', 'SetVariable', 'ClassMethodCall', 'ClassConstructorCall', 'GetMember', 'SetMember', 'StaticMethodCall'];
+  const functionTypes: BlueprintNodeType[] = [
+    'Function',
+    'FunctionCall',
+    'Event',
+    'FunctionEntry',
+    'FunctionReturn',
+    'CallUserFunction',
+    'CallBaseMethod',
+    'DeleteObject',
+  ];
+  const variableTypes: BlueprintNodeType[] = [
+    'Variable',
+    'GetVariable',
+    'SetVariable',
+    'ClassMethodCall',
+    'ClassConstructorCall',
+    'ConstructorOverloadCall',
+    'GetMember',
+    'SetMember',
+    'StaticGetMember',
+    'StaticSetMember',
+    'StaticMethodCall',
+    'CastStatic',
+    'CastDynamic',
+    'CastConst',
+    'IsType',
+    'MakeUnique',
+    'MakeShared',
+    'AddressOfMember',
+    'InitListCtor',
+  ];
   
   if (type === 'Start') return 'Start';
   if (type === 'End' || type === 'Return') return 'End';
@@ -3114,3 +3494,6 @@ export function setActiveGraph(
     activeFunctionId: functionId,
   };
 }
+
+
+

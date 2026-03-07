@@ -33,8 +33,18 @@ import {
   tryExtractMulticodeGraphSnapshot,
 } from '../shared/graphSnapshot';
 import {
+  findMulticodeClassBindingsInSource,
+  injectOrReplaceMulticodeClassBindingsBlock,
+  type MulticodeClassBinding,
+} from '../shared/classBinding';
+import { deserializeClassSidecar, serializeClassSidecar, type BlueprintClassSidecar } from '../shared/classSidecar';
+import {
   extensionToWebviewMessageSchema,
+  type ClassNodesConfig,
+  type ClassStorageStatus,
+  type ClassStorageStatusItem,
   type ExternalIpcResponse,
+  blueprintClassSchema,
   parseGraphState,
   parseWebviewMessage,
   type ExtensionToWebviewMessage,
@@ -111,6 +121,22 @@ type GeneratedCodeWriteResult =
   | { status: 'no-target' }
   | { status: 'failed'; reason: string };
 type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
+type CodegenEntrypointMode = 'auto' | 'executable' | 'library';
+type ClassStorageMode = 'embedded' | 'sidecar';
+type NormalizedClassBinding = { classId: string; file: string };
+type ClassStorageItemState = ClassStorageStatusItem['status'];
+type ClassStorageItemSource = NonNullable<ClassStorageStatusItem['source']>;
+type ClassStorageDiagnosticItem = {
+  classId: string;
+  className?: string;
+  bindingFile?: string;
+  filePath?: string;
+  source?: ClassStorageItemSource;
+  existsOnDisk?: boolean;
+  lastCheckedAt?: string;
+  status: ClassStorageItemState;
+  reason?: string;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -123,6 +149,9 @@ const getVariablesStats = (variables: unknown): { hasVariables: boolean; variabl
 };
 
 const CPP_FILE_EXTENSIONS = new Set(['.h', '.hpp', '.hh', '.hxx', '.ipp', '.c', '.cc', '.cpp', '.cxx']);
+const CPP_SOURCE_EXTENSIONS = new Set(['.c', '.cc', '.cpp', '.cxx']);
+const CPP_HEADER_EXTENSIONS = new Set(['.h', '.hpp', '.hh', '.hxx', '.ipp']);
+const CPP_SIBLING_SOURCE_EXTENSIONS = ['.cpp', '.cc', '.cxx', '.c'];
 const LOCAL_INCLUDE_DIRECTIVE = /^\s*#\s*include\s*"([^"]+)"/gm;
 
 const normalizeFsPath = (filePath: string): string => filePath.replace(/\\/g, '/');
@@ -213,11 +242,14 @@ export class GraphPanel {
         rootFsPath: string;
       }
     | undefined;
+  private lastPersistedClassIdSignature: string;
   private readonly graphBindingIdUsage = new Map<string, Set<string>>();
   private readonly warnedDuplicateGraphIds = new Set<string>();
   private readonly detachedGraphStateBySource = new Map<string, GraphState>();
   private graphBindingLoadSeq = 0;
   private graphBindingAutoSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  private classStorageDiagnostics = new Map<string, ClassStorageDiagnosticItem>();
+  private classStorageStatusUpdatedAt: string;
   private readonly extensionUri: vscode.Uri;
   private readonly symbolIndexerRegistry: SymbolIndexerRegistry;
   private reindexIntegrationSymbols: (integrationId: string | undefined, force: boolean) => Promise<number>;
@@ -227,6 +259,10 @@ export class GraphPanel {
   private static readonly BOUND_GRAPH_READ_RESULT_LOADED = 'loaded';
   private static readonly BOUND_GRAPH_READ_RESULT_MISSING = 'missing';
   private static readonly BOUND_GRAPH_READ_RESULT_FAILED = 'failed';
+
+  private static readonly BOUND_CLASS_READ_RESULT_LOADED = 'loaded';
+  private static readonly BOUND_CLASS_READ_RESULT_MISSING = 'missing';
+  private static readonly BOUND_CLASS_READ_RESULT_FAILED = 'failed';
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -251,6 +287,8 @@ export class GraphPanel {
     this.translator = undefined;
     this.boundCodeDocumentUri = this.resolveWritableEditorUri(vscode.window.activeTextEditor);
     this.boundGraphBinding = undefined;
+    this.lastPersistedClassIdSignature = '';
+    this.classStorageStatusUpdatedAt = new Date().toISOString();
     this.symbolIndexerRegistry = new SymbolIndexerRegistry();
     this.reindexIntegrationSymbols = async (integrationId: string | undefined, force: boolean) => {
       const bindings = this.graphState.integrationBindings ?? [];
@@ -272,6 +310,16 @@ export class GraphPanel {
         }
         if (event.affectsConfiguration('multicode.codegen.outputProfile')) {
           this.postCodegenProfile();
+        }
+        if (event.affectsConfiguration('multicode.codegen.entrypointMode')) {
+          this.postCodegenEntrypointMode();
+        }
+        if (event.affectsConfiguration('multicode.classStorage.mode')) {
+          this.touchClassStorageDiagnostics();
+          this.postClassStorageStatus();
+        }
+        if (event.affectsConfiguration('multicode.classNodes.advanced')) {
+          this.postClassNodesConfig();
         }
         if (event.affectsConfiguration('multicode.packages.enableUe')) {
           this.enableUePackage = this.readEnableUePackage();
@@ -479,7 +527,27 @@ export class GraphPanel {
       try {
         const document = await vscode.workspace.openTextDocument(codeUri);
         const original = document.getText();
-        const next = this.injectOrReplaceGraphBindingLine(original, bindingLine, graphBindingConfig.maxLines);
+        let next = this.injectOrReplaceGraphBindingLine(original, bindingLine, graphBindingConfig.maxLines);
+
+        if (this.readClassStorageMode() === 'sidecar') {
+          const rawClasses = Array.isArray(this.graphState.classes) ? this.graphState.classes : [];
+          const parsedClasses = blueprintClassSchema.array().safeParse(rawClasses);
+          const bindings = parsedClasses.success
+            ? this.buildCanonicalClassBindings(parsedClasses.data, graphBindingConfig.folder)
+            : rawClasses
+                .filter((value): value is Record<string, unknown> => isRecord(value))
+                .map((entry) => (typeof entry.id === 'string' ? entry.id.trim() : ''))
+                .filter((id) => id.length > 0)
+                .filter((id, index, arr) => arr.indexOf(id) === index)
+                .map((id) => ({
+                  classId: id,
+                  file: this.makeDefaultClassBindingFileRelativePath(id, graphBindingConfig.folder),
+                }))
+                .sort((left, right) => left.classId.localeCompare(right.classId, 'ru'));
+
+          next = injectOrReplaceMulticodeClassBindingsBlock(next, bindings);
+        }
+
         if (next !== original) {
           const fullRange = new vscode.Range(
             document.positionAt(0),
@@ -599,12 +667,55 @@ export class GraphPanel {
     this.postState();
   }
 
+  private resolveSiblingHeaderForSource(sourceUri: vscode.Uri | undefined): vscode.Uri | undefined {
+    if (!sourceUri || sourceUri.scheme !== 'file') {
+      return undefined;
+    }
+
+    const ext = path.extname(sourceUri.fsPath).toLowerCase();
+    if (!CPP_SOURCE_EXTENSIONS.has(ext)) {
+      return undefined;
+    }
+
+    const parsed = path.parse(sourceUri.fsPath);
+    for (const headerExt of ['.hpp', '.h', '.hh', '.hxx'] as const) {
+      const candidate = vscode.Uri.file(path.join(parsed.dir, `${parsed.name}${headerExt}`));
+      try {
+        if (fs.existsSync(candidate.fsPath) && fs.statSync(candidate.fsPath).isFile()) {
+          return candidate;
+        }
+      } catch {
+        // ignore file-system races
+      }
+    }
+
+    return undefined;
+  }
+
+  private shouldUseSplitClassOutput(targetUri: vscode.Uri | undefined, classCount: number): boolean {
+    if (this.graphState.language !== 'cpp') {
+      return false;
+    }
+    if (!targetUri || targetUri.scheme !== 'file') {
+      return false;
+    }
+    if (classCount === 0) {
+      return false;
+    }
+    return this.resolveSiblingHeaderForSource(targetUri) !== undefined;
+  }
+
+  private ensureLeadingInclude(code: string, includeToken: string): string {
+    const includeLine = `#include ${includeToken}`;
+    const lines = code.split(/\r?\n/).filter((line) => line.trim() !== includeLine);
+    return [includeLine, ...lines].join('\n');
+  }
+
   public async handleGenerateCode(): Promise<void> {
     const generator = new CppCodeGenerator();
     const blueprintState = migrateToBlueprintFormat(this.graphState);
     const verboseCodegenLogs = this.readCodegenVerboseLogs();
     const outputProfile = this.readCodegenOutputProfile();
-    const codegenOptions = this.resolveCodegenOptionsForProfile(outputProfile);
 
     if (verboseCodegenLogs) {
       this.outputChannel.appendLine('');
@@ -668,54 +779,75 @@ export class GraphPanel {
       blueprintState,
       externalValidation.resolvedSymbolsByNodeId
     );
-    const result = generator.generate(blueprintStateForCodegen, codegenOptions);
-    
-    if (result.success) {
-      const targetUri =
-        this.boundCodeDocumentUri ?? this.resolveWritableEditorUri(vscode.window.activeTextEditor);
+    const codegenOptions = this.resolveCodegenOptionsForProfile(outputProfile, blueprintStateForCodegen);
+    const targetUri = this.boundCodeDocumentUri ?? this.resolveWritableEditorUri(vscode.window.activeTextEditor);
+    const classesCount = Array.isArray(blueprintStateForCodegen.classes)
+      ? blueprintStateForCodegen.classes.length
+      : 0;
+    const splitClassOutput = this.shouldUseSplitClassOutput(targetUri, classesCount);
+    const headerUri = splitClassOutput ? this.resolveSiblingHeaderForSource(targetUri) : undefined;
 
-      const codeWithIntegrationIncludes = this.prependRequiredIncludes(
-        result.code,
+    if (splitClassOutput && targetUri && headerUri) {
+      const headerIncludeToken = `"${path.basename(headerUri.fsPath)}"`;
+      const headerResult = generator.generate(blueprintStateForCodegen, {
+        ...codegenOptions,
+        generateMainWrapper: false,
+        classEmissionMode: 'declarations-only',
+        emitGraphBody: false,
+      });
+      const sourceResult = generator.generate(blueprintStateForCodegen, {
+        ...codegenOptions,
+        classEmissionMode: 'definitions-only',
+        forcedIncludes: [headerIncludeToken],
+      });
+
+      if (!headerResult.success || !sourceResult.success) {
+        const errors = [...headerResult.errors, ...sourceResult.errors];
+        this.outputChannel.appendLine('');
+        this.outputChannel.appendLine('═'.repeat(60));
+        this.outputChannel.appendLine('// ОШИБКИ ГЕНЕРАЦИИ (split class output):');
+        for (const error of errors) {
+          this.outputChannel.appendLine(`//   ✗ ${error.message}`);
+        }
+        this.outputChannel.appendLine('═'.repeat(60));
+        this.outputChannel.show(true);
+        this.postToast('error', `Ошибки генерации: ${errors.length}`);
+        return;
+      }
+
+      let sourceCode = this.prependRequiredIncludes(
+        sourceResult.code,
         externalValidation.requiredIncludes,
         targetUri
       );
-      const prepared = targetUri
-        ? await this.prepareGeneratedCodeForWrite(codeWithIntegrationIncludes, targetUri, outputProfile)
-        : { code: codeWithIntegrationIncludes };
+      sourceCode = this.ensureLeadingInclude(sourceCode, headerIncludeToken);
+      const preparedSource = await this.prepareGeneratedCodeForWrite(sourceCode, targetUri, outputProfile);
+
+      await vscode.workspace.fs.writeFile(headerUri, Buffer.from(headerResult.code, 'utf8'));
+      const writeResult = await this.writeGeneratedCodeToBoundDocument(preparedSource.code);
 
       this.outputChannel.appendLine('');
       this.outputChannel.appendLine('═'.repeat(60));
-      this.outputChannel.appendLine(prepared.code);
+      this.outputChannel.appendLine(`[MultiCode] Режим split class output активирован`);
+      this.outputChannel.appendLine(`[MultiCode] Header обновлён: ${headerUri.fsPath}`);
+      this.outputChannel.appendLine(`[MultiCode] Source обновлён: ${targetUri.fsPath}`);
       this.outputChannel.appendLine('═'.repeat(60));
-      this.outputChannel.appendLine(`// Узлов обработано: ${result.stats.nodesProcessed}`);
-      this.outputChannel.appendLine(`// Строк кода: ${result.stats.linesOfCode}`);
-      this.outputChannel.appendLine(`// Время генерации: ${result.stats.generationTimeMs.toFixed(2)} мс`);
-      
-      if (result.warnings.length > 0) {
-        this.outputChannel.appendLine('');
-        this.outputChannel.appendLine('// Предупреждения:');
-        for (const warning of result.warnings) {
-          this.outputChannel.appendLine(`//   - ${warning.message}`);
-        }
-      }
 
-      const writeResult = await this.writeGeneratedCodeToBoundDocument(prepared.code);
       if (writeResult.status === 'written') {
-        const targetPath = writeResult.uri.fsPath || writeResult.uri.toString();
-        const fileName = path.basename(targetPath);
-        this.outputChannel.appendLine(`[MultiCode] Код записан в файл: ${targetPath}`);
-        this.postToast('success', this.translate('toasts.generatedToFile', { file: fileName }));
+        this.postToast('success', this.translate('toasts.generatedToFile', { file: path.basename(targetUri.fsPath) }));
       } else if (writeResult.status === 'no-target') {
         this.postToast('warning', this.translate('errors.codeWriteTargetMissing'));
-        this.postToast('success', this.translate('toasts.generated'));
       } else {
-        this.outputChannel.appendLine(`[MultiCode] Не удалось записать код в файл: ${writeResult.reason}`);
+        this.outputChannel.appendLine(`[MultiCode] Не удалось записать source файл: ${writeResult.reason}`);
         this.postToast('warning', this.translate('errors.codeWriteFailed', { reason: writeResult.reason }));
-        this.postToast('success', this.translate('toasts.generated'));
       }
-
       this.outputChannel.show(true);
-    } else {
+      return;
+    }
+
+    const result = generator.generate(blueprintStateForCodegen, codegenOptions);
+
+    if (!result.success) {
       this.outputChannel.appendLine('');
       this.outputChannel.appendLine('═'.repeat(60));
       this.outputChannel.appendLine('// ОШИБКИ ГЕНЕРАЦИИ:');
@@ -725,7 +857,49 @@ export class GraphPanel {
       this.outputChannel.appendLine('═'.repeat(60));
       this.outputChannel.show(true);
       this.postToast('error', `Ошибки генерации: ${result.errors.length}`);
+      return;
     }
+
+    const codeWithIntegrationIncludes = this.prependRequiredIncludes(
+      result.code,
+      externalValidation.requiredIncludes,
+      targetUri
+    );
+    const prepared = targetUri
+      ? await this.prepareGeneratedCodeForWrite(codeWithIntegrationIncludes, targetUri, outputProfile)
+      : { code: codeWithIntegrationIncludes };
+
+    this.outputChannel.appendLine('');
+    this.outputChannel.appendLine('═'.repeat(60));
+    this.outputChannel.appendLine(prepared.code);
+    this.outputChannel.appendLine('═'.repeat(60));
+    this.outputChannel.appendLine(`// Узлов обработано: ${result.stats.nodesProcessed}`);
+    this.outputChannel.appendLine(`// Строк кода: ${result.stats.linesOfCode}`);
+    this.outputChannel.appendLine(`// Время генерации: ${result.stats.generationTimeMs.toFixed(2)} мс`);
+    
+    if (result.warnings.length > 0) {
+      this.outputChannel.appendLine('');
+      this.outputChannel.appendLine('// Предупреждения:');
+      for (const warning of result.warnings) {
+        this.outputChannel.appendLine(`//   - ${warning.message}`);
+      }
+    }
+
+    const writeResult = await this.writeGeneratedCodeToBoundDocument(prepared.code);
+    if (writeResult.status === 'written') {
+      const targetPath = writeResult.uri.fsPath || writeResult.uri.toString();
+      const fileName = path.basename(targetPath);
+      this.outputChannel.appendLine(`[MultiCode] Код записан в файл: ${targetPath}`);
+      this.postToast('success', this.translate('toasts.generatedToFile', { file: fileName }));
+    } else if (writeResult.status === 'no-target') {
+      this.postToast('warning', this.translate('errors.codeWriteTargetMissing'));
+      this.postToast('success', this.translate('toasts.generated'));
+    } else {
+      this.outputChannel.appendLine(`[MultiCode] Не удалось записать код в файл: ${writeResult.reason}`);
+      this.postToast('warning', this.translate('errors.codeWriteFailed', { reason: writeResult.reason }));
+      this.postToast('success', this.translate('toasts.generated'));
+    }
+    this.outputChannel.show(true);
   }
 
   public async handleGenerateCodeBinding(): Promise<void> {
@@ -773,6 +947,79 @@ export class GraphPanel {
     this.validateAndDispatch(this.graphState, true);
   }
 
+  private resolveCompileTranslationUnits(rootFilePath?: string): string[] {
+    const rootMatchPath = rootFilePath ? normalizeFsPathForMatch(rootFilePath) : null;
+    const collected = new Set<string>();
+
+    const tryAddSource = (candidatePath: string): void => {
+      const trimmed = candidatePath.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      const normalized = normalizeFsPath(trimmed);
+      const matchPath = normalizeFsPathForMatch(normalized);
+      if (rootMatchPath && matchPath === rootMatchPath) {
+        return;
+      }
+
+      const ext = path.extname(normalized).toLowerCase();
+      if (!CPP_SOURCE_EXTENSIONS.has(ext)) {
+        return;
+      }
+
+      if (!path.isAbsolute(normalized)) {
+        return;
+      }
+
+      try {
+        if (!fs.existsSync(normalized) || !fs.statSync(normalized).isFile()) {
+          return;
+        }
+      } catch {
+        return;
+      }
+
+      collected.add(normalized);
+    };
+
+    const tryAddSiblingSources = (headerPath: string): void => {
+      const parsed = path.parse(headerPath);
+      for (const ext of CPP_SIBLING_SOURCE_EXTENSIONS) {
+        tryAddSource(path.join(parsed.dir, `${parsed.name}${ext}`));
+      }
+    };
+
+    for (const integration of this.graphState.integrationBindings ?? []) {
+      if ((integration.kind ?? 'file') !== 'file') {
+        continue;
+      }
+
+      const consumers = dedupeNormalizedPaths(integration.consumerFiles ?? []);
+      if (
+        rootMatchPath &&
+        consumers.length > 0 &&
+        !consumers.some((filePath) => normalizeFsPathForMatch(filePath) === rootMatchPath)
+      ) {
+        continue;
+      }
+
+      for (const attachedFile of integration.attachedFiles ?? []) {
+        const normalized = normalizeFsPath(attachedFile);
+        const ext = path.extname(normalized).toLowerCase();
+        if (CPP_SOURCE_EXTENSIONS.has(ext)) {
+          tryAddSource(normalized);
+          continue;
+        }
+        if (CPP_HEADER_EXTENSIONS.has(ext)) {
+          tryAddSiblingSources(normalized);
+        }
+      }
+    }
+
+    return Array.from(collected).sort((left, right) => left.localeCompare(right, 'ru'));
+  }
+
   public async handleCompileAndRun(standardOverride?: CppStandard): Promise<void> {
     console.log('[EXTENSION DEBUG] handleCompileAndRun called with standardOverride:', standardOverride);
     this.outputChannel.appendLine('[Compile & Run] Запуск функции компиляции...');
@@ -796,7 +1043,14 @@ export class GraphPanel {
       blueprintState,
       externalValidation.resolvedSymbolsByNodeId
     );
-    const result = generator.generate(blueprintStateForCodegen, this.resolveCodegenOptionsForProfile('clean'));
+    const preferredCodegenOptions = this.resolveCodegenOptionsForProfile('clean', blueprintStateForCodegen);
+    if (!preferredCodegenOptions.generateMainWrapper) {
+      this.outputChannel.appendLine('[Compile & Run] ⚠ Для запуска требуется main(). Временное выполнение: принудительно добавляю main().');
+    }
+    const result = generator.generate(blueprintStateForCodegen, {
+      ...preferredCodegenOptions,
+      generateMainWrapper: true,
+    });
 
     if (!result.success) {
       this.outputChannel.appendLine('[Compile & Run] ✗ Ошибка генерации кода:');
@@ -835,6 +1089,14 @@ export class GraphPanel {
       const compileCode = this.prependRequiredIncludes(result.code, externalValidation.requiredIncludes);
       fs.writeFileSync(tempSourceFile, compileCode, 'utf8');
       this.outputChannel.appendLine(`[Compile & Run] Источник: ${tempSourceFile}`);
+
+      const additionalSourceFiles = this.resolveCompileTranslationUnits(this.boundCodeDocumentUri?.fsPath);
+      if (additionalSourceFiles.length > 0) {
+        this.outputChannel.appendLine(`[Compile & Run] Доп. translation units: ${additionalSourceFiles.length}`);
+        for (const sourceFile of additionalSourceFiles) {
+          this.outputChannel.appendLine(`  + ${sourceFile}`);
+        }
+      }
 
       this.outputChannel.appendLine('[Compile & Run] Поиск компилятора...');
       const toolchainUi: ToolchainUi = {
@@ -899,6 +1161,7 @@ export class GraphPanel {
         optimization: 'O2',
         env: toolchain.env,
         extraArgs: toolchain.extraCompileArgs,
+        additionalSourceFiles,
       });
 
       if (!compileResult.success) {
@@ -1025,7 +1288,10 @@ export class GraphPanel {
     });
     this.postBoundFile();
     this.postEditableFiles();
+    this.postClassStorageStatus();
+    this.postClassNodesConfig();
     this.postCodegenProfile();
+    this.postCodegenEntrypointMode();
   }
 
   private postBoundFile(): void {
@@ -1092,6 +1358,206 @@ export class GraphPanel {
       payload: {
         profile: this.readCodegenOutputProfile(),
       }
+    });
+  }
+
+  private postCodegenEntrypointMode(): void {
+    this.sendToWebview({
+      type: 'codegenEntrypointModeChanged',
+      payload: {
+        mode: this.readCodegenEntrypointMode(),
+      }
+    });
+  }
+
+  private upsertClassStorageDiagnostic(item: ClassStorageDiagnosticItem): void {
+    const classId = item.classId.trim();
+    if (!classId) {
+      return;
+    }
+    const next: ClassStorageDiagnosticItem = {
+      classId,
+      status: item.status,
+      ...(item.className ? { className: item.className } : {}),
+      ...(item.bindingFile ? { bindingFile: item.bindingFile } : {}),
+      ...(item.filePath ? { filePath: item.filePath } : {}),
+      ...(item.source ? { source: item.source } : {}),
+      ...(typeof item.existsOnDisk === 'boolean' ? { existsOnDisk: item.existsOnDisk } : {}),
+      ...(item.lastCheckedAt ? { lastCheckedAt: item.lastCheckedAt } : {}),
+      ...(item.reason ? { reason: item.reason } : {}),
+    };
+    this.classStorageDiagnostics.set(classId, next);
+    this.classStorageStatusUpdatedAt = new Date().toISOString();
+  }
+
+  private replaceClassStorageDiagnostics(items: ClassStorageDiagnosticItem[]): void {
+    this.classStorageDiagnostics.clear();
+    for (const item of items) {
+      this.upsertClassStorageDiagnostic(item);
+    }
+    this.classStorageStatusUpdatedAt = new Date().toISOString();
+  }
+
+  private touchClassStorageDiagnostics(): void {
+    this.classStorageStatusUpdatedAt = new Date().toISOString();
+  }
+
+  private resolveSidecarClassesDirPath(): string | null {
+    if (!this.boundGraphBinding) {
+      return null;
+    }
+    const config = this.readGraphBindingConfig();
+    const normalizedFolder = (config.folder ?? '.multicode').replace(/\\/g, '/').replace(/\/+$/g, '') || '.multicode';
+    return resolveGraphBindingFilePath(this.boundGraphBinding.rootFsPath, `${normalizedFolder}/classes`);
+  }
+
+  private buildClassStorageStatusPayload(): ClassStorageStatus {
+    const storageMode = this.readClassStorageMode();
+    const classes = Array.isArray(this.graphState.classes) ? this.graphState.classes : [];
+    const classBindings = Array.isArray(this.graphState.classBindings) ? this.graphState.classBindings : [];
+    const activeClassIds = new Set<string>();
+    const classNameById = new Map<string, string>();
+    const bindingFileByClassId = new Map<string, string>();
+    for (const rawBinding of classBindings) {
+      const classId = typeof rawBinding.classId === 'string' ? rawBinding.classId.trim() : '';
+      if (classId) {
+        activeClassIds.add(classId);
+      }
+    }
+    for (const rawClass of classes) {
+      if (!isRecord(rawClass)) {
+        continue;
+      }
+      const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+      if (classId) {
+        activeClassIds.add(classId);
+        const codeName = typeof rawClass.name === 'string' ? rawClass.name.trim() : '';
+        const nameRu = typeof rawClass.nameRu === 'string' ? rawClass.nameRu.trim() : '';
+        const className = nameRu || codeName;
+        if (className.length > 0) {
+          classNameById.set(classId, className);
+        }
+      }
+    }
+
+    const diagnostics = new Map<string, ClassStorageDiagnosticItem>();
+    for (const [classId, item] of this.classStorageDiagnostics.entries()) {
+      if (activeClassIds.has(classId)) {
+        diagnostics.set(classId, item);
+      }
+    }
+    const sidecarByClassId = new Map<string, string>();
+
+    if (storageMode === 'sidecar' && this.boundGraphBinding) {
+      const config = this.readGraphBindingConfig();
+      for (const rawBinding of classBindings) {
+        const classId = typeof rawBinding.classId === 'string' ? rawBinding.classId.trim() : '';
+        if (!classId) {
+          continue;
+        }
+        const rawFile = typeof rawBinding.file === 'string' ? rawBinding.file.trim() : '';
+        const relativeFile = rawFile || this.makeDefaultClassBindingFileRelativePath(classId, config.folder);
+        const absoluteFile = resolveGraphBindingFilePath(this.boundGraphBinding.rootFsPath, relativeFile);
+        sidecarByClassId.set(classId, absoluteFile);
+        bindingFileByClassId.set(classId, relativeFile);
+      }
+    }
+
+    for (const [classId, filePath] of sidecarByClassId.entries()) {
+      if (!diagnostics.has(classId)) {
+        diagnostics.set(classId, {
+          classId,
+          className: classNameById.get(classId),
+          bindingFile: bindingFileByClassId.get(classId),
+          filePath,
+          source: 'binding',
+          existsOnDisk: fs.existsSync(filePath),
+          lastCheckedAt: this.classStorageStatusUpdatedAt,
+          status: 'unbound',
+        });
+      }
+    }
+
+    for (const rawClass of classes) {
+      if (!isRecord(rawClass)) {
+        continue;
+      }
+      const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+      if (!classId) {
+        continue;
+      }
+      if (diagnostics.has(classId)) {
+        continue;
+      }
+      diagnostics.set(classId, {
+        classId,
+        className: classNameById.get(classId),
+        bindingFile: bindingFileByClassId.get(classId),
+        status: storageMode === 'embedded' ? 'unbound' : 'ok',
+        ...(sidecarByClassId.has(classId) ? { filePath: sidecarByClassId.get(classId) } : {}),
+        source: storageMode === 'embedded' ? 'embedded' : (sidecarByClassId.has(classId) ? 'binding' : 'inferred'),
+        ...(sidecarByClassId.has(classId)
+          ? {
+              existsOnDisk: fs.existsSync(sidecarByClassId.get(classId)!),
+              lastCheckedAt: this.classStorageStatusUpdatedAt,
+            }
+          : {}),
+      });
+    }
+
+    const classItems = Array.from(diagnostics.values())
+      .sort((left, right) => left.classId.localeCompare(right.classId, 'ru'))
+      .map<ClassStorageStatusItem>((item) => ({
+        classId: item.classId,
+        ...(item.className ? { className: item.className } : {}),
+        ...(item.bindingFile ? { bindingFile: item.bindingFile } : {}),
+        status: item.status,
+        ...(item.source ? { source: item.source } : {}),
+        ...(item.filePath ? { filePath: item.filePath } : {}),
+        ...(typeof item.existsOnDisk === 'boolean' ? { existsOnDisk: item.existsOnDisk } : {}),
+        ...(item.lastCheckedAt ? { lastCheckedAt: item.lastCheckedAt } : {}),
+        ...(item.reason ? { reason: item.reason } : {}),
+      }));
+
+    const missing = classItems.filter((item) => item.status === 'missing').length;
+    const failed = classItems.filter((item) => item.status === 'failed').length;
+    const fallbackEmbedded = classItems.filter((item) => item.status === 'fallbackEmbedded').length;
+    const unbound = classItems.filter((item) => item.status === 'unbound').length;
+    const dirty = classItems.filter((item) => item.status === 'dirty').length;
+    const conflict = classItems.filter((item) => item.status === 'conflict').length;
+
+    return {
+      mode: storageMode,
+      isBoundSource: Boolean(this.boundCodeDocumentUri?.scheme === 'file'),
+      graphFilePath: this.boundGraphBinding?.graphUri.fsPath ?? null,
+      classesDirPath: storageMode === 'sidecar' ? this.resolveSidecarClassesDirPath() : null,
+      bindingsTotal: classBindings.length,
+      classesLoaded: classes.length,
+      missing,
+      failed,
+      fallbackEmbedded,
+      unbound,
+      dirty,
+      conflict,
+      updatedAt: this.classStorageStatusUpdatedAt,
+      classItems,
+    };
+  }
+
+  private postClassStorageStatus(): void {
+    this.sendToWebview({
+      type: 'classStorageStatusChanged',
+      payload: this.buildClassStorageStatusPayload(),
+    });
+  }
+
+  private postClassNodesConfig(): void {
+    const payload: ClassNodesConfig = {
+      advancedEnabled: this.readClassNodesAdvancedEnabled(),
+    };
+    this.sendToWebview({
+      type: 'classNodesConfigChanged',
+      payload,
     });
   }
 
@@ -1210,6 +1676,16 @@ export class GraphPanel {
     return 'clean';
   }
 
+  private readCodegenEntrypointMode(): CodegenEntrypointMode {
+    const mode = vscode.workspace
+      .getConfiguration('multicode')
+      .get<CodegenEntrypointMode>('codegen.entrypointMode', 'auto');
+    if (mode === 'executable' || mode === 'library') {
+      return mode;
+    }
+    return 'auto';
+  }
+
   private async setCodegenOutputProfile(profile: CodegenOutputProfile): Promise<void> {
     const current = this.readCodegenOutputProfile();
     if (current === profile) {
@@ -1238,19 +1714,63 @@ export class GraphPanel {
     }
   }
 
+  private async setCodegenEntrypointMode(mode: CodegenEntrypointMode): Promise<void> {
+    const current = this.readCodegenEntrypointMode();
+    if (current === mode) {
+      this.postCodegenEntrypointMode();
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('multicode');
+    const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+    const target = hasWorkspace
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+
+    try {
+      await config.update('codegen.entrypointMode', mode, target);
+      this.postCodegenEntrypointMode();
+      this.postToast(
+        'success',
+        this.translate('toasts.codegenEntrypointModeChanged', {
+          mode: this.translate(`toolbar.codegenEntrypointMode.${mode}` as TranslationKey),
+        })
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      this.postToast('error', `${this.translate('errors.codegenEntrypointModeUpdateFailed')}: ${reason}`);
+    }
+  }
+
+  private shouldGenerateMainWrapperForGraph(
+    mode: CodegenEntrypointMode,
+    graphLike: { nodes: Array<{ type: string }> }
+  ): boolean {
+    if (mode === 'executable') {
+      return true;
+    }
+    if (mode === 'library') {
+      return false;
+    }
+    return graphLike.nodes.some((node) => node.type === 'Start');
+  }
+
   private resolveCodegenOptionsForProfile(
-    profile: CodegenOutputProfile
-  ): { includeRussianComments: boolean; includeSourceMarkers: boolean } {
+    profile: CodegenOutputProfile,
+    graphLike: { nodes: Array<{ type: string }> }
+  ): { includeRussianComments: boolean; includeSourceMarkers: boolean; generateMainWrapper: boolean } {
+    const mode = this.readCodegenEntrypointMode();
+    const generateMainWrapper = this.shouldGenerateMainWrapperForGraph(mode, graphLike);
     switch (profile) {
       case 'clean':
-        return { includeRussianComments: false, includeSourceMarkers: false };
+        return { includeRussianComments: false, includeSourceMarkers: false, generateMainWrapper };
       case 'learn':
-        return { includeRussianComments: true, includeSourceMarkers: false };
+        return { includeRussianComments: true, includeSourceMarkers: false, generateMainWrapper };
       case 'debug':
       case 'recovery':
-        return { includeRussianComments: true, includeSourceMarkers: true };
+        return { includeRussianComments: true, includeSourceMarkers: true, generateMainWrapper };
       default:
-        return { includeRussianComments: false, includeSourceMarkers: false };
+        return { includeRussianComments: false, includeSourceMarkers: false, generateMainWrapper };
     }
   }
 
@@ -1390,6 +1910,7 @@ export class GraphPanel {
     this.boundCodeDocumentUri = uri;
     this.postBoundFile();
     this.postEditableFiles();
+    this.postClassStorageStatus();
     if (!prevUri || prevUriKey !== nextUriKey) {
       void this.handleBoundSourceChanged(uri);
     }
@@ -1459,6 +1980,136 @@ export class GraphPanel {
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown error';
       this.postToast('warning', `Не удалось открыть файл: ${reason}`);
+    }
+  }
+
+  private resolveFilePickOpenLabel(purpose?: 'bind' | 'dependency' | 'working'): string {
+    switch (purpose) {
+      case 'bind':
+        return 'Выбрать рабочий файл';
+      case 'dependency':
+        return 'Выбрать файл зависимости';
+      case 'working':
+        return 'Добавить файл в рабочий список';
+      default:
+        return 'Выбрать файл';
+    }
+  }
+
+  private getFilePickFilters(): Record<string, string[]> | undefined {
+    switch (this.graphState.language) {
+      case 'cpp':
+      case 'ue':
+        return { 'C/C++': ['cpp', 'cc', 'cxx', 'c', 'h', 'hpp', 'hh', 'hxx'] };
+      case 'rust':
+        return { Rust: ['rs'] };
+      case 'asm':
+        return { ASM: ['asm', 's', 'nasm', 'masm'] };
+      default:
+        return undefined;
+    }
+  }
+
+  private async handleFilePick(
+    payload?: { purpose?: 'bind' | 'dependency' | 'working'; openLabel?: string }
+  ): Promise<Extract<ExternalIpcResponse, { type: 'file/pick' }>> {
+    try {
+      const defaultUri =
+        this.boundCodeDocumentUri ??
+        vscode.workspace.workspaceFolders?.[0]?.uri ??
+        vscode.window.activeTextEditor?.document.uri;
+      const [uri] =
+        (await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          canSelectFiles: true,
+          canSelectFolders: false,
+          defaultUri,
+          openLabel: payload?.openLabel?.trim() || this.resolveFilePickOpenLabel(payload?.purpose),
+          filters: this.getFilePickFilters(),
+        })) ?? [];
+
+      if (!uri) {
+        return {
+          type: 'file/pick',
+          ok: true,
+          payload: {
+            filePath: null,
+            fileName: null,
+          },
+        };
+      }
+
+      const document = await vscode.workspace.openTextDocument(uri);
+      const expectedLanguageIds = this.getExpectedLanguageIds();
+      if (expectedLanguageIds.length > 0 && !expectedLanguageIds.includes(document.languageId)) {
+        return {
+          type: 'file/pick',
+          ok: false,
+          error: {
+            code: 'E_FILE_PICK_LANGUAGE',
+            message: `Файл ${path.basename(uri.fsPath)} не соответствует целевой платформе`,
+            details: {
+              filePath: uri.fsPath,
+              languageId: document.languageId,
+              expectedLanguageIds,
+            },
+          },
+        };
+      }
+
+      return {
+        type: 'file/pick',
+        ok: true,
+        payload: {
+          filePath: uri.fsPath,
+          fileName: path.basename(uri.fsPath),
+        },
+      };
+    } catch (error) {
+      return {
+        type: 'file/pick',
+        ok: false,
+        error: mapToIpcError(error, 'E_FILE_PICK', 'Не удалось выбрать файл'),
+      };
+    }
+  }
+
+  private async handleFileOpen(
+    payload: { filePath: string; preview?: boolean; preserveFocus?: boolean }
+  ): Promise<Extract<ExternalIpcResponse, { type: 'file/open' }>> {
+    const filePath = payload.filePath.trim();
+    if (!filePath) {
+      return {
+        type: 'file/open',
+        ok: false,
+        error: {
+          code: 'E_FILE_OPEN_PATH',
+          message: 'Путь к файлу не указан',
+        },
+      };
+    }
+
+    try {
+      const targetUri = vscode.Uri.file(filePath);
+      const document = await vscode.workspace.openTextDocument(targetUri);
+      await vscode.window.showTextDocument(document, {
+        preserveFocus: payload.preserveFocus ?? false,
+        preview: payload.preview ?? false,
+      });
+      return {
+        type: 'file/open',
+        ok: true,
+        payload: {
+          filePath: targetUri.fsPath,
+          fileName: path.basename(targetUri.fsPath),
+        },
+      };
+    } catch (error) {
+      return {
+        type: 'file/open',
+        ok: false,
+        error: mapToIpcError(error, 'E_FILE_OPEN', 'Не удалось открыть файл'),
+      };
     }
   }
 
@@ -1702,6 +2353,12 @@ export class GraphPanel {
         continue;
       }
 
+      // Явные (explicit) интеграции считаем ручным управлением: авто-сканер #include не должен
+      // обратно "прикреплять" consumerFiles после Detach в UI.
+      if (integration.mode !== 'implicit') {
+        continue;
+      }
+
       const scopeFiles = dedupeNormalizedPaths(integration.consumerFiles ?? []);
       const hasRootInScope = scopeFiles.some(
         (filePath) => normalizeFsPathForMatch(filePath) === normalizedRootPathMatch
@@ -1806,6 +2463,235 @@ export class GraphPanel {
       this.markState(patch);
       this.postState();
     });
+  }
+
+  private normalizeClassBindingsFromState(folderSetting: string): NormalizedClassBinding[] {
+    const seen = new Set<string>();
+    const next: NormalizedClassBinding[] = [];
+    const rawBindings = Array.isArray(this.graphState.classBindings)
+      ? (this.graphState.classBindings as unknown as MulticodeClassBinding[])
+      : [];
+    for (const binding of rawBindings) {
+      const classId = typeof binding.classId === 'string' ? binding.classId.trim() : '';
+      if (!classId || seen.has(classId)) {
+        continue;
+      }
+      const rawFile = typeof binding.file === 'string' ? binding.file.trim() : '';
+      const file = rawFile || this.makeDefaultClassBindingFileRelativePath(classId, folderSetting);
+      seen.add(classId);
+      next.push({ classId, file });
+    }
+    return next.sort((left, right) => left.classId.localeCompare(right.classId, 'ru'));
+  }
+
+  private async syncClassBindingMarkersInBoundSource(): Promise<void> {
+    if (this.readClassStorageMode() !== 'sidecar') {
+      return;
+    }
+    const codeUri = this.boundCodeDocumentUri;
+    if (!codeUri || codeUri.scheme !== 'file') {
+      return;
+    }
+    const graphBindingConfig = this.readGraphBindingConfig();
+    const bindings = this.normalizeClassBindingsFromState(graphBindingConfig.folder);
+    try {
+      const document = await vscode.workspace.openTextDocument(codeUri);
+      const original = document.getText();
+      const next = injectOrReplaceMulticodeClassBindingsBlock(original, bindings);
+      if (next === original) {
+        return;
+      }
+
+      const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(original.length)
+      );
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(codeUri, fullRange, next);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (applied && !document.isUntitled) {
+        await document.save();
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      this.outputChannel.appendLine(`[MultiCode] Не удалось синхронизировать @multicode:class: ${reason}`);
+    }
+  }
+
+  private async handleClassStorageReload(
+    payload?: { classId?: string }
+  ): Promise<Extract<ExternalIpcResponse, { type: 'class/storage/reload' }>> {
+    try {
+      if (this.readClassStorageMode() !== 'sidecar') {
+        return {
+          type: 'class/storage/reload',
+          ok: true,
+          payload: {
+            reloaded: 0,
+            ...(payload?.classId ? { classId: payload.classId } : {}),
+          },
+        };
+      }
+
+      const sourceUri = this.boundCodeDocumentUri;
+      const boundGraph = this.boundGraphBinding;
+      if (!sourceUri || sourceUri.scheme !== 'file' || !boundGraph) {
+        return {
+          type: 'class/storage/reload',
+          ok: false,
+          error: {
+            code: 'E_CLASS_STORAGE_RELOAD_UNBOUND',
+            message: 'Невозможно перечитать sidecar-классы: исходник не привязан.',
+          },
+        };
+      }
+
+      const sourceDocument = await vscode.workspace.openTextDocument(sourceUri);
+      await this.hydrateClassesFromSidecarIfNeeded(sourceDocument.getText(), boundGraph.rootFsPath);
+      this.postState();
+      void this.validateAndDispatch(this.graphState);
+
+      const requestedClassId = typeof payload?.classId === 'string' ? payload.classId.trim() : '';
+      const reloaded = requestedClassId.length > 0
+        ? (this.buildClassStorageStatusPayload().classItems.some((item) => item.classId === requestedClassId) ? 1 : 0)
+        : this.buildClassStorageStatusPayload().classItems.length;
+
+      return {
+        type: 'class/storage/reload',
+        ok: true,
+        payload: {
+          reloaded,
+          ...(requestedClassId ? { classId: requestedClassId } : {}),
+        },
+      };
+    } catch (error) {
+      return {
+        type: 'class/storage/reload',
+        ok: false,
+        error: mapToIpcError(error, 'E_CLASS_STORAGE_RELOAD', 'Не удалось перечитать class sidecar'),
+      };
+    }
+  }
+
+  private async handleClassStorageRepair(
+    payload?: { classId?: string }
+  ): Promise<Extract<ExternalIpcResponse, { type: 'class/storage/repair' }>> {
+    try {
+      if (this.readClassStorageMode() !== 'sidecar') {
+        return {
+          type: 'class/storage/repair',
+          ok: true,
+          payload: {
+            repaired: 0,
+            ...(payload?.classId ? { classId: payload.classId } : {}),
+          },
+        };
+      }
+
+      const boundGraph = this.boundGraphBinding;
+      if (!boundGraph) {
+        return {
+          type: 'class/storage/repair',
+          ok: false,
+          error: {
+            code: 'E_CLASS_STORAGE_REPAIR_UNBOUND',
+            message: 'Невозможно починить class sidecar: нет привязки графа к файлу.',
+          },
+        };
+      }
+
+      const graphBindingConfig = this.readGraphBindingConfig();
+      const parsedClasses = blueprintClassSchema.array().safeParse(Array.isArray(this.graphState.classes) ? this.graphState.classes : []);
+      if (!parsedClasses.success) {
+        return {
+          type: 'class/storage/repair',
+          ok: false,
+          error: {
+            code: 'E_CLASS_STORAGE_REPAIR_INVALID_CLASSES',
+            message: 'Невозможно починить class sidecar: структура classes повреждена.',
+          },
+        };
+      }
+
+      const requestedClassId = typeof payload?.classId === 'string' ? payload.classId.trim() : '';
+      const classById = new Map<string, BlueprintClassSidecar>();
+      for (const classItem of parsedClasses.data) {
+        classById.set(classItem.id, classItem);
+      }
+
+      const existingBindings = this.normalizeClassBindingsFromState(graphBindingConfig.folder);
+      const bindingById = new Map<string, NormalizedClassBinding>();
+      for (const binding of existingBindings) {
+        bindingById.set(binding.classId, binding);
+      }
+
+      const targetClassIds = (() => {
+        if (requestedClassId.length > 0) {
+          return [requestedClassId];
+        }
+        const ids = new Set<string>([...classById.keys(), ...bindingById.keys()]);
+        return Array.from(ids).sort((left, right) => left.localeCompare(right, 'ru'));
+      })();
+
+      let repaired = 0;
+      for (const classId of targetClassIds) {
+        if (!bindingById.has(classId)) {
+          bindingById.set(classId, {
+            classId,
+            file: this.makeDefaultClassBindingFileRelativePath(classId, graphBindingConfig.folder),
+          });
+          repaired += 1;
+        }
+      }
+
+      const nextBindings = Array.from(bindingById.values()).sort((left, right) =>
+        left.classId.localeCompare(right.classId, 'ru')
+      );
+
+      for (const binding of nextBindings) {
+        if (requestedClassId.length > 0 && binding.classId !== requestedClassId) {
+          continue;
+        }
+        const classItem = classById.get(binding.classId);
+        if (!classItem) {
+          continue;
+        }
+
+        const classFsPath = resolveGraphBindingFilePath(boundGraph.rootFsPath, binding.file);
+        const classUri = vscode.Uri.file(classFsPath);
+        if (fs.existsSync(classFsPath)) {
+          continue;
+        }
+
+        const classDir = vscode.Uri.file(path.dirname(classUri.fsPath));
+        await vscode.workspace.fs.createDirectory(classDir);
+        const payloadData = serializeClassSidecar(classItem);
+        await vscode.workspace.fs.writeFile(classUri, Buffer.from(JSON.stringify(payloadData, null, 2), 'utf8'));
+        repaired += 1;
+      }
+
+      this.markState({
+        classBindings: nextBindings,
+      });
+      await this.tryWriteBoundGraphFile();
+      await this.syncClassBindingMarkersInBoundSource();
+      this.postState();
+
+      return {
+        type: 'class/storage/repair',
+        ok: true,
+        payload: {
+          repaired,
+          ...(requestedClassId ? { classId: requestedClassId } : {}),
+        },
+      };
+    } catch (error) {
+      return {
+        type: 'class/storage/repair',
+        ok: false,
+        error: mapToIpcError(error, 'E_CLASS_STORAGE_REPAIR', 'Не удалось починить class sidecar'),
+      };
+    }
   }
 
   private validateExternalSymbolsForCodegen(blueprintState: ReturnType<typeof migrateToBlueprintFormat>) {
@@ -1985,6 +2871,9 @@ export class GraphPanel {
       case 'setCodegenProfile':
         void this.setCodegenOutputProfile(message.payload.profile);
         break;
+      case 'setCodegenEntrypointMode':
+        void this.setCodegenEntrypointMode(message.payload.mode);
+        break;
       case 'graphChanged':
         this.applyGraphMutation(message.payload);
         break;
@@ -2042,6 +2931,18 @@ export class GraphPanel {
       case 'dependency-map/get':
         void this.handleDependencyMapGet(message.payload).then((response) => this.postExternalIpcResponse(response));
         break;
+      case 'file/pick':
+        void this.handleFilePick(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'file/open':
+        void this.handleFileOpen(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/storage/reload':
+        void this.handleClassStorageReload(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
+      case 'class/storage/repair':
+        void this.handleClassStorageRepair(message.payload).then((response) => this.postExternalIpcResponse(response));
+        break;
       case 'class/upsert':
         void this.handleClassUpsert(message.payload).then((response) => this.postExternalIpcResponse(response));
         break;
@@ -2084,7 +2985,10 @@ export class GraphPanel {
         blueprintState,
         externalValidation.resolvedSymbolsByNodeId
       );
-      const result = generator.generate(blueprintStateForCodegen);
+      const result = generator.generate(
+        blueprintStateForCodegen,
+        this.resolveCodegenOptionsForProfile(this.readCodegenOutputProfile(), blueprintStateForCodegen)
+      );
       if (!result.success) {
         return result;
       }
@@ -2264,6 +3168,19 @@ export class GraphPanel {
     return { enabled, autoSave, folder, maxLines };
   }
 
+  private readClassStorageMode(): ClassStorageMode {
+    const mode = vscode.workspace
+      .getConfiguration('multicode')
+      .get<string>('classStorage.mode', 'embedded');
+    return mode === 'sidecar' ? 'sidecar' : 'embedded';
+  }
+
+  private readClassNodesAdvancedEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration('multicode')
+      .get<boolean>('classNodes.advanced', false);
+  }
+
   private findGraphBindingInSource(sourceText: string, maxLines: number): MulticodeGraphBinding | null {
     const headMatch = findMulticodeGraphBindingInSource(sourceText, maxLines);
     if (headMatch) {
@@ -2276,6 +3193,20 @@ export class GraphPanel {
     }
 
     return findMulticodeGraphBindingInSource(sourceText, totalLines);
+  }
+
+  private findClassBindingsInSource(sourceText: string, maxLines: number): MulticodeClassBinding[] {
+    const headMatch = findMulticodeClassBindingsInSource(sourceText, maxLines);
+    if (headMatch.length > 0) {
+      return headMatch;
+    }
+
+    const totalLines = sourceText.split(/\r?\n/).length;
+    if (totalLines <= maxLines) {
+      return [];
+    }
+
+    return findMulticodeClassBindingsInSource(sourceText, totalLines);
   }
 
   private injectOrReplaceGraphBindingLine(sourceText: string, bindingLine: string, maxLines: number): string {
@@ -2307,6 +3238,40 @@ export class GraphPanel {
     const folder = folderSetting.replace(/\\/g, '/').replace(/\/+$/g, '');
     const normalizedFolder = folder.length > 0 ? folder : '.multicode';
     return `${normalizedFolder}/${safeId}.multicode`;
+  }
+
+  private makeDefaultClassBindingFileRelativePath(classId: string, folderSetting: string): string {
+    const safeId = sanitizeGraphBindingFileName(classId);
+    const folder = folderSetting.replace(/\\/g, '/').replace(/\/+$/g, '');
+    const normalizedFolder = folder.length > 0 ? folder : '.multicode';
+    return `${normalizedFolder}/classes/${safeId}.multicode`;
+  }
+
+  private buildCanonicalClassBindings(classes: Array<{ id: string }>, folderSetting: string): NormalizedClassBinding[] {
+    return classes
+      .map((classItem) => ({
+        classId: classItem.id,
+        file: this.makeDefaultClassBindingFileRelativePath(classItem.id, folderSetting),
+      }))
+      .sort((left, right) => left.classId.localeCompare(right.classId, 'ru'));
+  }
+
+  private computeClassIdSignature(classes: unknown): string {
+    if (!Array.isArray(classes)) {
+      return '';
+    }
+
+    const ids = classes
+      .filter((value): value is Record<string, unknown> => isRecord(value))
+      .map((entry) => (typeof entry.id === 'string' ? entry.id.trim() : ''))
+      .filter((id) => id.length > 0)
+      .sort((left, right) => left.localeCompare(right, 'ru'));
+
+    if (ids.length === 0) {
+      return '';
+    }
+
+    return Array.from(new Set(ids)).join('|');
   }
 
   private registerGraphBindingIdUsage(graphId: string, codeUri: vscode.Uri): void {
@@ -2481,6 +3446,8 @@ export class GraphPanel {
             rootFsPath,
           };
           this.graphState = this.normalizeState(fixedGraph);
+          await this.hydrateClassesFromSidecarIfNeeded(sourceText, rootFsPath);
+          this.lastPersistedClassIdSignature = this.computeClassIdSignature(this.graphState.classes);
           this.postState();
           await this.tryWriteBoundGraphFile();
           void this.validateAndDispatch(this.graphState);
@@ -2502,6 +3469,8 @@ export class GraphPanel {
           rootFsPath,
         };
         this.graphState = this.normalizeState(loaded.graph);
+        await this.hydrateClassesFromSidecarIfNeeded(sourceText, rootFsPath);
+        this.lastPersistedClassIdSignature = this.computeClassIdSignature(this.graphState.classes);
         this.postState();
         void this.validateAndDispatch(this.graphState);
 
@@ -2540,6 +3509,8 @@ export class GraphPanel {
           updatedAt: new Date().toISOString(),
           dirty: true,
         });
+        await this.hydrateClassesFromSidecarIfNeeded(sourceText, rootFsPath);
+        this.lastPersistedClassIdSignature = this.computeClassIdSignature(this.graphState.classes);
         this.postState();
         await this.tryWriteBoundGraphFile();
         void this.validateAndDispatch(this.graphState);
@@ -2575,6 +3546,8 @@ export class GraphPanel {
           } as GraphState);
 
       this.graphState = this.normalizeState(seed);
+      await this.hydrateClassesFromSidecarIfNeeded(sourceText, rootFsPath);
+      this.lastPersistedClassIdSignature = this.computeClassIdSignature(this.graphState.classes);
       this.postState();
       await this.tryWriteBoundGraphFile();
       void this.validateAndDispatch(this.graphState);
@@ -2602,6 +3575,208 @@ export class GraphPanel {
       this.postToast('warning', `${this.translate('errors.graphLoad')}: ${message}`);
       return 'failed';
     }
+  }
+
+  private async hydrateClassesFromSidecarIfNeeded(sourceText: string, rootFsPath: string): Promise<void> {
+    const storageMode = this.readClassStorageMode();
+    if (storageMode !== 'sidecar') {
+      const classes = Array.isArray(this.graphState.classes) ? this.graphState.classes : [];
+      const diagnostics: ClassStorageDiagnosticItem[] = [];
+      for (const rawClass of classes) {
+        if (!isRecord(rawClass)) {
+          continue;
+        }
+        const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+        if (!classId) {
+          continue;
+        }
+        diagnostics.push({
+          classId,
+          source: 'embedded',
+          status: 'unbound',
+        });
+      }
+      this.replaceClassStorageDiagnostics(diagnostics);
+      return;
+    }
+
+    const config = this.readGraphBindingConfig();
+    if (!config.enabled) {
+      return;
+    }
+
+    const embeddedClasses = Array.isArray(this.graphState.classes) ? this.graphState.classes : [];
+    const embeddedById = new Map<string, unknown>();
+    for (const entry of embeddedClasses) {
+      if (!isRecord(entry)) {
+        continue;
+      }
+      const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+      if (!id || embeddedById.has(id)) {
+        continue;
+      }
+      embeddedById.set(id, entry);
+    }
+
+    let bindings: MulticodeClassBinding[] = Array.isArray(this.graphState.classBindings)
+      ? (this.graphState.classBindings as unknown as MulticodeClassBinding[])
+      : [];
+
+    const normalizeBinding = (binding: MulticodeClassBinding): NormalizedClassBinding | null => {
+      const classId = typeof binding.classId === 'string' ? binding.classId.trim() : '';
+      if (!classId) {
+        return null;
+      }
+      const rawFile = typeof binding.file === 'string' ? binding.file.trim() : '';
+      const file = rawFile || this.makeDefaultClassBindingFileRelativePath(classId, config.folder);
+      return { classId, file };
+    };
+
+    if (bindings.length === 0) {
+      bindings = this.findClassBindingsInSource(sourceText, config.maxLines);
+    }
+
+    const normalizedBindings = bindings
+      .map((binding) => normalizeBinding(binding))
+      .filter((item): item is NormalizedClassBinding => item !== null);
+
+    if (normalizedBindings.length === 0) {
+      const diagnostics: ClassStorageDiagnosticItem[] = [];
+      for (const rawClass of embeddedClasses) {
+        if (!isRecord(rawClass)) {
+          continue;
+        }
+        const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+        if (!classId) {
+          continue;
+        }
+        diagnostics.push({
+          classId,
+          source: 'embedded',
+          status: 'unbound',
+        });
+      }
+      this.replaceClassStorageDiagnostics(diagnostics);
+      return;
+    }
+
+    const seen = new Set<string>();
+    const uniqueBindings: NormalizedClassBinding[] = [];
+    for (const binding of normalizedBindings) {
+      if (seen.has(binding.classId)) {
+        continue;
+      }
+      seen.add(binding.classId);
+      uniqueBindings.push(binding);
+    }
+
+    const loadedClasses: unknown[] = [];
+    const missingBindings: NormalizedClassBinding[] = [];
+    const failedBindings: Array<{ binding: NormalizedClassBinding; reason: string }> = [];
+    const diagnostics: ClassStorageDiagnosticItem[] = [];
+
+    for (const binding of uniqueBindings) {
+      const graphFsPath = resolveGraphBindingFilePath(rootFsPath, binding.file);
+      const classUri = vscode.Uri.file(graphFsPath);
+      const loaded = await this.tryReadBoundClassFile(classUri);
+      const filePath = classUri.fsPath;
+
+      if (loaded.status === GraphPanel.BOUND_CLASS_READ_RESULT_LOADED) {
+        loadedClasses.push(loaded.classItem);
+        diagnostics.push({
+          classId: binding.classId,
+          bindingFile: binding.file,
+          filePath,
+          source: 'binding',
+          existsOnDisk: true,
+          lastCheckedAt: this.classStorageStatusUpdatedAt,
+          status: 'ok',
+        });
+        continue;
+      }
+
+      const embedded = embeddedById.get(binding.classId);
+      if (embedded) {
+        loadedClasses.push(embedded);
+      }
+
+      if (loaded.status === GraphPanel.BOUND_CLASS_READ_RESULT_MISSING) {
+        missingBindings.push(binding);
+        diagnostics.push({
+          classId: binding.classId,
+          bindingFile: binding.file,
+          filePath,
+          source: 'binding',
+          existsOnDisk: false,
+          lastCheckedAt: this.classStorageStatusUpdatedAt,
+          status: embedded ? 'fallbackEmbedded' : 'missing',
+          ...(embedded ? { reason: 'Sidecar missing, loaded embedded snapshot' } : { reason: 'Sidecar file is missing' }),
+        });
+      } else {
+        failedBindings.push({ binding, reason: loaded.reason });
+        diagnostics.push({
+          classId: binding.classId,
+          bindingFile: binding.file,
+          filePath,
+          source: 'binding',
+          existsOnDisk: false,
+          lastCheckedAt: this.classStorageStatusUpdatedAt,
+          status: embedded ? 'fallbackEmbedded' : 'failed',
+          reason: loaded.reason,
+        });
+      }
+    }
+
+    if (missingBindings.length > 0 || failedBindings.length > 0) {
+      const missingCount = missingBindings.length;
+      const failedCount = failedBindings.length;
+      this.outputChannel.appendLine(
+        `[MultiCode] Class sidecar: missing=${missingCount}, failed=${failedCount}`
+      );
+      for (const binding of missingBindings) {
+        this.outputChannel.appendLine(`[MultiCode]   missing class ${binding.classId}: ${binding.file ?? '—'}`);
+      }
+      for (const entry of failedBindings) {
+        this.outputChannel.appendLine(
+          `[MultiCode]   failed class ${entry.binding.classId}: ${entry.binding.file ?? '—'} (${entry.reason})`
+        );
+      }
+      this.postToast(
+        'warning',
+        missingCount + failedCount > 0
+          ? `Часть классов не загружена из sidecar (missing=${missingCount}, failed=${failedCount}).`
+          : 'Некоторые классы не удалось загрузить из sidecar.'
+      );
+    }
+
+    this.graphState = {
+      ...this.graphState,
+      classes: loadedClasses,
+      classBindings: uniqueBindings,
+      dirty: false,
+    };
+
+    const diagnosticsByClassId = new Map<string, ClassStorageDiagnosticItem>();
+    for (const item of diagnostics) {
+      diagnosticsByClassId.set(item.classId, item);
+    }
+
+    for (const rawClass of loadedClasses) {
+      if (!isRecord(rawClass)) {
+        continue;
+      }
+      const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+      if (!classId || diagnosticsByClassId.has(classId)) {
+        continue;
+      }
+      diagnosticsByClassId.set(classId, {
+        classId,
+        source: 'inferred',
+        status: 'unbound',
+      });
+    }
+
+    this.replaceClassStorageDiagnostics(Array.from(diagnosticsByClassId.values()));
   }
 
   private scheduleBoundGraphAutoSave(): void {
@@ -2652,11 +3827,172 @@ export class GraphPanel {
       const directory = vscode.Uri.file(path.dirname(effectiveBinding.graphUri.fsPath));
       await vscode.workspace.fs.createDirectory(directory);
 
-      const snapshot: GraphState = { ...this.graphState, id: effectiveBinding.binding.graphId, dirty: false };
       const exportMode = this.readGraphExportMode();
-      const payload = serializeGraphState(snapshot, { mode: exportMode });
+      const snapshotBase: GraphState = { ...this.graphState, id: effectiveBinding.binding.graphId, dirty: false };
+      let snapshotForWrite: GraphState = snapshotBase;
+
+      const storageMode = this.readClassStorageMode();
+      if (storageMode === 'sidecar') {
+        const rawClasses = Array.isArray(this.graphState.classes) ? this.graphState.classes : [];
+        const parsedClasses = blueprintClassSchema.array().safeParse(rawClasses);
+
+        const existingBindings = Array.isArray(this.graphState.classBindings)
+          ? (this.graphState.classBindings as unknown as MulticodeClassBinding[])
+              .map((binding) => {
+                const classId = typeof binding.classId === 'string' ? binding.classId.trim() : '';
+                if (!classId) {
+                  return null;
+                }
+                const rawFile = typeof binding.file === 'string' ? binding.file.trim() : '';
+                const file = rawFile || this.makeDefaultClassBindingFileRelativePath(classId, config.folder);
+                return { classId, file };
+              })
+              .filter((binding): binding is NormalizedClassBinding => binding !== null)
+          : [];
+
+        let bindingsToPersist: NormalizedClassBinding[] = existingBindings;
+        const classesForSidecar: BlueprintClassSidecar[] = parsedClasses.success ? parsedClasses.data : [];
+
+        if (classesForSidecar.length > 0) {
+          bindingsToPersist = this.buildCanonicalClassBindings(classesForSidecar, config.folder);
+        } else if (this.lastPersistedClassIdSignature.length > 0) {
+          // Явный сценарий "удалить все классы": ранее классы были, теперь список пуст.
+          bindingsToPersist = [];
+        } else if (existingBindings.length > 0) {
+          // Если классы не загружены (например, missing sidecar), не стираем bindings по автосейву.
+          bindingsToPersist = existingBindings;
+        } else {
+          bindingsToPersist = [];
+        }
+
+        let sidecarWriteOk = true;
+        const failures: Array<{ classId: string; file: string; reason: string }> = [];
+        const successfulClassIds = new Set<string>();
+
+        if (classesForSidecar.length > 0) {
+          const classById = new Map<string, BlueprintClassSidecar>();
+          for (const classItem of classesForSidecar) {
+            classById.set(classItem.id, classItem);
+          }
+
+          for (const binding of bindingsToPersist) {
+            const classItem = classById.get(binding.classId);
+            const bindingFile = binding.file?.trim() || '';
+            if (!classItem || !bindingFile) {
+              continue;
+            }
+
+            try {
+              const classFsPath = resolveGraphBindingFilePath(effectiveBinding.rootFsPath, bindingFile);
+              const classUri = vscode.Uri.file(classFsPath);
+              const classDir = vscode.Uri.file(path.dirname(classUri.fsPath));
+              await vscode.workspace.fs.createDirectory(classDir);
+
+              const payload = serializeClassSidecar(classItem);
+              const data = Buffer.from(JSON.stringify(payload, null, 2), 'utf8');
+              await vscode.workspace.fs.writeFile(classUri, data);
+              successfulClassIds.add(binding.classId);
+            } catch (error) {
+              sidecarWriteOk = false;
+              const reason = error instanceof Error ? error.message : 'Unknown error';
+              failures.push({ classId: binding.classId, file: bindingFile, reason });
+            }
+          }
+        }
+
+        if (failures.length > 0) {
+          this.outputChannel.appendLine(`[MultiCode] Не удалось сохранить class sidecar файлов: ${failures.length}`);
+          for (const failure of failures) {
+            this.outputChannel.appendLine(
+              `[MultiCode]   classId=${failure.classId}, file=${failure.file}, reason=${failure.reason}`
+            );
+          }
+        }
+
+        const failureByClassId = new Map<string, { file: string; reason: string }>();
+        for (const failure of failures) {
+          failureByClassId.set(failure.classId, failure);
+        }
+
+        const diagnostics: ClassStorageDiagnosticItem[] = [];
+        for (const binding of bindingsToPersist) {
+          const filePath = resolveGraphBindingFilePath(effectiveBinding.rootFsPath, binding.file);
+          const failure = failureByClassId.get(binding.classId);
+          if (failure) {
+            diagnostics.push({
+              classId: binding.classId,
+              bindingFile: binding.file,
+              filePath,
+              source: 'binding',
+              existsOnDisk: false,
+              lastCheckedAt: this.classStorageStatusUpdatedAt,
+              status: 'fallbackEmbedded',
+              reason: failure.reason,
+            });
+            continue;
+          }
+          if (successfulClassIds.has(binding.classId)) {
+            diagnostics.push({
+              classId: binding.classId,
+              bindingFile: binding.file,
+              filePath,
+              source: 'binding',
+              existsOnDisk: true,
+              lastCheckedAt: this.classStorageStatusUpdatedAt,
+              status: 'ok',
+            });
+            continue;
+          }
+          diagnostics.push({
+            classId: binding.classId,
+            bindingFile: binding.file,
+            filePath,
+            source: 'binding',
+            existsOnDisk: fs.existsSync(filePath),
+            lastCheckedAt: this.classStorageStatusUpdatedAt,
+            status: 'unbound',
+          });
+        }
+        this.replaceClassStorageDiagnostics(diagnostics);
+
+        snapshotForWrite = {
+          ...snapshotBase,
+          classBindings: bindingsToPersist,
+          classes: sidecarWriteOk && classesForSidecar.length > 0 ? [] : snapshotBase.classes,
+        };
+      } else {
+        const diagnostics: ClassStorageDiagnosticItem[] = [];
+        for (const rawClass of Array.isArray(this.graphState.classes) ? this.graphState.classes : []) {
+          if (!isRecord(rawClass)) {
+            continue;
+          }
+          const classId = typeof rawClass.id === 'string' ? rawClass.id.trim() : '';
+          if (!classId) {
+            continue;
+          }
+          diagnostics.push({
+            classId,
+            source: 'embedded',
+            status: 'unbound',
+          });
+        }
+        this.replaceClassStorageDiagnostics(diagnostics);
+      }
+
+      const payload = serializeGraphState(snapshotForWrite, { mode: exportMode });
       const data = Buffer.from(JSON.stringify(payload, null, 2), 'utf8');
       await vscode.workspace.fs.writeFile(effectiveBinding.graphUri, data);
+
+      if (storageMode === 'sidecar') {
+        const classesSignature = this.computeClassIdSignature(this.graphState.classes);
+        if (Array.isArray(this.graphState.classes) && (this.graphState.classes?.length ?? 0) > 0) {
+          this.lastPersistedClassIdSignature = classesSignature;
+        } else if (this.lastPersistedClassIdSignature.length > 0 && classesSignature.length === 0) {
+          this.lastPersistedClassIdSignature = '';
+        }
+      } else {
+        this.lastPersistedClassIdSignature = this.computeClassIdSignature(this.graphState.classes);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown error';
       this.outputChannel.appendLine(`[MultiCode] Не удалось сохранить .multicode: ${reason}`);
@@ -2700,6 +4036,32 @@ export class GraphPanel {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.outputChannel.appendLine(`[MultiCode] Не удалось загрузить .multicode: ${message}`);
       return { status: GraphPanel.BOUND_GRAPH_READ_RESULT_FAILED, reason: message };
+    }
+  }
+
+  private async tryReadBoundClassFile(
+    uri: vscode.Uri
+  ): Promise<
+    | { status: typeof GraphPanel.BOUND_CLASS_READ_RESULT_LOADED; classItem: BlueprintClassSidecar }
+    | { status: typeof GraphPanel.BOUND_CLASS_READ_RESULT_MISSING }
+    | { status: typeof GraphPanel.BOUND_CLASS_READ_RESULT_FAILED; reason: string }
+  > {
+    try {
+      const raw = await vscode.workspace.fs.readFile(uri);
+      const parsed = JSON.parse(Buffer.from(raw).toString('utf8'));
+      return {
+        status: GraphPanel.BOUND_CLASS_READ_RESULT_LOADED,
+        classItem: deserializeClassSidecar(parsed),
+      };
+    } catch (error) {
+      if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+        return { status: GraphPanel.BOUND_CLASS_READ_RESULT_MISSING };
+      }
+      if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'FileNotFound') {
+        return { status: GraphPanel.BOUND_CLASS_READ_RESULT_MISSING };
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return { status: GraphPanel.BOUND_CLASS_READ_RESULT_FAILED, reason: message };
     }
   }
 
@@ -2761,8 +4123,9 @@ export class GraphPanel {
       .toolbar-info {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 4px;
         min-width: 120px;
+        flex: 1;
       }
       .toolbar-title {
         font-size: 14px;
@@ -2773,16 +4136,158 @@ export class GraphPanel {
         font-size: 11px;
         color: var(--mc-muted);
         white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .toolbar-bound-file {
         font-size: 11px;
         color: var(--mc-accent);
         cursor: default;
       }
+      .toolbar-storage-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+      }
+      .toolbar-storage-badge--ok {
+        border-color: var(--mc-badge-ok-border);
+        color: var(--mc-badge-ok-text);
+      }
+      .toolbar-storage-badge--warn {
+        border-color: var(--mc-badge-warn-border);
+        color: var(--mc-badge-warn-text);
+      }
+      .toolbar-storage-badge--feature {
+        border-color: var(--mc-accent);
+        color: var(--mc-accent);
+      }
       .toolbar-bound-file--none {
         color: var(--mc-muted);
         opacity: 0.6;
         font-style: italic;
+      }
+      .toolbar-working-files {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+      }
+      .toolbar .toolbar-working-files-trigger {
+        padding: 4px 8px;
+        font-size: 11px;
+        border-radius: 999px;
+        background: var(--mc-surface);
+      }
+      .toolbar-working-file-menu-popup {
+        min-width: 280px;
+        max-width: 420px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px;
+        border: 1px solid var(--mc-surface-border);
+        border-radius: 8px;
+        background: var(--mc-surface);
+        box-shadow: var(--mc-shadow);
+      }
+      .toolbar-working-file-menu-divider {
+        height: 1px;
+        margin: 2px 0;
+        background: var(--mc-surface-border);
+      }
+      .toolbar-working-file-menu-search {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4px;
+        align-items: center;
+      }
+      .toolbar .toolbar-working-file-menu-search-input {
+        min-width: 0;
+        background: var(--mc-button-bg);
+        color: var(--mc-button-text);
+        border: 1px solid var(--mc-button-border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        outline: none;
+      }
+      .toolbar .toolbar-working-file-menu-search-input:focus {
+        border-color: var(--mc-panel-title);
+      }
+      .toolbar .toolbar-working-file-menu-search-clear {
+        border: none !important;
+        background: transparent !important;
+        color: var(--mc-muted) !important;
+        padding: 6px !important;
+        font-size: 11px;
+        min-width: 24px;
+      }
+      .toolbar .toolbar-working-file-menu-search-clear:hover {
+        color: var(--mc-body-text) !important;
+        background: var(--mc-surface-strong) !important;
+      }
+      .toolbar-working-file-menu-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 240px;
+        overflow: auto;
+      }
+      .toolbar-working-file-menu-empty {
+        color: var(--mc-muted);
+        font-size: 12px;
+        padding: 8px;
+      }
+      .toolbar-working-file-menu-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+        align-items: center;
+      }
+      .toolbar .toolbar-working-file-menu-item {
+        width: 100%;
+        text-align: left;
+        background: transparent !important;
+        border: none !important;
+        border-radius: 6px;
+        color: var(--mc-body-text) !important;
+        font-size: 12px;
+        padding: 6px 8px !important;
+        cursor: pointer;
+      }
+      .toolbar .toolbar-working-file-menu-item:hover {
+        color: var(--mc-body-text) !important;
+        background: var(--mc-surface-strong) !important;
+      }
+      .toolbar .toolbar-working-file-menu-open-button {
+        border: none !important;
+        background: transparent !important;
+        color: var(--mc-body-text) !important;
+        padding: 6px 8px !important;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .toolbar .toolbar-working-file-menu-open-button:hover {
+        background: var(--mc-surface-strong) !important;
+      }
+      .toolbar .toolbar-working-file-menu-remove-button {
+        border: none !important;
+        background: transparent !important;
+        color: var(--mc-muted) !important;
+        padding: 6px !important;
+        font-size: 11px;
+        min-width: 24px;
+      }
+      .toolbar .toolbar-working-file-menu-remove-button:hover {
+        color: var(--mc-body-text) !important;
+        background: var(--mc-surface-strong) !important;
       }
       .toolbar-actions {
         display: flex;

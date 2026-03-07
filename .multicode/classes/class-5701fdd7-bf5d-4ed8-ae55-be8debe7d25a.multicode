@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "savedAt": "2026-03-03T10:42:23.401Z",
+  "data": {
+    "id": "class-5701fdd7-bf5d-4ed8-ae55-be8debe7d25a",
+    "name": "NewClass2",
+    "nameRu": "Новый класс 2",
+    "members": [],
+    "methods": []
+  }
+}

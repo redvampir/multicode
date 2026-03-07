@@ -38,16 +38,15 @@ describe('CppCodeGenerator', () => {
   const generator = new CppCodeGenerator();
   
   describe('canGenerate', () => {
-    it('should reject graph without Start node', () => {
+    it('should allow graph without Start node', () => {
       const graph = createTestGraph([
         createNode('Print', { x: 0, y: 0 }, 'print-1'),
       ]);
       
       const result = generator.canGenerate(graph);
       
-      expect(result.canGenerate).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].code).toBe('NO_START_NODE');
+      expect(result.canGenerate).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
     
     it('should reject graph with multiple Start nodes', () => {
@@ -92,6 +91,20 @@ describe('CppCodeGenerator', () => {
   });
   
   describe('generate - Basic nodes', () => {
+    it('should generate code without Start node and report unreachable warnings', () => {
+      const graph = createTestGraph([
+        createNode('Print', { x: 0, y: 0 }, 'print'),
+      ]);
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('int main()');
+      expect(result.code).toContain('return 0;');
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some((warning) => warning.code === 'UNUSED_NODE')).toBe(true);
+    });
+
     it('should generate minimal main() with Start only', () => {
       const graph = createTestGraph([
         createNode('Start', { x: 0, y: 0 }, 'start'),
@@ -306,6 +319,54 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('auto class_method_result_call = class_instance_ctor.jump();');
     });
 
+    it('should treat class names as code identifiers even when RU overlays are present', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start-ru');
+      const constructorNode = createNode('ClassConstructorCall', { x: 200, y: 0 }, 'ctor-ru');
+      constructorNode.properties = { classId: 'class-ship' };
+
+      const methodNode = createNode('ClassMethodCall', { x: 400, y: 0 }, 'call-ru');
+      methodNode.properties = {
+        classId: 'class-ship',
+        methodId: 'method-fire',
+      };
+
+      const graph = createTestGraph(
+        [startNode, constructorNode, methodNode],
+        [
+          createEdge('start-ru', 'start-ru-exec-out', 'ctor-ru', 'ctor-ru-exec-in', 'execution'),
+          createEdge('ctor-ru', 'ctor-ru-exec-out', 'call-ru', 'call-ru-exec-in', 'execution'),
+          createEdge('ctor-ru', 'ctor-ru-instance', 'call-ru', 'call-ru-target', 'class'),
+        ]
+      );
+
+      graph.classes = [
+        {
+          id: 'class-ship',
+          name: 'BattleShip',
+          nameRu: 'Боевой корабль',
+          members: [],
+          methods: [
+            {
+              id: 'method-fire',
+              name: 'Fire',
+              nameRu: 'Огонь',
+              returnType: 'bool',
+              params: [],
+              access: 'public',
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('class battleship {');
+      expect(result.code).toContain('auto class_method_result_callru = class_instance_ctorru.fire();');
+      expect(result.code).not.toContain('боевой');
+      expect(result.code).not.toContain('огонь');
+    });
+
     it('should return explicit error for invalid class method binding', () => {
       const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
       const methodNode = createNode('ClassMethodCall', { x: 200, y: 0 }, 'call');
@@ -326,6 +387,189 @@ describe('CppCodeGenerator', () => {
         error.code === CodeGenErrorCode.TYPE_MISMATCH &&
         error.message.includes('Класс для вызова не найден')
       )).toBe(true);
+    });
+
+    it('should support class-lite fields: classType, inheritance, qualifiers and includes', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const graph = createTestGraph([startNode]);
+      graph.classes = [
+        {
+          id: 'class-vehicle',
+          name: 'Vehicle',
+          classType: 'struct',
+          namespace: 'Gameplay',
+          baseClasses: ['public BaseActor', 'IMovable'],
+          headerIncludes: ['<memory>', '"vehicle_extra.hpp"', '"BaseActor.hpp"', '"IMovable.hpp"'],
+          sourceIncludes: ['<algorithm>'],
+          forwardDecls: ['class ForwardDep'],
+          members: [
+            {
+              id: 'member-counter',
+              name: 'Counter',
+              dataType: 'int32',
+              isStatic: true,
+              access: 'public',
+            },
+          ],
+          methods: [
+            {
+              id: 'method-ctor',
+              name: 'Vehicle',
+              methodKind: 'constructor',
+              returnType: 'execution',
+              params: [{ id: 'param-speed', name: 'speed', dataType: 'int32' }],
+              access: 'public',
+            },
+            {
+              id: 'method-tick',
+              name: 'Tick',
+              methodKind: 'method',
+              returnType: 'execution',
+              params: [],
+              access: 'public',
+              isOverride: true,
+              isNoexcept: true,
+            },
+            {
+              id: 'method-compute',
+              name: 'Compute',
+              methodKind: 'method',
+              returnType: 'int32',
+              params: [],
+              access: 'public',
+              isVirtual: true,
+              isPureVirtual: true,
+            },
+            {
+              id: 'method-dtor',
+              name: '~Vehicle',
+              methodKind: 'destructor',
+              returnType: 'execution',
+              params: [],
+              access: 'public',
+              isVirtual: true,
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('#include <memory>');
+      expect(result.code).toContain('#include "vehicle_extra.hpp"');
+      expect(result.code).toContain('#include "BaseActor.hpp"');
+      expect(result.code).toContain('#include "IMovable.hpp"');
+      expect(result.code).toContain('#include <algorithm>');
+      expect(result.code).toContain('class ForwardDep;');
+      expect(result.code).toContain('namespace Gameplay {');
+      expect(result.code).toContain('struct vehicle : public BaseActor, IMovable {');
+      expect(result.code).toContain('static int counter;');
+      expect(result.code).toContain('vehicle(int speed);');
+      expect(result.code).toContain('void tick() noexcept override;');
+      expect(result.code).toContain('virtual int compute() = 0;');
+      expect(result.code).toContain('Gameplay::vehicle::vehicle(int speed) {');
+      expect(result.code).not.toContain('Gameplay::vehicle::compute(');
+      expect(result.code).toContain('Gameplay::vehicle::~vehicle() {');
+    });
+
+    it('should skip main() for class-only graph when generateMainWrapper is disabled', () => {
+      const graph = createTestGraph([]);
+      graph.classes = [
+        {
+          id: 'class-lib',
+          name: 'LibraryType',
+          members: [],
+          methods: [],
+        },
+      ];
+
+      const result = generator.generate(graph, { generateMainWrapper: false });
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('class librarytype {');
+      expect(result.code).not.toContain('int main()');
+    });
+
+    it('should emit only method definitions for source split mode and keep header include first', () => {
+      const graph = createTestGraph([]);
+      graph.classes = [
+        {
+          id: 'class-split',
+          name: 'SplitType',
+          namespace: 'Runtime',
+          members: [],
+          methods: [
+            {
+              id: 'method-run',
+              name: 'Run',
+              returnType: 'int32',
+              params: [],
+              access: 'public',
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph, {
+        includeSourceMarkers: false,
+        generateMainWrapper: false,
+        classEmissionMode: 'definitions-only',
+        forcedIncludes: ['"split_type.hpp"'],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.code.startsWith('#include "split_type.hpp"')).toBe(true);
+      expect(result.code).not.toContain('class splittype {');
+      expect(result.code).toContain('int Runtime::splittype::run() {');
+    });
+
+    it('should fallback unknown method return type to void without return braces', () => {
+      const graph = createTestGraph([]);
+      graph.classes = [
+        {
+          id: 'class-return',
+          name: 'ReturnProbe',
+          members: [],
+          methods: [
+            {
+              id: 'method-probe',
+              name: 'Probe',
+              returnType: 'class',
+              params: [],
+              access: 'public',
+            },
+          ],
+        },
+      ];
+
+      const result = generator.generate(graph, { generateMainWrapper: false });
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('void probe();');
+      expect(result.code).toContain('void returnprobe::probe() {');
+      expect(result.code).not.toContain('auto probe()');
+      expect(result.code).not.toContain('return {};');
+    });
+
+    it('should skip unresolved base classes and emit diagnostic comment', () => {
+      const graph = createTestGraph([]);
+      graph.classes = [
+        {
+          id: 'class-base',
+          name: 'ChildType',
+          baseClasses: ['Base_class'],
+          members: [],
+          methods: [],
+        },
+      ];
+
+      const result = generator.generate(graph, { generateMainWrapper: false });
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('// NOTE: базовый класс пропущен: Base_class');
+      expect(result.code).toContain('class childtype {');
+      expect(result.code).not.toContain('class childtype :');
     });
   });
   
@@ -3868,6 +4112,150 @@ describe('CppCodeGenerator', () => {
       expect(result.code).toContain('int newFunction1(int Summa_1, int Summ_2)');
       expect(result.code).toContain('int var_32 = Summa_1;');
       expect(result.code).toContain('int proverka = Summ_2;');
+    });
+
+    it('should generate user function with math/comparison/logic chain and call it from EventGraph', () => {
+      const requireInputPort = (node: BlueprintNode, token: string): string => {
+        const port = node.inputs.find((candidate) => candidate.id === token || candidate.id.endsWith(`-${token}`));
+        expect(port).toBeDefined();
+        return port!.id;
+      };
+      const requireOutputPort = (node: BlueprintNode, token: string): string => {
+        const port = node.outputs.find((candidate) => candidate.id === token || candidate.id.endsWith(`-${token}`));
+        expect(port).toBeDefined();
+        return port!.id;
+      };
+
+      const entryNode: BlueprintNode = {
+        id: 'entry-complex',
+        type: 'FunctionEntry',
+        label: 'Вход',
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [
+          port('entry-complex-exec-out', 'exec', 'execution', 'output', 0),
+          port('entry-complex-a', 'a', 'int32', 'output', 1),
+          port('entry-complex-b', 'b', 'int32', 'output', 2),
+        ],
+        properties: { functionId: 'func-complex-ready' },
+      };
+      const subtractNode = createNode('Subtract', { x: 180, y: 0 }, 'sub-complex');
+      const multiplyNode = createNode('Multiply', { x: 360, y: 0 }, 'mul-complex');
+      const greaterEqualNode = createNode('GreaterEqual', { x: 540, y: 0 }, 'ge-complex');
+      const notNode = createNode('Not', { x: 720, y: 0 }, 'not-complex');
+      const returnNode: BlueprintNode = {
+        id: 'return-complex',
+        type: 'FunctionReturn',
+        label: 'Возврат',
+        position: { x: 900, y: 0 },
+        inputs: [
+          port('return-complex-exec-in', 'exec', 'execution', 'input', 0),
+          port('return-complex-ok', 'ok', 'bool', 'input', 1),
+        ],
+        outputs: [],
+        properties: { functionId: 'func-complex-ready' },
+      };
+
+      const mulInputB = multiplyNode.inputs.find((candidate) => candidate.id.endsWith('-b'));
+      if (mulInputB) {
+        mulInputB.value = 2;
+      }
+      const geInputB = greaterEqualNode.inputs.find((candidate) => candidate.id.endsWith('-b'));
+      if (geInputB) {
+        geInputB.value = 10;
+      }
+
+      const complexFunction = createTestFunction({
+        id: 'func-complex-ready',
+        name: 'isComplexReady',
+        nameRu: 'Проверка готовности',
+        parameters: [
+          { id: 'a', name: 'a', nameRu: 'a', dataType: 'int32', direction: 'input' },
+          { id: 'b', name: 'b', nameRu: 'b', dataType: 'int32', direction: 'input' },
+          { id: 'ok', name: 'ok', nameRu: 'готово', dataType: 'bool', direction: 'output' },
+        ],
+        graph: {
+          nodes: [entryNode, subtractNode, multiplyNode, greaterEqualNode, notNode, returnNode],
+          edges: [
+            createFuncEdge('entry-complex', 'entry-complex-exec-out', 'return-complex', 'return-complex-exec-in'),
+            createEdge(
+              'entry-complex',
+              requireOutputPort(entryNode, 'a'),
+              'sub-complex',
+              requireInputPort(subtractNode, 'a'),
+              'int32'
+            ),
+            createEdge(
+              'entry-complex',
+              requireOutputPort(entryNode, 'b'),
+              'sub-complex',
+              requireInputPort(subtractNode, 'b'),
+              'int32'
+            ),
+            createEdge(
+              'sub-complex',
+              requireOutputPort(subtractNode, 'result'),
+              'mul-complex',
+              requireInputPort(multiplyNode, 'a'),
+              'int32'
+            ),
+            createEdge(
+              'mul-complex',
+              requireOutputPort(multiplyNode, 'result'),
+              'ge-complex',
+              requireInputPort(greaterEqualNode, 'a'),
+              'int32'
+            ),
+            createEdge(
+              'ge-complex',
+              requireOutputPort(greaterEqualNode, 'result'),
+              'not-complex',
+              requireInputPort(notNode, 'a'),
+              'bool'
+            ),
+            createEdge(
+              'not-complex',
+              requireOutputPort(notNode, 'result'),
+              'return-complex',
+              requireInputPort(returnNode, 'ok'),
+              'bool'
+            ),
+          ],
+        },
+      });
+
+      const callNode: BlueprintNode = {
+        id: 'call-complex',
+        type: 'CallUserFunction',
+        label: 'Вызов: isComplexReady',
+        position: { x: 240, y: 0 },
+        inputs: [
+          port('call-complex-exec-in', 'exec', 'execution', 'input', 0),
+          { ...port('call-complex-a', 'a', 'int32', 'input', 1), value: 8 },
+          { ...port('call-complex-b', 'b', 'int32', 'input', 2), value: 3 },
+        ],
+        outputs: [
+          port('call-complex-exec-out', 'exec', 'execution', 'output', 0),
+          port('call-complex-ok', 'ok', 'bool', 'output', 1),
+        ],
+        properties: { functionId: 'func-complex-ready', functionName: 'isComplexReady' },
+      };
+
+      const graph = createTestGraph(
+        [createNode('Start', { x: 0, y: 0 }, 'start'), callNode],
+        [createEdge('start', 'start-exec-out', 'call-complex', 'call-complex-exec-in')]
+      );
+      graph.functions = [complexFunction];
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.code).toContain('bool isComplexReady(int a, int b)');
+      expect(result.code).toContain('(a - b)');
+      expect(result.code).toContain('* 2');
+      expect(result.code).toContain('>= 10');
+      expect(result.code).toContain('return (!');
+      expect(result.code).toContain('isComplexReady(8, 3)');
     });
 
     it('should use function-local variables instead of EventGraph variables in function scope', () => {

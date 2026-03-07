@@ -95,6 +95,7 @@ export const createSymbolLocalizationSlice: StateCreator<
           [key]: nextEntry
         },
         localizationError: null,
+        lastChangeOrigin: 'local',
         graph: {
           ...state.graph,
           symbolLocalization: {
@@ -127,6 +128,7 @@ export const createSymbolLocalizationSlice: StateCreator<
           return {
             symbolLocalizations: rolledBack,
             localizationError: error instanceof Error ? error.message : 'Ошибка сохранения локализации',
+            lastChangeOrigin: 'local',
             graph: {
               ...state.graph,
               symbolLocalization: graphLocalization,

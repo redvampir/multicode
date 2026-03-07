@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "savedAt": "2026-03-03T10:42:33.949Z",
+  "data": {
+    "id": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+    "name": "Test_class",
+    "nameRu": "Test_class",
+    "members": [
+      {
+        "id": "member-65a0824f-0772-4a66-a2d3-a80260209e9c",
+        "name": "field1",
+        "nameRu": "field1",
+        "dataType": "int32",
+        "access": "private"
+      },
+      {
+        "id": "member-67b5b0f0-94b9-4786-89a7-dee45f4b5b70",
+        "name": "field2",
+        "nameRu": "field2",
+        "dataType": "int32",
+        "access": "private"
+      }
+    ],
+    "methods": [
+      {
+        "id": "method-2cca2075-c5ef-427c-8221-4062c162335b",
+        "name": "method_1",
+        "nameRu": "Метод 1",
+        "returnType": "int32",
+        "params": [],
+        "access": "public",
+        "isConst": false,
+        "isStatic": false,
+        "isVirtual": false,
+        "isOverride": false
+      }
+    ]
+  }
+}

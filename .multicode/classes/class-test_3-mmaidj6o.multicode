@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "savedAt": "2026-03-03T11:40:04.728Z",
+  "data": {
+    "id": "class-test_3-mmaidj6o",
+    "name": "test_3",
+    "nameRu": "test_3",
+    "namespace": "Test_class_1",
+    "members": [
+      {
+        "id": "member-61d63c94-2cf1-4516-9106-d96548e8eae7",
+        "name": "field_1",
+        "nameRu": "Поле 1",
+        "dataType": "int32",
+        "access": "private"
+      }
+    ],
+    "methods": [
+      {
+        "id": "method-08a25bac-c9e7-4f25-8901-6ee524d7487e",
+        "name": "method_1",
+        "nameRu": "Метод 1",
+        "returnType": "int32",
+        "params": [],
+        "access": "public",
+        "isConst": false,
+        "isStatic": false,
+        "isVirtual": false,
+        "isOverride": false
+      }
+    ]
+  }
+}

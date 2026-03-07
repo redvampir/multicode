@@ -41,6 +41,14 @@ export interface GraphState {
   functions?: unknown[];
   /** Реестр пользовательских C++ классов (Blueprint-style) */
   classes?: unknown[];
+  /**
+   * Привязки классов к sidecar-файлам (итерация B: class storage sidecar).
+   * В режиме sidecar классы пишутся в `.multicode/classes/*.multicode`, а в графовом `.multicode` остаются только эти привязки.
+   */
+  classBindings?: Array<{
+    classId: string;
+    file?: string;
+  }>;
   /** Привязки графа к внешним источникам символов */
   integrationBindings?: SourceIntegration[];
   /** Локализация внешних символов по ключу symbolId/signatureHash */

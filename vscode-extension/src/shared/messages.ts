@@ -14,7 +14,21 @@ const graphDisplayLanguageSchema = z.enum(['ru', 'en']);
 const graphEdgeKindSchema = z.enum(['execution', 'data']);
 const cppStandardSchema = z.enum(['cpp14', 'cpp17', 'cpp20', 'cpp23']);
 const codegenOutputProfileSchema = z.enum(['clean', 'learn', 'debug', 'recovery']);
+const codegenEntrypointModeSchema = z.enum(['auto', 'executable', 'library']);
 const blueprintClassAccessSchema = z.enum(['public', 'protected', 'private']);
+const blueprintClassTypeSchema = z.enum(['class', 'struct']);
+const blueprintClassMethodKindSchema = z.enum(['method', 'constructor', 'destructor']);
+const classStorageModeSchema = z.enum(['embedded', 'sidecar']);
+const classStorageItemStatusSchema = z.enum([
+  'ok',
+  'missing',
+  'failed',
+  'fallbackEmbedded',
+  'unbound',
+  'dirty',
+  'conflict',
+]);
+const classStorageItemSourceSchema = z.enum(['binding', 'marker', 'embedded', 'inferred']);
 
 const graphNodeSchema = z.object({
   id: z.string(),
@@ -65,6 +79,11 @@ const symbolDescriptorSchema: z.ZodType<SymbolDescriptor> = z.object({
   namespacePath: z.array(z.string()).optional(),
 });
 
+export const multicodeClassBindingSchema = z.object({
+  classId: z.string().min(1),
+  file: z.string().min(1).optional(),
+});
+
 export const ipcErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -85,6 +104,7 @@ export const graphStateSchema: z.ZodType<GraphState> = z.object({
   variables: z.array(z.unknown()).optional(),
   functions: z.array(z.unknown()).optional(),
   classes: z.array(z.unknown()).optional(),
+  classBindings: z.array(multicodeClassBindingSchema).optional(),
   integrationBindings: z.array(sourceIntegrationSchema).optional(),
   symbolLocalization: z.record(z.string(), symbolLocalizationEntrySchema).optional(),
 });
@@ -112,6 +132,9 @@ const graphMutationSchema = z.object({
   variables: z.array(z.unknown()).optional(),
   functions: z.array(z.unknown()).optional(),
   classes: z.array(z.unknown()).optional(),
+  classBindings: z.array(multicodeClassBindingSchema).optional(),
+  integrationBindings: z.array(sourceIntegrationSchema).optional(),
+  symbolLocalization: z.record(z.string(), symbolLocalizationEntrySchema).optional(),
 });
 
 const themeMessageSchema = z.object({
@@ -146,24 +169,50 @@ const validationIssueSchema = z.object({
 export const blueprintClassMemberSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  nameRu: z.string().min(1).optional(),
   dataType: PortDataTypeSchema,
   typeName: z.string().min(1).optional(),
+  isStatic: z.boolean().optional(),
   access: blueprintClassAccessSchema,
+  defaultValue: z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown())]).optional(),
+});
+
+export const blueprintClassMethodParameterSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  nameRu: z.string().min(1).optional(),
+  dataType: PortDataTypeSchema,
+  typeName: z.string().min(1).optional(),
 });
 
 export const blueprintClassMethodSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  nameRu: z.string().min(1).optional(),
+  methodKind: blueprintClassMethodKindSchema.optional(),
   returnType: z.string().min(1),
   returnTypeName: z.string().min(1).optional(),
+  params: z.array(blueprintClassMethodParameterSchema).default([]),
   access: blueprintClassAccessSchema,
+  isConst: z.boolean().optional(),
+  isStatic: z.boolean().optional(),
+  isNoexcept: z.boolean().optional(),
+  isPureVirtual: z.boolean().optional(),
+  isVirtual: z.boolean().optional(),
+  isOverride: z.boolean().optional(),
   signature: z.string().min(1).optional(),
 });
 
 export const blueprintClassSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  nameRu: z.string().min(1).optional(),
+  classType: blueprintClassTypeSchema.optional(),
   namespace: z.string().min(1).optional(),
+  baseClasses: z.array(z.string().min(1)).optional(),
+  headerIncludes: z.array(z.string().min(1)).optional(),
+  sourceIncludes: z.array(z.string().min(1)).optional(),
+  forwardDecls: z.array(z.string().min(1)).optional(),
   members: z.array(blueprintClassMemberSchema),
   methods: z.array(blueprintClassMethodSchema),
 });
@@ -243,6 +292,41 @@ const dependencyMapGetRequestSchema = z.object({
     rootFile: z.string().optional(),
     includeSystem: z.boolean().optional(),
   }).optional(),
+});
+
+const filePickRequestSchema = z.object({
+  type: z.literal('file/pick'),
+  payload: z.object({
+    purpose: z.enum(['bind', 'dependency', 'working']).optional(),
+    openLabel: z.string().optional(),
+  }).optional(),
+});
+
+const fileOpenRequestSchema = z.object({
+  type: z.literal('file/open'),
+  payload: z.object({
+    filePath: z.string().min(1),
+    preview: z.boolean().optional(),
+    preserveFocus: z.boolean().optional(),
+  }),
+});
+
+export const classStorageReloadRequestSchema = z.object({
+  type: z.literal('class/storage/reload'),
+  payload: z
+    .object({
+      classId: z.string().min(1).optional(),
+    })
+    .optional(),
+});
+
+export const classStorageRepairRequestSchema = z.object({
+  type: z.literal('class/storage/repair'),
+  payload: z
+    .object({
+      classId: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
 export const classUpsertRequestSchema = z.object({
@@ -326,6 +410,70 @@ const dependencyMapGetResponseSchema = makeIpcResponseSchema(
     ),
   })
 );
+const filePickResponseSchema = makeIpcResponseSchema(
+  'file/pick',
+  z.object({
+    filePath: z.string().nullable(),
+    fileName: z.string().nullable(),
+  })
+);
+
+const fileOpenResponseSchema = makeIpcResponseSchema(
+  'file/open',
+  z.object({
+    filePath: z.string(),
+    fileName: z.string(),
+  })
+);
+
+const classStorageReloadResponseSchema = makeIpcResponseSchema(
+  'class/storage/reload',
+  z.object({
+    reloaded: z.number().int().nonnegative(),
+    classId: z.string().optional(),
+  })
+);
+
+const classStorageRepairResponseSchema = makeIpcResponseSchema(
+  'class/storage/repair',
+  z.object({
+    repaired: z.number().int().nonnegative(),
+    classId: z.string().optional(),
+  })
+);
+
+export const classStorageStatusItemSchema = z.object({
+  classId: z.string().min(1),
+  className: z.string().optional(),
+  bindingFile: z.string().nullable().optional(),
+  filePath: z.string().nullable().optional(),
+  source: classStorageItemSourceSchema.optional(),
+  existsOnDisk: z.boolean().optional(),
+  lastCheckedAt: z.string().optional(),
+  status: classStorageItemStatusSchema,
+  reason: z.string().optional(),
+});
+
+export const classStorageStatusSchema = z.object({
+  mode: classStorageModeSchema,
+  isBoundSource: z.boolean(),
+  graphFilePath: z.string().nullable(),
+  classesDirPath: z.string().nullable(),
+  bindingsTotal: z.number().int().nonnegative(),
+  classesLoaded: z.number().int().nonnegative(),
+  missing: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  fallbackEmbedded: z.number().int().nonnegative(),
+  unbound: z.number().int().nonnegative().optional(),
+  dirty: z.number().int().nonnegative().optional(),
+  conflict: z.number().int().nonnegative().optional(),
+  updatedAt: z.string(),
+  classItems: z.array(classStorageStatusItemSchema),
+});
+
+const classNodesConfigSchema = z.object({
+  advancedEnabled: z.boolean(),
+});
 
 const classUpsertResponseSchema = makeIpcResponseSchema(
   'class/upsert',
@@ -368,6 +516,10 @@ export const externalIpcRequestSchema = z.discriminatedUnion('type', [
   integrationDiagnosticsRequestSchema,
   symbolsQueryRequestSchema,
   dependencyMapGetRequestSchema,
+  filePickRequestSchema,
+  fileOpenRequestSchema,
+  classStorageReloadRequestSchema,
+  classStorageRepairRequestSchema,
   classUpsertRequestSchema,
   classDeleteRequestSchema,
   classReorderMemberRequestSchema,
@@ -382,6 +534,10 @@ export const externalIpcResponseSchema = z.union([
   integrationDiagnosticsResponseSchema,
   symbolsQueryResponseSchema,
   dependencyMapGetResponseSchema,
+  filePickResponseSchema,
+  fileOpenResponseSchema,
+  classStorageReloadResponseSchema,
+  classStorageRepairResponseSchema,
   classUpsertResponseSchema,
   classDeleteResponseSchema,
   classReorderMemberResponseSchema,
@@ -424,9 +580,23 @@ export const extensionToWebviewMessageSchema = z.union([
     }),
   }),
   z.object({
+    type: z.literal('classStorageStatusChanged'),
+    payload: classStorageStatusSchema,
+  }),
+  z.object({
+    type: z.literal('classNodesConfigChanged'),
+    payload: classNodesConfigSchema,
+  }),
+  z.object({
     type: z.literal('codegenProfileChanged'),
     payload: z.object({
       profile: codegenOutputProfileSchema
+    })
+  }),
+  z.object({
+    type: z.literal('codegenEntrypointModeChanged'),
+    payload: z.object({
+      mode: codegenEntrypointModeSchema
     })
   }),
   z.object({
@@ -487,6 +657,10 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   integrationDiagnosticsRequestSchema,
   symbolsQueryRequestSchema,
   dependencyMapGetRequestSchema,
+  filePickRequestSchema,
+  fileOpenRequestSchema,
+  classStorageReloadRequestSchema,
+  classStorageRepairRequestSchema,
   classUpsertRequestSchema,
   classDeleteRequestSchema,
   classReorderMemberRequestSchema,
@@ -534,6 +708,10 @@ export const webviewToExtensionMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('setCodegenProfile'),
     payload: z.object({ profile: codegenOutputProfileSchema }),
   }),
+  z.object({
+    type: z.literal('setCodegenEntrypointMode'),
+    payload: z.object({ mode: codegenEntrypointModeSchema }),
+  }),
   z.object({ type: z.literal('graphChanged'), payload: graphMutationSchema }),
   z.object({ type: z.literal('reportWebviewError'), payload: z.object({ message: z.string() }) }),
   z.object({ type: z.literal('reportWebviewTrace'), payload: webviewTracePayloadSchema })
@@ -570,6 +748,11 @@ export type ToastPayload = z.infer<typeof toastPayloadSchema>;
 export type LogPayload = z.infer<typeof logPayloadSchema>;
 export type WebviewTracePayload = z.infer<typeof webviewTracePayloadSchema>;
 export type GraphMutationPayload = z.infer<typeof graphMutationSchema>;
+export type ClassStorageMode = z.infer<typeof classStorageModeSchema>;
+export type ClassStorageItemStatus = z.infer<typeof classStorageItemStatusSchema>;
+export type ClassStorageStatusItem = z.infer<typeof classStorageStatusItemSchema>;
+export type ClassStorageStatus = z.infer<typeof classStorageStatusSchema>;
+export type ClassNodesConfig = z.infer<typeof classNodesConfigSchema>;
 export type GraphStateSchema = typeof graphStateSchema;
 export type GraphNodeSchema = typeof graphNodeSchema;
 export type GraphEdgeSchema = typeof graphEdgeSchema;

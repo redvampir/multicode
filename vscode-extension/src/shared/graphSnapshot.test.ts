@@ -84,6 +84,29 @@ describe('graphSnapshot', () => {
     expect(next).toContain('@multicode:snapshot end');
   });
 
+  it('вставляет snapshot-блок после блока @multicode:class', () => {
+    const source = [
+      '// @multicode:graph id=graph-test file=.multicode/graph-test.multicode',
+      '// @multicode:class id=class-a file=.multicode/classes/class-a.multicode',
+      '// @multicode:class id=class-b file=.multicode/classes/class-b.multicode',
+      '',
+      'int main() {',
+      '    return 0;',
+      '}',
+      '',
+    ].join('\n');
+
+    const next = injectOrReplaceMulticodeGraphSnapshot(source, makeGraphState());
+    const lines = next.split('\n');
+    const graphLineIndex = lines.findIndex((line) => line.includes('@multicode:graph'));
+    const classBIndex = lines.findIndex((line) => line.includes('@multicode:class id=class-b'));
+    const snapshotBeginIndex = lines.findIndex((line) => line.includes('@multicode:snapshot begin'));
+
+    expect(graphLineIndex).toBeGreaterThanOrEqual(0);
+    expect(classBIndex).toBeGreaterThan(graphLineIndex);
+    expect(snapshotBeginIndex).toBe(classBIndex + 1);
+  });
+
   it('заменяет существующий snapshot-блок без дубликатов', () => {
     const sourceWithOldSnapshot = [
       '// @multicode:graph id=graph-test file=.multicode/graph-test.multicode',
@@ -145,14 +168,49 @@ describe('graphSnapshot', () => {
       {
         id: 'class-player',
         name: 'Player',
-        members: [{ id: 'member-health', name: 'health', dataType: 'int32', access: 'private', defaultValue: 100 }],
+        nameRu: 'Player',
+        classType: 'class',
+        namespace: undefined,
+        baseClasses: [],
+        headerIncludes: [],
+        sourceIncludes: [],
+        forwardDecls: [],
+        members: [
+          {
+            id: 'member-health',
+            name: 'health',
+            nameRu: 'health',
+            dataType: 'int32',
+            typeName: undefined,
+            isStatic: false,
+            access: 'private',
+            defaultValue: 100,
+          },
+        ],
         methods: [
           {
             id: 'method-attack',
             name: 'Attack',
+            nameRu: 'Attack',
+            methodKind: 'method',
             returnType: 'bool',
-            params: [{ id: 'param-damage', name: 'damage', dataType: 'int32' }],
+            returnTypeName: undefined,
+            params: [
+              {
+                id: 'param-damage',
+                name: 'damage',
+                nameRu: 'damage',
+                dataType: 'int32',
+                typeName: undefined,
+              },
+            ],
             access: 'public',
+            isConst: false,
+            isStatic: false,
+            isNoexcept: false,
+            isPureVirtual: false,
+            isVirtual: false,
+            isOverride: false,
           },
         ],
       },

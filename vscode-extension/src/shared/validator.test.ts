@@ -81,7 +81,7 @@ describe('validator', () => {
     });
 
     describe('валидация Start узла', () => {
-      it('должен требовать наличие Start узла', () => {
+      it('должен предупреждать об отсутствии Start узла', () => {
         const graph: GraphState = {
           id: 'graph-1',
           name: 'No Start',
@@ -97,8 +97,9 @@ describe('validator', () => {
 
         const result = validateGraphState(graph);
 
-        expect(result.ok).toBe(false);
-        expect(result.errors).toContain('Graph must contain a Start node.');
+        expect(result.ok).toBe(true);
+        expect(result.errors).not.toContain('Graph must contain a Start node.');
+        expect(result.warnings).toContain('Graph has no Start node. Entry-point checks are skipped.');
       });
 
       it('должен отклонять несколько Start узлов', () => {

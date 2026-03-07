@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './ErrorBoundary';
 import {
@@ -13,7 +13,6 @@ import { GraphEditor } from './GraphEditor';
 import { BlueprintEditor } from './BlueprintEditor';
 import { EnhancedCodePreviewPanel } from './EnhancedCodePreviewPanel';
 import { DependencyViewPanel } from './DependencyViewPanel';
-import { ClassPanel } from './ClassPanel';
 import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
 import {
   BlueprintGraphState,
@@ -21,6 +20,8 @@ import {
   migrateToBlueprintFormat,
   migrateFromBlueprintFormat,
 } from '../shared/blueprintTypes';
+import { findNonOverlappingPosition } from './variableNodeBinding';
+import { createExternalSymbolCallNode, isTransferableExternalSymbol } from './externalSymbolNodeFactory';
 import {
   createGraphStore,
   layoutBounds,
@@ -35,6 +36,8 @@ import {
   type ThemeTokens
 } from './theme';
 import {
+  type ClassNodesConfig,
+  type ClassStorageStatus,
   parseExternalIpcResponse,
   parseExtensionMessage,
   parseThemeMessage,
@@ -53,9 +56,12 @@ import type { BundledPackageSettings } from '../shared/bundledPackages';
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape' | 'dependency';
 const EDITOR_MODE_KEY = 'multicode.editorMode';
+const DEPENDENCY_SIDEBAR_KEY = 'multicode.dependencySidebarVisible';
+const UI_SCALE_KEY = 'multicode.uiScale';
 
 type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
 type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
+type CodegenEntrypointMode = 'auto' | 'executable' | 'library';
 
 const getInitialEditorMode = (): EditorMode => {
   try {
@@ -70,9 +76,61 @@ const getInitialEditorMode = (): EditorMode => {
   return 'blueprint';
 };
 
+const getInitialDependencySidebarVisible = (): boolean => {
+  try {
+    const saved = localStorage.getItem(DEPENDENCY_SIDEBAR_KEY);
+    if (saved === '0') {
+      return false;
+    }
+    if (saved === '1') {
+      return true;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  return true;
+};
+
+const getInitialUiScale = (): number => {
+  try {
+    const raw = localStorage.getItem(UI_SCALE_KEY);
+    if (!raw) {
+      return 1;
+    }
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0.6 && parsed <= 1.4) {
+      return parsed;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  return 1;
+};
+
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
 type Toast = { id: number; kind: ToastKind; message: string };
+
+const createDefaultClassStorageStatus = (): ClassStorageStatus => ({
+  mode: 'embedded',
+  isBoundSource: false,
+  graphFilePath: null,
+  classesDirPath: null,
+  bindingsTotal: 0,
+  classesLoaded: 0,
+  missing: 0,
+  failed: 0,
+  fallbackEmbedded: 0,
+  unbound: 0,
+  dirty: 0,
+  conflict: 0,
+  updatedAt: new Date().toISOString(),
+  classItems: [],
+});
+
+const createDefaultClassNodesConfig = (): ClassNodesConfig => ({
+  advancedEnabled: false,
+});
 
 type PersistedState = { graph?: GraphState; locale?: GraphDisplayLanguage; layout?: LayoutSettings };
 
@@ -92,6 +150,9 @@ const isTranslationDirection = (value: string): value is TranslationDirection =>
 
 const isCodegenOutputProfile = (value: string): value is CodegenOutputProfile =>
   value === 'clean' || value === 'learn' || value === 'debug' || value === 'recovery';
+
+const isCodegenEntrypointMode = (value: string): value is CodegenEntrypointMode =>
+  value === 'auto' || value === 'executable' || value === 'library';
 
 const isGraphNodeType = (value: string): value is GraphNodeType =>
   value === 'Start' ||
@@ -217,10 +278,27 @@ const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload
   variables: graphState.variables,
   functions: graphState.functions,
   classes: graphState.classes,
+  integrationBindings: graphState.integrationBindings,
+  symbolLocalization: graphState.symbolLocalization,
 });
 
 const normalizeFilePath = (filePath: string): string => filePath.replace(/\\/g, '/');
 const normalizeFilePathForMatch = (filePath: string): string => normalizeFilePath(filePath).toLowerCase();
+const normalizeOptionalFilePath = (filePath: string | null | undefined): string | null =>
+  filePath ? normalizeFilePath(filePath) : null;
+
+const normalizeClassStorageStatus = (status: ClassStorageStatus): ClassStorageStatus => ({
+  ...status,
+  unbound: status.unbound ?? 0,
+  dirty: status.dirty ?? 0,
+  conflict: status.conflict ?? 0,
+  graphFilePath: normalizeOptionalFilePath(status.graphFilePath),
+  classesDirPath: normalizeOptionalFilePath(status.classesDirPath),
+  classItems: status.classItems.map((item) => ({
+    ...item,
+    filePath: normalizeOptionalFilePath(item.filePath),
+  })),
+});
 
 const extractFileName = (filePath: string): string => {
   const normalized = normalizeFilePath(filePath);
@@ -309,15 +387,26 @@ const Toolbar: React.FC<{
   onShowCodePreviewChange: (show: boolean) => void;
   onShowHotkeys: () => void;
   onShowHelp: () => void;
+  uiScale: number;
+  onUiScaleChange: (nextScale: number) => void;
   boundFileName: string | null;
   boundFilePath: string | null;
-  editableFiles: Array<{ fileName: string; filePath: string }>;
+  classStorageStatus: ClassStorageStatus;
+  classNodesAdvancedEnabled: boolean;
+  workingFiles: Array<{ fileName: string; filePath: string }>;
   dependencySourceFilePath: string;
   onDependencySourceFileChange: (filePath: string) => void;
   onBindFile: (filePath: string) => void;
+  onPickBindFile: () => void;
+  onPickDependencyFile: () => void;
   onAddCurrentFileDependency: () => void;
+  onAddWorkingFile: () => void;
+  onOpenWorkingFile: (filePath: string) => void;
+  onRemoveWorkingFile: (filePath: string) => void;
   codegenProfile: CodegenOutputProfile;
   onCodegenProfileChange: (profile: CodegenOutputProfile) => void;
+  codegenEntrypointMode: CodegenEntrypointMode;
+  onCodegenEntrypointModeChange: (mode: CodegenEntrypointMode) => void;
 }> = ({
   locale,
   onLocaleChange,
@@ -332,20 +421,45 @@ const Toolbar: React.FC<{
   onShowCodePreviewChange,
   onShowHotkeys,
   onShowHelp,
+  uiScale,
+  onUiScaleChange,
   boundFileName,
   boundFilePath,
-  editableFiles,
+  classStorageStatus,
+  classNodesAdvancedEnabled,
+  workingFiles,
   dependencySourceFilePath,
   onDependencySourceFileChange,
   onBindFile,
+  onPickBindFile,
+  onPickDependencyFile,
   onAddCurrentFileDependency,
+  onAddWorkingFile,
+  onOpenWorkingFile,
+  onRemoveWorkingFile,
   codegenProfile,
   onCodegenProfileChange,
+  codegenEntrypointMode,
+  onCodegenEntrypointModeChange,
 }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
+  const [workingFilesMenu, setWorkingFilesMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [workingFilesFilter, setWorkingFilesFilter] = useState('');
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const workingFilesSearchRef = useRef<HTMLInputElement | null>(null);
   // Для "▶ Запустить" стандарт фиксирован на C++23 (strict).
   const cppStandard: CppStandard = 'cpp23';
+  const sidecarOkCount = classStorageStatus.classItems.filter((item) => item.status === 'ok').length;
+  const hasStorageIssues = classStorageStatus.missing > 0 || classStorageStatus.failed > 0;
+  const storageBadgeLabel =
+    classStorageStatus.mode === 'sidecar'
+      ? `Class Storage: SIDECAR (${sidecarOkCount}/${classStorageStatus.bindingsTotal})`
+      : 'Class Storage: EMBEDDED';
+  const classNodesBadgeLabel = classNodesAdvancedEnabled ? 'Class Nodes: ADVANCED' : 'Class Nodes: CORE';
 
   const flushCurrentGraphState = (): void => {
     const snapshot = useGraphStore.getState().graph;
@@ -368,6 +482,111 @@ const Toolbar: React.FC<{
     setTimeout(() => setPending(false), 2000);
   };
 
+  const filteredWorkingFiles = useMemo(() => {
+    const query = workingFilesFilter.trim().toLowerCase();
+    if (!query) {
+      return workingFiles;
+    }
+    return workingFiles.filter((file) => (
+      file.fileName.toLowerCase().includes(query) || file.filePath.toLowerCase().includes(query)
+    ));
+  }, [workingFiles, workingFilesFilter]);
+
+  const workingFileOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: Array<{ fileName: string; filePath: string; matchKey: string }> = [];
+    for (const file of workingFiles) {
+      const matchKey = normalizeFilePathForMatch(file.filePath);
+      if (!matchKey || seen.has(matchKey)) {
+        continue;
+      }
+      seen.add(matchKey);
+      options.push({ ...file, matchKey });
+    }
+    return options;
+  }, [workingFiles]);
+
+  const workingFileByKey = useMemo(
+    () => new Map(workingFileOptions.map((option) => [option.matchKey, option])),
+    [workingFileOptions]
+  );
+
+  const boundFileKey = boundFilePath ? normalizeFilePathForMatch(boundFilePath) : '';
+  const dependencySourceKey = dependencySourceFilePath ? normalizeFilePathForMatch(dependencySourceFilePath) : '';
+
+  useLayoutEffect(() => {
+    if (!workingFilesMenu || !menuRef.current) {
+      return;
+    }
+
+    const rect = menuRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const padding = 8;
+
+    const nextX = Math.min(
+      Math.max(workingFilesMenu.x, padding),
+      Math.max(padding, viewportWidth - rect.width - padding),
+    );
+    const nextY = Math.min(
+      Math.max(workingFilesMenu.y, padding),
+      Math.max(padding, viewportHeight - rect.height - padding),
+    );
+
+    if (nextX !== workingFilesMenu.x || nextY !== workingFilesMenu.y) {
+      setWorkingFilesMenu((prev) => (prev
+        ? {
+            ...prev,
+            x: nextX,
+            y: nextY,
+          }
+        : prev));
+    }
+  }, [workingFilesMenu]);
+
+  useEffect(() => {
+    if (!workingFilesMenu) {
+      return;
+    }
+
+    const closeMenuOnOutside = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        setWorkingFilesMenu(null);
+        return;
+      }
+      if (!menuRef.current?.contains(target)) {
+        setWorkingFilesMenu(null);
+      }
+    };
+    const closeMenu = (): void => setWorkingFilesMenu(null);
+    const closeMenuOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setWorkingFilesMenu(null);
+      }
+    };
+    window.addEventListener('mousedown', closeMenuOnOutside);
+    window.addEventListener('resize', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('keydown', closeMenuOnEscape);
+    return () => {
+      window.removeEventListener('mousedown', closeMenuOnOutside);
+      window.removeEventListener('resize', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('keydown', closeMenuOnEscape);
+    };
+  }, [workingFilesMenu]);
+
+  useEffect(() => {
+    if (!workingFilesMenu) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      workingFilesSearchRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [workingFilesMenu]);
+
   return (
     <div className="toolbar">
       {/* Информация о графе */}
@@ -375,6 +594,25 @@ const Toolbar: React.FC<{
         <div className="toolbar-title">{graph.name}</div>
         <div className="toolbar-subtitle">
           {translate('toolbar.targetPlatform', '{language}', { language: graph.language.toUpperCase() })}
+          <span
+            className={hasStorageIssues ? 'toolbar-storage-badge toolbar-storage-badge--warn' : 'toolbar-storage-badge toolbar-storage-badge--ok'}
+            title={
+              classStorageStatus.mode === 'sidecar'
+                ? `ok=${sidecarOkCount}, missing=${classStorageStatus.missing}, failed=${classStorageStatus.failed}, fallback=${classStorageStatus.fallbackEmbedded}`
+                : 'Классы хранятся внутри графового .multicode'
+            }
+            data-testid="class-storage-badge"
+          >
+            {' · '}{storageBadgeLabel}
+          </span>
+          <span
+            className={`toolbar-storage-badge ${classNodesAdvancedEnabled ? 'toolbar-storage-badge--feature' : ''}`}
+            title={classNodesAdvancedEnabled
+              ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
+              : 'Доступен базовый пакет class-узлов'}
+          >
+            {' · '}{classNodesBadgeLabel}
+          </span>
           {boundFileName && (
             <span className="toolbar-bound-file" title={boundFilePath ?? ''}>
               {' · '}📄 {boundFileName}
@@ -385,6 +623,28 @@ const Toolbar: React.FC<{
               {' · '}{translate('toolbar.noFile', 'файл не привязан')}
             </span>
           )}
+        </div>
+        <div className="toolbar-working-files">
+          <button
+            type="button"
+            className="toolbar-working-files-trigger"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (workingFilesMenu) {
+                setWorkingFilesMenu(null);
+                return;
+              }
+              setWorkingFilesFilter('');
+              setWorkingFilesMenu({
+                x: rect.left,
+                y: rect.bottom + 4,
+              });
+            }}
+            title={translate('toolbar.workingFiles.menu' as TranslationKey, 'Рабочие файлы')}
+            data-testid="toolbar-working-files-menu-trigger"
+          >
+            📚 {translate('toolbar.workingFiles.menu' as TranslationKey, 'Файлы')} ({workingFiles.length})
+          </button>
         </div>
       </div>
       
@@ -420,6 +680,24 @@ const Toolbar: React.FC<{
             <option value="ru">🇷🇺 RU</option>
             <option value="en">🇺🇸 EN</option>
           </select>
+          <select
+            value={String(uiScale)}
+            onChange={(event) => {
+              const nextScale = Number(event.currentTarget.value);
+              if (!Number.isFinite(nextScale)) {
+                return;
+              }
+              onUiScaleChange(nextScale);
+            }}
+            title={translate('toolbar.uiScale' as TranslationKey, 'Масштаб интерфейса')}
+            className="toolbar-select"
+            data-testid="toolbar-ui-scale"
+          >
+            <option value="0.8">80%</option>
+            <option value="0.9">90%</option>
+            <option value="1">100%</option>
+            <option value="1.1">110%</option>
+          </select>
         </div>
         
         {/* Группа: Файл */}
@@ -434,42 +712,74 @@ const Toolbar: React.FC<{
             💾 {translate('toolbar.saveGraph', 'Сохранить')}
           </button>
           <select
-            value={boundFilePath ?? ''}
+            value={boundFileKey}
             onChange={(event) => {
-              const nextPath = event.currentTarget.value;
-              if (nextPath) {
-                onBindFile(nextPath);
+              const nextKey = event.currentTarget.value;
+              if (!nextKey) {
+                return;
+              }
+              const match = workingFileByKey.get(nextKey);
+              if (match) {
+                onBindFile(match.filePath);
               }
             }}
             className="toolbar-select"
             title={translate('toolbar.bindFile' as TranslationKey, 'Переключить редактируемый файл')}
-            disabled={pending || editableFiles.length === 0}
+            disabled={pending || workingFiles.length === 0}
           >
             <option value="">
               {translate('toolbar.bindFile.placeholder' as TranslationKey, 'Выбрать файл')}
             </option>
-            {editableFiles.map((file) => (
-              <option key={file.filePath} value={file.filePath}>
+            {workingFileOptions.map((file) => (
+              <option key={file.matchKey} value={file.matchKey}>
                 {file.fileName}
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={onPickBindFile}
+            disabled={pending}
+            title={translate('toolbar.bindFile.pick' as TranslationKey, 'Выбрать файл через диалог')}
+            data-testid="toolbar-bind-file-pick"
+          >
+            📁
+          </button>
           <select
-            value={dependencySourceFilePath}
-            onChange={(event) => onDependencySourceFileChange(event.currentTarget.value)}
+            value={dependencySourceKey}
+            onChange={(event) => {
+              const nextKey = event.currentTarget.value;
+              if (!nextKey) {
+                onDependencySourceFileChange('');
+                return;
+              }
+              const match = workingFileByKey.get(nextKey);
+              onDependencySourceFileChange(match?.filePath ?? nextKey);
+            }}
             className="toolbar-select"
             title={translate('toolbar.dependencySource' as TranslationKey, 'Какой файл добавить в зависимости')}
-            disabled={pending || editableFiles.length === 0}
+            disabled={pending || workingFiles.length === 0}
           >
             <option value="">
               {translate('toolbar.dependencySource.placeholder' as TranslationKey, 'Файл зависимости')}
             </option>
-            {editableFiles.map((file) => (
-              <option key={`dep:${file.filePath}`} value={file.filePath}>
+            {workingFileOptions.map((file) => (
+              <option key={`dep:${file.matchKey}`} value={file.matchKey}>
                 {file.fileName}
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={onPickDependencyFile}
+            disabled={pending}
+            title={translate('toolbar.dependencySource.pick' as TranslationKey, 'Выбрать файл зависимости через диалог')}
+            data-testid="toolbar-dependency-file-pick"
+          >
+            📁
+          </button>
           <button
             onClick={onAddCurrentFileDependency}
             disabled={pending || !boundFilePath || !dependencySourceFilePath}
@@ -520,6 +830,21 @@ const Toolbar: React.FC<{
             <option value="recovery">{translate('toolbar.codegenProfile.recovery', 'Восстановление')}</option>
           </select>
           <select
+            title={translate('toolbar.codegenEntrypointMode', 'Режим entrypoint')}
+            className="toolbar-select"
+            value={codegenEntrypointMode}
+            onChange={(event) => {
+              const nextMode = event.currentTarget.value;
+              if (isCodegenEntrypointMode(nextMode)) {
+                onCodegenEntrypointModeChange(nextMode);
+              }
+            }}
+          >
+            <option value="auto">{translate('toolbar.codegenEntrypointMode.auto', 'Авто')}</option>
+            <option value="executable">{translate('toolbar.codegenEntrypointMode.executable', 'Исполняемый')}</option>
+            <option value="library">{translate('toolbar.codegenEntrypointMode.library', 'Библиотека')}</option>
+          </select>
+          <select
             title={locale === 'ru' ? 'Стандарт C++: C++23 (фиксировано)' : 'C++ Standard: C++23 (fixed)'}
             className="toolbar-select"
             value={cppStandard}
@@ -557,6 +882,91 @@ const Toolbar: React.FC<{
           </button>
         </div>
       </div>
+      {workingFilesMenu && (
+        <div
+          ref={menuRef}
+          className="toolbar-working-file-menu-popup"
+          style={{
+            position: 'fixed',
+            left: workingFilesMenu.x,
+            top: workingFilesMenu.y,
+            zIndex: 40,
+          }}
+          data-testid="toolbar-working-file-menu-popup"
+        >
+          <button
+            type="button"
+            className="toolbar-working-file-menu-item"
+            onClick={() => {
+              onAddWorkingFile();
+              setWorkingFilesMenu(null);
+            }}
+            data-testid="toolbar-working-file-menu-add"
+          >
+            ＋ {translate('toolbar.workingFiles.add' as TranslationKey, 'Добавить файл в рабочий список')}
+          </button>
+          <div className="toolbar-working-file-menu-divider" />
+          <div className="toolbar-working-file-menu-search">
+            <input
+              ref={workingFilesSearchRef}
+              type="text"
+              className="toolbar-working-file-menu-search-input"
+              placeholder={translate('toolbar.workingFiles.search' as TranslationKey, 'Поиск файла...')}
+              value={workingFilesFilter}
+              onChange={(event) => setWorkingFilesFilter(event.currentTarget.value)}
+              data-testid="toolbar-working-file-search"
+            />
+            {workingFilesFilter.trim() && (
+              <button
+                type="button"
+                className="toolbar-working-file-menu-search-clear"
+                onClick={() => setWorkingFilesFilter('')}
+                title={translate('search.clear', 'Очистить')}
+                data-testid="toolbar-working-file-search-clear"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="toolbar-working-file-menu-list">
+            {workingFiles.length === 0 && (
+              <div className="toolbar-working-file-menu-empty">
+                {translate('toolbar.workingFiles.empty' as TranslationKey, 'Рабочих файлов пока нет')}
+              </div>
+            )}
+            {workingFiles.length > 0 && filteredWorkingFiles.length === 0 && (
+              <div className="toolbar-working-file-menu-empty">
+                {translate('toolbar.workingFiles.noMatches' as TranslationKey, 'Ничего не найдено')}
+              </div>
+            )}
+            {filteredWorkingFiles.map((file) => (
+              <div key={`menu:${file.filePath}`} className="toolbar-working-file-menu-row" title={file.filePath}>
+                <button
+                  type="button"
+                  className="toolbar-working-file-menu-open-button"
+                  onClick={() => {
+                    onOpenWorkingFile(file.filePath);
+                    setWorkingFilesMenu(null);
+                  }}
+                >
+                  {file.fileName}
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-working-file-menu-remove-button"
+                  onClick={() => {
+                    onRemoveWorkingFile(file.filePath);
+                    setWorkingFilesMenu(null);
+                  }}
+                  aria-label={`${translate('toolbar.workingFiles.remove' as TranslationKey, 'Убрать из списка')} ${file.fileName}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -612,10 +1022,15 @@ const HotkeysPanel: React.FC<{
   );
 };
 
-const GraphFacts: React.FC<{ translate: (key: TranslationKey, fallback: string) => string }> = ({ translate }) => {
+const GraphFacts: React.FC<{
+  translate: (key: TranslationKey, fallback: string) => string;
+  classStorageStatus: ClassStorageStatus;
+  classNodesAdvancedEnabled: boolean;
+}> = ({ translate, classStorageStatus, classNodesAdvancedEnabled }) => {
   const graph = useGraphStore((state) => state.graph);
   const nodeCount = graph.nodes.length;
   const edgeCount = graph.edges.length;
+  const sidecarOkCount = classStorageStatus.classItems.filter((item) => item.status === 'ok').length;
 
   return (
     <div className="panel">
@@ -639,6 +1054,22 @@ const GraphFacts: React.FC<{ translate: (key: TranslationKey, fallback: string) 
               ? translate('toolbar.unsaved', 'Есть несохранённые изменения')
               : translate('overview.synced', 'Синхронизировано')}
           </div>
+        </div>
+        <div>
+          <div className="panel-label">{translate('overview.classStorage', 'Class Storage')}</div>
+          <div className="panel-value">{classStorageStatus.mode.toUpperCase()}</div>
+        </div>
+        <div>
+          <div className="panel-label">{translate('overview.classStorageSidecar', 'Sidecar')}</div>
+          <div className="panel-value">
+            {classStorageStatus.mode === 'sidecar'
+              ? `ok ${sidecarOkCount} · miss ${classStorageStatus.missing} · fail ${classStorageStatus.failed}`
+              : translate('overview.classStorageEmbedded', 'embedded mode')}
+          </div>
+        </div>
+        <div>
+          <div className="panel-label">{translate('overview.classNodes' as TranslationKey, 'Class Nodes')}</div>
+          <div className="panel-value">{classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE'}</div>
         </div>
       </div>
     </div>
@@ -1117,7 +1548,10 @@ const App: React.FC = () => {
   
   // Code preview state
   const [showCodePreview, setShowCodePreview] = useState(false);
+  const [showDependencySidebar, setShowDependencySidebar] = useState<boolean>(getInitialDependencySidebarVisible);
+  const [uiScale, setUiScale] = useState<number>(getInitialUiScale);
   const [codegenProfile, setCodegenProfile] = useState<CodegenOutputProfile>('clean');
+  const [codegenEntrypointMode, setCodegenEntrypointMode] = useState<CodegenEntrypointMode>('auto');
   
   // Hotkeys panel state
   const [showHotkeys, setShowHotkeys] = useState(false);
@@ -1137,7 +1571,11 @@ const App: React.FC = () => {
     fileName: null,
     filePath: null,
   });
+  const [classStorageStatus, setClassStorageStatus] = useState<ClassStorageStatus>(createDefaultClassStorageStatus);
+  const [classNodesConfig, setClassNodesConfig] = useState<ClassNodesConfig>(createDefaultClassNodesConfig);
   const [editableFiles, setEditableFiles] = useState<Array<{ fileName: string; filePath: string }>>([]);
+  const [manualWorkingFiles, setManualWorkingFiles] = useState<Array<{ fileName: string; filePath: string }>>([]);
+  const [hiddenWorkingFilePaths, setHiddenWorkingFilePaths] = useState<string[]>([]);
   const [dependencySourceFilePath, setDependencySourceFilePath] = useState<string>('');
   const graphChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGraphMutationRef = useRef<GraphMutationPayload | null>(null);
@@ -1206,6 +1644,72 @@ const App: React.FC = () => {
         sendToExtension(request as WebviewToExtensionMessage);
       }),
     []
+  );
+
+  const rememberWorkingFile = useCallback((filePath: string, fileName?: string): void => {
+    const normalizedPath = normalizeFilePath(filePath);
+    const matchPath = normalizeFilePathForMatch(normalizedPath);
+    const resolvedFileName = fileName?.trim() || extractFileName(normalizedPath);
+
+    setHiddenWorkingFilePaths((prev) => prev.filter((item) => item !== matchPath));
+    setManualWorkingFiles((prev) => {
+      const filtered = prev.filter((item) => normalizeFilePathForMatch(item.filePath) !== matchPath);
+      return [...filtered, { fileName: resolvedFileName, filePath: normalizedPath }];
+    });
+  }, []);
+
+  const workingFiles = useMemo<Array<{ fileName: string; filePath: string }>>(() => {
+    const hidden = new Set(hiddenWorkingFilePaths);
+    const byPath = new Map<string, { fileName: string; filePath: string }>();
+    const push = (file: { fileName: string; filePath: string }): void => {
+      const normalizedPath = normalizeFilePath(file.filePath);
+      const matchPath = normalizeFilePathForMatch(normalizedPath);
+      if (!normalizedPath || hidden.has(matchPath)) {
+        return;
+      }
+      byPath.set(matchPath, {
+        fileName: file.fileName || extractFileName(normalizedPath),
+        filePath: normalizedPath,
+      });
+    };
+
+    for (const file of editableFiles) {
+      push(file);
+    }
+    for (const file of manualWorkingFiles) {
+      push(file);
+    }
+    if (boundFile.filePath) {
+      push({
+        fileName: boundFile.fileName ?? extractFileName(boundFile.filePath),
+        filePath: boundFile.filePath,
+      });
+    }
+
+    return Array.from(byPath.values()).sort((left, right) => left.fileName.localeCompare(right.fileName, 'ru'));
+  }, [boundFile.fileName, boundFile.filePath, editableFiles, hiddenWorkingFilePaths, manualWorkingFiles]);
+
+  const pickFileFromDialog = useCallback(
+    async (purpose: 'bind' | 'dependency' | 'working'): Promise<{ fileName: string; filePath: string } | null> => {
+      const response = await requestExternalIpc({
+        type: 'file/pick',
+        payload: { purpose },
+      });
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      if (!response.payload.filePath) {
+        return null;
+      }
+
+      const filePath = normalizeFilePath(response.payload.filePath);
+      const fileName = response.payload.fileName ?? extractFileName(filePath);
+      rememberWorkingFile(filePath, fileName);
+      return { fileName, filePath };
+    },
+    [rememberWorkingFile, requestExternalIpc]
   );
 
   const synchronizeDependencyState = useCallback(
@@ -1341,6 +1845,22 @@ const App: React.FC = () => {
       // Ignore localStorage errors
     }
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEPENDENCY_SIDEBAR_KEY, showDependencySidebar ? '1' : '0');
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [showDependencySidebar]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [uiScale]);
   
   // Глобальный обработчик клавиш для панели горячих клавиш
   useEffect(() => {
@@ -1443,20 +1963,77 @@ const App: React.FC = () => {
     // Конвертируем обратно в GraphState для сохранения совместимости
     try {
       const newGraphState = migrateFromBlueprintFormat(newBlueprintGraph);
-      setGraph({ ...newGraphState, dirty: true }, { origin: 'local' });
+      const currentGraph = useGraphStore.getState().graph;
+      setGraph(
+        {
+          ...newGraphState,
+          integrationBindings: currentGraph.integrationBindings ?? [],
+          symbolLocalization: currentGraph.symbolLocalization ?? {},
+          dirty: true,
+        },
+        { origin: 'local' }
+      );
     } catch (error) {
       console.error('[MultiCode] migrateFromBlueprintFormat failed:', error);
     }
   }, [setGraph]);
 
-  const handleBlueprintClassesChange = useCallback((classes: BlueprintGraphState['classes']): void => {
-    handleBlueprintGraphChange({
-      ...blueprintGraph,
-      classes: classes ?? [],
-      updatedAt: new Date().toISOString(),
-      dirty: true,
-    });
-  }, [blueprintGraph, handleBlueprintGraphChange]);
+  const handleInsertExternalSymbol = useCallback((symbol: SymbolDescriptor, localizedName: string): void => {
+    if (!isTransferableExternalSymbol(symbol)) {
+      pushToast(
+        'warning',
+        translate(
+          'dependency.insert.unsupportedKind' as TranslationKey,
+          'Перенос в граф поддерживается только для function/method'
+        )
+      );
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const defaultPosition = { x: 320, y: 220 };
+    const nextGraph = (() => {
+      if (blueprintGraph.activeFunctionId && Array.isArray(blueprintGraph.functions)) {
+        const targetIndex = blueprintGraph.functions.findIndex((func) => func.id === blueprintGraph.activeFunctionId);
+        if (targetIndex >= 0) {
+          const targetFunction = blueprintGraph.functions[targetIndex];
+          const position = findNonOverlappingPosition(defaultPosition, targetFunction.graph.nodes);
+          const insertedNode = createExternalSymbolCallNode(symbol, localizedName, position);
+          const nextFunctions = [...blueprintGraph.functions];
+          nextFunctions[targetIndex] = {
+            ...targetFunction,
+            graph: {
+              ...targetFunction.graph,
+              nodes: [...targetFunction.graph.nodes, insertedNode],
+              edges: [...targetFunction.graph.edges],
+            },
+            updatedAt: nowIso,
+          };
+          return {
+            ...blueprintGraph,
+            functions: nextFunctions,
+            updatedAt: nowIso,
+            dirty: true,
+          };
+        }
+      }
+
+      const position = findNonOverlappingPosition(defaultPosition, blueprintGraph.nodes);
+      const insertedNode = createExternalSymbolCallNode(symbol, localizedName, position);
+      return {
+        ...blueprintGraph,
+        nodes: [...blueprintGraph.nodes, insertedNode],
+        updatedAt: nowIso,
+        dirty: true,
+      };
+    })();
+
+    handleBlueprintGraphChange(nextGraph);
+    pushToast(
+      'success',
+      translate('dependency.inserted' as TranslationKey, 'Символ добавлен в граф')
+    );
+  }, [blueprintGraph, handleBlueprintGraphChange, pushToast, translate]);
 
   useEffect(() => {
     localeRef.current = graph.displayLanguage;
@@ -1608,14 +2185,24 @@ const App: React.FC = () => {
         case 'boundFileChanged':
           setBoundFile({
             fileName: message.payload.fileName,
-            filePath: message.payload.filePath,
+            // VS Code на Windows отдаёт fsPath с `\\`, а UI хранит пути в `/` для стабильных сравнения/селектов.
+            filePath: message.payload.filePath ? normalizeFilePath(message.payload.filePath) : null,
           });
           break;
         case 'editableFilesChanged':
           setEditableFiles(message.payload.files);
           break;
+        case 'classStorageStatusChanged':
+          setClassStorageStatus(normalizeClassStorageStatus(message.payload));
+          break;
+        case 'classNodesConfigChanged':
+          setClassNodesConfig(message.payload);
+          break;
         case 'codegenProfileChanged':
           setCodegenProfile(message.payload.profile);
+          break;
+        case 'codegenEntrypointModeChanged':
+          setCodegenEntrypointMode(message.payload.mode);
           break;
         default:
           break;
@@ -1687,13 +2274,188 @@ const App: React.FC = () => {
     sendToExtension({ type: 'setCodegenProfile', payload: { profile } });
   };
 
+  const handleCodegenEntrypointModeChange = (mode: CodegenEntrypointMode): void => {
+    setCodegenEntrypointMode(mode);
+    sendToExtension({ type: 'setCodegenEntrypointMode', payload: { mode } });
+  };
+
   const handleBindFile = useCallback((filePath: string): void => {
     const trimmed = filePath.trim();
     if (!trimmed) {
       return;
     }
-    sendToExtension({ type: 'bindFile', payload: { filePath: trimmed } });
-  }, []);
+    const normalized = normalizeFilePath(trimmed);
+
+    // Оптимистично обновляем UI: controlled <select> должен мгновенно показывать выбор.
+    // Окончательное состояние всё равно подтвердит extension через boundFileChanged.
+    setBoundFile((prev) => {
+      const sameFile = prev.filePath && normalizeFilePathForMatch(prev.filePath) === normalizeFilePathForMatch(normalized);
+      const fileName = sameFile && prev.fileName ? prev.fileName : extractFileName(normalized);
+      return { fileName, filePath: normalized };
+    });
+
+    rememberWorkingFile(normalized);
+    sendToExtension({ type: 'bindFile', payload: { filePath: normalized } });
+  }, [rememberWorkingFile]);
+
+  const handleDependencySourceFileChange = useCallback((filePath: string): void => {
+    const trimmed = filePath.trim();
+    if (!trimmed) {
+      setDependencySourceFilePath('');
+      return;
+    }
+    const normalized = normalizeFilePath(trimmed);
+    rememberWorkingFile(normalized);
+    setDependencySourceFilePath(normalized);
+  }, [rememberWorkingFile]);
+
+  const handlePickBindFile = useCallback(async (): Promise<void> => {
+    try {
+      const picked = await pickFileFromDialog('bind');
+      if (!picked) {
+        return;
+      }
+      handleBindFile(picked.filePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `${translate('toolbar.bindFile.pickFailed' as TranslationKey, 'Не удалось выбрать файл')}: ${message}`);
+    }
+  }, [handleBindFile, pickFileFromDialog, pushToast, translate]);
+
+  const handlePickDependencyFile = useCallback(async (): Promise<void> => {
+    try {
+      const picked = await pickFileFromDialog('dependency');
+      if (!picked) {
+        return;
+      }
+      handleDependencySourceFileChange(picked.filePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `${translate('toolbar.dependencySource.pickFailed' as TranslationKey, 'Не удалось выбрать файл зависимости')}: ${message}`);
+    }
+  }, [handleDependencySourceFileChange, pickFileFromDialog, pushToast, translate]);
+
+  const handleAddWorkingFile = useCallback(async (): Promise<void> => {
+    try {
+      const picked = await pickFileFromDialog('working');
+      if (!picked) {
+        return;
+      }
+      pushToast('success', translate('toolbar.workingFiles.added' as TranslationKey, 'Файл добавлен: {name}', { name: picked.fileName }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `${translate('toolbar.workingFiles.addFailed' as TranslationKey, 'Не удалось добавить файл')}: ${message}`);
+    }
+  }, [pickFileFromDialog, pushToast, translate]);
+
+  const handleOpenWorkingFile = useCallback((filePath: string): void => {
+    handleBindFile(filePath);
+  }, [handleBindFile]);
+
+  const openPathInEditor = useCallback(async (filePath: string, label: string): Promise<void> => {
+    const normalizedPath = normalizeFilePath(filePath.trim());
+    if (!normalizedPath) {
+      pushToast('warning', `${label}: путь не указан`);
+      return;
+    }
+
+    try {
+      const response = await requestExternalIpc({
+        type: 'file/open',
+        payload: {
+          filePath: normalizedPath,
+          preview: false,
+          preserveFocus: false,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `${label}: ${message}`);
+    }
+  }, [pushToast, requestExternalIpc]);
+
+  const handleOpenClassSidecar = useCallback((classId: string): void => {
+    const item = classStorageStatus.classItems.find((entry) => entry.classId === classId);
+    const targetPath = item?.filePath?.trim();
+    if (!targetPath) {
+      pushToast('warning', 'Для этого класса sidecar-файл не найден');
+      return;
+    }
+    void openPathInEditor(targetPath, 'Не удалось открыть class sidecar');
+  }, [classStorageStatus.classItems, openPathInEditor, pushToast]);
+
+  const handleOpenGraphMulticode = useCallback((): void => {
+    const targetPath = classStorageStatus.graphFilePath?.trim();
+    if (!targetPath) {
+      pushToast('warning', 'Графовый .multicode-файл не найден');
+      return;
+    }
+    void openPathInEditor(targetPath, 'Не удалось открыть graph .multicode');
+  }, [classStorageStatus.graphFilePath, openPathInEditor, pushToast]);
+
+  const handleReloadClassStorage = useCallback(async (classId?: string): Promise<void> => {
+    try {
+      const response = await requestExternalIpc({
+        type: 'class/storage/reload',
+        payload: classId ? { classId } : {},
+      });
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+      const count = response.payload.reloaded;
+      if (count > 0) {
+        pushToast('success', classId ? 'Класс перечитан из sidecar' : `Перечитано классов: ${count}`);
+      } else {
+        pushToast('info', 'Нечего перечитывать');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `Не удалось перечитать class sidecar: ${message}`);
+    }
+  }, [pushToast, requestExternalIpc]);
+
+  const handleRepairClassStorage = useCallback(async (classId?: string): Promise<void> => {
+    try {
+      const response = await requestExternalIpc({
+        type: 'class/storage/repair',
+        payload: classId ? { classId } : {},
+      });
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+      const repaired = response.payload.repaired;
+      if (repaired > 0) {
+        pushToast('success', classId ? 'Привязка/sidecar класса восстановлена' : `Исправлено элементов class storage: ${repaired}`);
+      } else {
+        pushToast('info', 'Исправления не требуются');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      pushToast('error', `Не удалось починить class sidecar: ${message}`);
+    }
+  }, [pushToast, requestExternalIpc]);
+
+  const handleRemoveWorkingFile = useCallback((filePath: string): void => {
+    const normalized = normalizeFilePath(filePath);
+    const matchPath = normalizeFilePathForMatch(normalized);
+    if (boundFile.filePath && normalizeFilePathForMatch(boundFile.filePath) === matchPath) {
+      pushToast(
+        'warning',
+        translate('toolbar.workingFiles.removeActive' as TranslationKey, 'Нельзя убрать активный файл из рабочего списка')
+      );
+      return;
+    }
+
+    if (dependencySourceFilePath && normalizeFilePathForMatch(dependencySourceFilePath) === matchPath) {
+      setDependencySourceFilePath('');
+    }
+
+    setManualWorkingFiles((prev) => prev.filter((item) => normalizeFilePathForMatch(item.filePath) !== matchPath));
+    setHiddenWorkingFilePaths((prev) => (prev.includes(matchPath) ? prev : [...prev, matchPath]));
+  }, [boundFile.filePath, dependencySourceFilePath, pushToast, translate]);
 
   const handleAddCurrentFileDependency = useCallback(async (): Promise<void> => {
     const targetFilePath = boundFile.filePath?.trim();
@@ -1882,20 +2644,26 @@ const App: React.FC = () => {
   ]);
 
   useEffect(() => {
+    if (boundFile.filePath) {
+      rememberWorkingFile(boundFile.filePath, boundFile.fileName ?? undefined);
+    }
+  }, [boundFile.fileName, boundFile.filePath, rememberWorkingFile]);
+
+  useEffect(() => {
     if (!dependencySourceFilePath && boundFile.filePath) {
       setDependencySourceFilePath(boundFile.filePath);
     }
   }, [boundFile.filePath, dependencySourceFilePath]);
 
   useEffect(() => {
-    if (editableFiles.length === 0) {
+    if (workingFiles.length === 0) {
       if (dependencySourceFilePath) {
         setDependencySourceFilePath('');
       }
       return;
     }
 
-    const knownPaths = new Set(editableFiles.map((file) => normalizeFilePathForMatch(file.filePath)));
+    const knownPaths = new Set(workingFiles.map((file) => normalizeFilePathForMatch(file.filePath)));
     const selectedPath = normalizeFilePathForMatch(dependencySourceFilePath);
     if (selectedPath && knownPaths.has(selectedPath)) {
       return;
@@ -1903,10 +2671,10 @@ const App: React.FC = () => {
 
     const fallbackPath = boundFile.filePath && knownPaths.has(normalizeFilePathForMatch(boundFile.filePath))
       ? boundFile.filePath
-      : editableFiles[0]?.filePath ?? '';
+      : workingFiles[0]?.filePath ?? '';
 
     setDependencySourceFilePath(fallbackPath);
-  }, [boundFile.filePath, dependencySourceFilePath, editableFiles]);
+  }, [boundFile.filePath, dependencySourceFilePath, workingFiles]);
 
   useEffect(() => {
     setTranslationDirection(graph.displayLanguage === 'ru' ? 'ru-en' : 'en-ru');
@@ -1950,6 +2718,12 @@ const App: React.FC = () => {
           graph={blueprintGraph}
           onGraphChange={handleBlueprintGraphChange}
           displayLanguage={locale}
+          classStorageStatus={classStorageStatus}
+          classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
+          onOpenClassSidecar={handleOpenClassSidecar}
+          onOpenGraphMulticode={handleOpenGraphMulticode}
+          onReloadClassStorage={handleReloadClassStorage}
+          onRepairClassStorage={handleRepairClassStorage}
           externalSymbols={allExternalSymbols}
           integrations={integrations}
           activeFilePath={boundFile.filePath}
@@ -1963,9 +2737,11 @@ const App: React.FC = () => {
       return (
         <DependencyViewPanel
           useGraphStore={useGraphStore}
+          mode="standalone"
           displayLanguage={locale}
           activeFilePath={boundFile.filePath}
           onDetachDependency={handleDetachDependency}
+          onInsertSymbol={handleInsertExternalSymbol}
         />
       );
     }
@@ -1986,7 +2762,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ zoom: uiScale }}>
       <Toolbar
         locale={locale}
         onLocaleChange={handleLocaleChange}
@@ -2001,15 +2777,26 @@ const App: React.FC = () => {
         onShowCodePreviewChange={setShowCodePreview}
         onShowHotkeys={() => setShowHotkeys(true)}
         onShowHelp={() => setShowHelp(true)}
+        uiScale={uiScale}
+        onUiScaleChange={setUiScale}
         boundFileName={boundFile.fileName}
         boundFilePath={boundFile.filePath}
-        editableFiles={editableFiles}
+        classStorageStatus={classStorageStatus}
+        classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
+        workingFiles={workingFiles}
         dependencySourceFilePath={dependencySourceFilePath}
-        onDependencySourceFileChange={setDependencySourceFilePath}
+        onDependencySourceFileChange={handleDependencySourceFileChange}
         onBindFile={handleBindFile}
+        onPickBindFile={() => void handlePickBindFile()}
+        onPickDependencyFile={() => void handlePickDependencyFile()}
         onAddCurrentFileDependency={handleAddCurrentFileDependency}
+        onAddWorkingFile={() => void handleAddWorkingFile()}
+        onOpenWorkingFile={handleOpenWorkingFile}
+        onRemoveWorkingFile={handleRemoveWorkingFile}
         codegenProfile={codegenProfile}
         onCodegenProfileChange={handleCodegenProfileChange}
+        codegenEntrypointMode={codegenEntrypointMode}
+        onCodegenEntrypointModeChange={handleCodegenEntrypointModeChange}
       />
       
       {/* Панель горячих клавиш */}
@@ -2049,11 +2836,35 @@ const App: React.FC = () => {
               />
             )}
             {editorMode === 'blueprint' && (
-              <ClassPanel
-                graphState={blueprintGraph}
-                onClassesChange={handleBlueprintClassesChange}
-                displayLanguage={locale}
-              />
+              <div className="panel">
+                <div
+                  className="panel-title"
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                >
+                  <span>{locale === 'ru' ? 'Dependency View' : 'Dependency View'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowDependencySidebar((value) => !value)}
+                    style={{ fontSize: 11 }}
+                  >
+                    {showDependencySidebar
+                      ? (locale === 'ru' ? 'Скрыть' : 'Hide')
+                      : (locale === 'ru' ? 'Показать' : 'Show')}
+                  </button>
+                 </div>
+                  {showDependencySidebar && (
+                  <div style={{ height: 420, minHeight: 0, overflow: 'hidden' }}>
+                    <DependencyViewPanel
+                      useGraphStore={useGraphStore}
+                      mode="sidebar"
+                      displayLanguage={locale}
+                      activeFilePath={boundFile.filePath}
+                      onDetachDependency={handleDetachDependency}
+                      onInsertSymbol={handleInsertExternalSymbol}
+                    />
+                  </div>
+                )}
+              </div>
             )}
             
             {/* Общие панели для Blueprint и Classic */}
@@ -2074,7 +2885,11 @@ const App: React.FC = () => {
                   lastConnectionToken={lastConnectionToken}
                 />
               )}
-              <GraphFacts translate={translate} />
+              <GraphFacts
+                translate={translate}
+                classStorageStatus={classStorageStatus}
+                classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
+              />
               <ValidationPanel validation={validation} translate={translate} />
             </>
           </div>

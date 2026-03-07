@@ -33,7 +33,6 @@ import {
   BlueprintNode as BlueprintNodeType,
   BlueprintEdge,
   BlueprintVariable,
-  FunctionParameter,
   NodePort,
   createNode,
   createNodeFromDefinition,
@@ -66,10 +65,25 @@ import {
 import { FunctionListPanel } from './FunctionListPanel';
 import { VariableListPanel } from './VariableListPanel';
 import { PointerReferencePanel } from './PointerReferencePanel';
-import type { BlueprintFunction } from '../shared/blueprintTypes';
+import { ClassPanel } from './ClassPanel';
+import type { BlueprintClass, BlueprintFunction } from '../shared/blueprintTypes';
 import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
 import type { BundledPackageSettings } from '../shared/bundledPackages';
 import { resolveSymbolUiStatus, type SymbolBadgeState } from './externalSymbolUi';
+import {
+  createExternalSymbolCallNode,
+  deserializeExternalSymbolDragPayload,
+  EXTERNAL_SYMBOL_DRAG_MIME,
+} from './externalSymbolNodeFactory';
+import {
+  CLASS_NODE_DRAG_MIME,
+  createClassNodeFromInsertRequest,
+  deserializeClassNodeDragPayload,
+  rebindClassNodesInBlueprintState,
+  type ClassNodeInsertRequest,
+} from './classNodeFactory';
+import { createClassStorageAdapter } from './classStorageAdapter';
+import type { ClassStorageStatus } from '../shared/messages';
 import {
   type AvailableVariableBinding,
   bindVariableToNode,
@@ -92,7 +106,7 @@ import {
 } from './numericNodeTyping';
 
 const EDGE_INTERACTION_WIDTH = 24;
-const BLOCK_SHORTCUTS_WHEN_DIALOG_OPEN_SELECTOR = '.variable-dialog-overlay, .pointer-dialog-overlay, .function-editor-overlay';
+const BLOCK_SHORTCUTS_WHEN_DIALOG_OPEN_SELECTOR = '.variable-dialog-overlay, .pointer-dialog-overlay, .function-editor-overlay, .class-editor-overlay';
 const FUNCTION_BOUNDARY_NODE_TYPES = new Set<NodeType>(['FunctionEntry', 'FunctionReturn']);
 
 const isTextInputContext = (target: EventTarget | null): boolean => {
@@ -1181,118 +1195,6 @@ const normalizePaletteSearchToken = (value: string): string =>
     .toLowerCase()
     .replace(/[\s_-]+/g, '');
 
-const splitFunctionParameterList = (parametersRaw: string): string[] => {
-  const parts: string[] = [];
-  let buffer = '';
-  let angleDepth = 0;
-  let parenDepth = 0;
-
-  for (const char of parametersRaw) {
-    if (char === '<') {
-      angleDepth += 1;
-    } else if (char === '>') {
-      angleDepth = Math.max(0, angleDepth - 1);
-    } else if (char === '(') {
-      parenDepth += 1;
-    } else if (char === ')') {
-      parenDepth = Math.max(0, parenDepth - 1);
-    }
-
-    if (char === ',' && angleDepth === 0 && parenDepth === 0) {
-      const token = buffer.trim();
-      if (token.length > 0) {
-        parts.push(token);
-      }
-      buffer = '';
-      continue;
-    }
-
-    buffer += char;
-  }
-
-  const tail = buffer.trim();
-  if (tail.length > 0) {
-    parts.push(tail);
-  }
-
-  return parts;
-};
-
-const mapExternalParameterTypeToPortDataType = (typeText: string): PortDataType => {
-  const normalized = typeText.toLowerCase();
-
-  if (normalized.includes('std::string') || normalized.includes('string_view') || normalized.includes('char')) {
-    return 'string';
-  }
-  if (normalized.includes('bool')) {
-    return 'bool';
-  }
-  if (normalized.includes('double')) {
-    return 'double';
-  }
-  if (normalized.includes('float')) {
-    return 'float';
-  }
-  if (normalized.includes('int64') || normalized.includes('long long')) {
-    return 'int64';
-  }
-  if (normalized.includes('int') || normalized.includes('short') || normalized.includes('size_t') || normalized.includes('unsigned')) {
-    return 'int32';
-  }
-  if (normalized.includes('std::vector')) {
-    return 'vector';
-  }
-  if (normalized.includes('std::array') || normalized.endsWith('[]')) {
-    return 'array';
-  }
-
-  return 'any';
-};
-
-const parseExternalInputParameters = (signature?: string): FunctionParameter[] => {
-  if (!signature) {
-    return [];
-  }
-
-  const signatureMatch = signature.match(/\((.*)\)/);
-  if (!signatureMatch) {
-    return [];
-  }
-
-  const rawParameters = signatureMatch[1]?.trim() ?? '';
-  if (!rawParameters || rawParameters === 'void') {
-    return [];
-  }
-
-  const parameterTokens = splitFunctionParameterList(rawParameters);
-  const parsedParameters: FunctionParameter[] = [];
-
-  for (const [index, parameterToken] of parameterTokens.entries()) {
-    const withoutDefault = parameterToken.split('=')[0]?.trim() ?? '';
-    if (!withoutDefault || withoutDefault === '...') {
-      continue;
-    }
-
-    const nameMatch = /([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?$/.exec(withoutDefault);
-    const rawName = nameMatch?.[1] ?? `arg${index + 1}`;
-    const safeId = rawName
-      .toLowerCase()
-      .replace(/[^a-z0-9_]+/g, '_')
-      .replace(/^_+|_+$/g, '') || `arg${index + 1}`;
-    const typeText = nameMatch ? withoutDefault.slice(0, nameMatch.index).trim() : withoutDefault;
-
-    parsedParameters.push({
-      id: `ext_arg_${index + 1}_${safeId}`,
-      name: rawName,
-      nameRu: rawName,
-      direction: 'input',
-      dataType: mapExternalParameterTypeToPortDataType(typeText),
-    });
-  }
-
-  return parsedParameters;
-};
-
 const NodePalette: React.FC<NodePaletteProps> = ({ 
   visible, 
   displayLanguage, 
@@ -1333,6 +1235,12 @@ const NodePalette: React.FC<NodePaletteProps> = ({
           if (def.type === 'Variable') return false;
           if (def.type === 'GetVariable') return false;
           if (def.type === 'SetVariable') return false;
+          // Class-binding nodes are created from ClassPanel with concrete class/member/method binding.
+          if (def.type === 'ClassMethodCall') return false;
+          if (def.type === 'ClassConstructorCall') return false;
+          if (def.type === 'GetMember') return false;
+          if (def.type === 'SetMember') return false;
+          if (def.type === 'StaticMethodCall') return false;
           if (!term) return true;
           const label = displayLanguage === 'ru' ? def.labelRu : def.label;
           if (label.toLowerCase().includes(term)) {
@@ -1598,7 +1506,14 @@ const NodePalette: React.FC<NodePaletteProps> = ({
 export interface BlueprintEditorProps {
   graph: BlueprintGraphState;
   onGraphChange: (graph: BlueprintGraphState) => void;
+  onClassesChange?: (classes: BlueprintClass[]) => void;
   displayLanguage: 'ru' | 'en';
+  classStorageStatus?: ClassStorageStatus;
+  classNodesAdvancedEnabled?: boolean;
+  onOpenClassSidecar?: (classId: string) => void;
+  onOpenGraphMulticode?: () => void;
+  onReloadClassStorage?: (classId?: string) => void;
+  onRepairClassStorage?: (classId?: string) => void;
   /**
    * Если задано, редактор "прикалывается" к конкретной функции и редактирует её граф.
    * Используется для модального редактора функции поверх EventGraph.
@@ -1620,7 +1535,14 @@ export interface BlueprintEditorProps {
 const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   graph,
   onGraphChange,
+  onClassesChange,
   displayLanguage,
+  classStorageStatus,
+  classNodesAdvancedEnabled = false,
+  onOpenClassSidecar,
+  onOpenGraphMulticode,
+  onReloadClassStorage,
+  onRepairClassStorage,
   forcedActiveFunctionId,
   uiMode = 'default',
   externalSymbols = [],
@@ -1664,6 +1586,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       registryVersion,
     };
   }, [registry, registryVersion]);
+
+  const classStorageAdapter = useMemo(
+    () => createClassStorageAdapter(classStorageStatus?.mode ?? 'embedded'),
+    [classStorageStatus?.mode]
+  );
 
   const createNodeByType = useCallback((
     type: NodeType,
@@ -1753,9 +1680,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [functionPanelVisible, setFunctionPanelVisible] = useState(!isFunctionModal); // В модальном редакторе функции панель функций скрыта
   const [variablePanelVisible, setVariablePanelVisible] = useState(true); // Панель переменных видна по умолчанию
   const [pointerPanelVisible, setPointerPanelVisible] = useState(true); // Панель указателей/ссылок видна по умолчанию
+  const [classPanelVisible, setClassPanelVisible] = useState(!isFunctionModal); // Панель классов
   const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
   const [isPointersSectionCollapsed, setIsPointersSectionCollapsed] = useState(false);
+  const [isClassesSectionCollapsed, setIsClassesSectionCollapsed] = useState(false);
   const [pointerAttachPointerId, setPointerAttachPointerId] = useState<string | null>(null);
   const [pointerAttachError, setPointerAttachError] = useState<string | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
@@ -2988,7 +2917,9 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     // Проверяем, что дропнули - узел из палитры или переменную
     const nodeType = e.dataTransfer.getData('application/reactflow') as NodeType;
     const variableData = e.dataTransfer.getData('application/variable');
-    
+    const externalSymbolData = e.dataTransfer.getData(EXTERNAL_SYMBOL_DRAG_MIME);
+    const classNodeData = e.dataTransfer.getData(CLASS_NODE_DRAG_MIME);
+
     if (variableData) {
       // Drag & Drop переменной из VariableListPanel
       try {
@@ -3020,6 +2951,47 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       }
       return;
     }
+
+    if (externalSymbolData) {
+      const payload = deserializeExternalSymbolDragPayload(externalSymbolData);
+      if (!payload) {
+        return;
+      }
+      setNodes((currentNodes) => {
+        const nonOverlappingPosition = computeNodePosition(dropPosition, currentNodes, 20);
+        const callNode = createExternalSymbolCallNode(payload.symbol, payload.localizedName, nonOverlappingPosition);
+        const flowNode = buildFlowNode(callNode as BlueprintNodeType);
+        const newNodes = [...currentNodes, flowNode];
+        setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
+        return newNodes;
+      });
+      return;
+    }
+
+    if (classNodeData) {
+      const request = deserializeClassNodeDragPayload(classNodeData);
+      if (!request) {
+        return;
+      }
+      const availableClasses = classStorageAdapter.readClasses(graph);
+      setNodes((currentNodes) => {
+        const nonOverlappingPosition = computeNodePosition(dropPosition, currentNodes, 20);
+        const insertedNode = createClassNodeFromInsertRequest(
+          availableClasses,
+          request,
+          nonOverlappingPosition,
+          displayLanguage
+        );
+        if (!insertedNode) {
+          return currentNodes;
+        }
+        const flowNode = buildFlowNode(insertedNode);
+        const newNodes = [...currentNodes, flowNode];
+        setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
+        return newNodes;
+      });
+      return;
+    }
     
     if (nodeType) {
       // Drag & Drop узла из палитры
@@ -3034,6 +3006,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     }
   }, [
     screenToFlowPosition,
+    classStorageAdapter,
+    graph,
     scopedVariables,
     displayLanguage,
     setNodes,
@@ -3074,49 +3048,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const handleAddExternalSymbol = useCallback((symbol: SymbolDescriptor, localizedName: string, position: XYPosition) => {
     setNodes((currentNodes) => {
       const nonOverlappingPosition = computeNodePosition(position, currentNodes, 20);
-      const timestamp = new Date().toISOString();
-      const qualifiedFunctionName = Array.isArray(symbol.namespacePath) && symbol.namespacePath.length > 0
-        ? `${symbol.namespacePath.join('::')}::${symbol.name}`
-        : symbol.name;
-      const inputParameters = parseExternalInputParameters(symbol.signature);
-      const syntheticFunction: BlueprintFunction = {
-        id: `external::${symbol.integrationId}::${symbol.id}`,
-        name: qualifiedFunctionName,
-        nameRu: localizedName || symbol.name,
-        parameters: inputParameters,
-        graph: {
-          nodes: [],
-          edges: [],
-        },
-        isPure: false,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-
-      const callNode = createCallUserFunctionNode(syntheticFunction, nonOverlappingPosition);
-      const nodeWithBinding: BlueprintNodeType = {
-        ...callNode,
-        properties: {
-          ...(callNode.properties ?? {}),
-          externalSymbol: {
-            integrationId: symbol.integrationId,
-            symbolId: symbol.id,
-            signature: symbol.signature,
-            signatureHash: symbol.signatureHash,
-            qualifiedName: qualifiedFunctionName,
-          },
-          symbolRef: {
-            integrationId: symbol.integrationId,
-            symbolId: symbol.id,
-            signature: symbol.signature,
-            signatureHash: symbol.signatureHash,
-            qualifiedName: qualifiedFunctionName,
-          },
-          symbolKind: symbol.symbolKind,
-        },
-      };
-
-      const flowNode = buildFlowNode(nodeWithBinding);
+      const callNode = createExternalSymbolCallNode(symbol, localizedName, nonOverlappingPosition);
+      const flowNode = buildFlowNode(callNode as BlueprintNodeType);
       const newNodes = [...currentNodes, flowNode];
       setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
       return newNodes;
@@ -3133,6 +3066,47 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     });
     handleAddCallFunction(functionId, position);
   }, [handleAddCallFunction, screenToFlowPosition]);
+
+  const insertClassNodeAtPosition = useCallback((request: ClassNodeInsertRequest, desiredPosition: XYPosition) => {
+    const availableClasses = classStorageAdapter.readClasses(graph);
+    setNodes((currentNodes) => {
+      const nonOverlappingPosition = computeNodePosition(desiredPosition, currentNodes, 20);
+      const insertedNode = createClassNodeFromInsertRequest(
+        availableClasses,
+        request,
+        nonOverlappingPosition,
+        displayLanguage
+      );
+      if (!insertedNode) {
+        setNormalizationToast(
+          displayLanguage === 'ru'
+            ? 'Не удалось добавить узел класса: элемент не найден.'
+            : 'Cannot add class node: target class entity is missing.'
+        );
+        return currentNodes;
+      }
+      const flowNode = buildFlowNode(insertedNode);
+      const newNodes = [...currentNodes, flowNode];
+      setTimeout(() => notifyGraphChange(newNodes, edgesRef.current), 0);
+      return newNodes;
+    });
+  }, [
+    buildFlowNode,
+    classStorageAdapter,
+    computeNodePosition,
+    displayLanguage,
+    graph,
+    notifyGraphChange,
+    setNodes,
+  ]);
+
+  const handleInsertClassNode = useCallback((request: ClassNodeInsertRequest) => {
+    const centerPosition = screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+    insertClassNodeAtPosition(request, centerPosition);
+  }, [insertClassNodeAtPosition, screenToFlowPosition]);
   
   // Create GetVariable node from VariableListPanel
   const handleCreateGetVariable = useCallback((variable: BlueprintVariable) => {
@@ -3310,6 +3284,52 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     globalVariables,
     handleVariablesChange,
   ]);
+
+  const handleClassesChange = useCallback((classes: BlueprintClass[]) => {
+    const normalizedClasses = classes.map((classItem) => ({
+      ...classItem,
+      nameRu: classItem.nameRu ?? classItem.name,
+      classType: classItem.classType ?? 'class',
+      baseClasses: Array.isArray(classItem.baseClasses) ? classItem.baseClasses : [],
+      headerIncludes: Array.isArray(classItem.headerIncludes) ? classItem.headerIncludes : [],
+      sourceIncludes: Array.isArray(classItem.sourceIncludes) ? classItem.sourceIncludes : [],
+      forwardDecls: Array.isArray(classItem.forwardDecls) ? classItem.forwardDecls : [],
+      members: classItem.members.map((member) => ({
+        ...member,
+        nameRu: member.nameRu ?? member.name,
+        isStatic: member.isStatic === true,
+      })),
+      methods: classItem.methods.map((method) => ({
+        ...method,
+        nameRu: method.nameRu ?? method.name,
+        methodKind: method.methodKind ?? 'method',
+        isNoexcept: method.isNoexcept === true,
+        isPureVirtual: method.isPureVirtual === true,
+        params: method.params.map((param) => ({
+          ...param,
+          nameRu: param.nameRu ?? param.name,
+        })),
+      })),
+    }));
+
+    const graphWithClasses = classStorageAdapter.writeClasses(graph, normalizedClasses);
+    const rebindResult = rebindClassNodesInBlueprintState(
+      graphWithClasses,
+      normalizedClasses,
+      displayLanguage
+    );
+
+    onGraphChange(rebindResult.graph);
+    onClassesChange?.(rebindResult.graph.classes ?? normalizedClasses);
+
+    if (rebindResult.brokenNodeIds.length > 0) {
+      setNormalizationToast(
+        displayLanguage === 'ru'
+          ? `Обновлены классы: ${rebindResult.brokenNodeIds.length} узл(ов) помечены как broken.`
+          : `Classes updated: ${rebindResult.brokenNodeIds.length} node(s) marked as broken.`
+      );
+    }
+  }, [classStorageAdapter, displayLanguage, graph, onClassesChange, onGraphChange]);
 
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, flowNode: Node) => {
@@ -3819,6 +3839,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     code: displayLanguage === 'ru' ? 'Код (C)' : 'Code (C)',
     packages: displayLanguage === 'ru' ? 'Пакеты (P)' : 'Packages (P)',
     functions: displayLanguage === 'ru' ? 'Функции' : 'Functions',
+    classes: displayLanguage === 'ru' ? 'Классы' : 'Classes',
     pointers: displayLanguage === 'ru' ? 'Указатели' : 'Pointers',
     undo: displayLanguage === 'ru' ? 'Отменить' : 'Undo',
     redo: displayLanguage === 'ru' ? 'Повторить' : 'Redo',
@@ -3855,11 +3876,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     edges: Array.isArray(graph.edges) ? graph.edges : [],
   }), [graph]);
 
-  const hasLeftSidebar = functionPanelVisible || variablePanelVisible || pointerPanelVisible;
+  const hasLeftSidebar = functionPanelVisible || variablePanelVisible || pointerPanelVisible || classPanelVisible;
   const expandedSidebarSections =
     (functionPanelVisible && !isFunctionsSectionCollapsed ? 1 : 0) +
     (variablePanelVisible && !isVariablesSectionCollapsed ? 1 : 0) +
-    (pointerPanelVisible && !isPointersSectionCollapsed ? 1 : 0);
+    (pointerPanelVisible && !isPointersSectionCollapsed ? 1 : 0) +
+    (classPanelVisible && !isClassesSectionCollapsed ? 1 : 0);
   const shouldBalanceExpandedSections = expandedSidebarSections > 1;
 
   useEffect(() => {
@@ -3872,9 +3894,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         functionPanelVisible,
         variablePanelVisible,
         pointerPanelVisible,
+        classPanelVisible,
         isFunctionsSectionCollapsed,
         isVariablesSectionCollapsed,
         isPointersSectionCollapsed,
+        isClassesSectionCollapsed,
         variablesCount: scopedVariables.length,
       },
     };
@@ -3886,6 +3910,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     isFunctionsSectionCollapsed,
     isPointersSectionCollapsed,
     isVariablesSectionCollapsed,
+    isClassesSectionCollapsed,
+    classPanelVisible,
     pointerPanelVisible,
     scopedVariables,
     variablePanelVisible,
@@ -3912,7 +3938,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
-          {functionPanelVisible && (variablePanelVisible || pointerPanelVisible) && (
+          {functionPanelVisible && (variablePanelVisible || pointerPanelVisible || classPanelVisible) && (
             <div className="left-sidebar-divider" />
           )}
 
@@ -3935,7 +3961,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
-          {variablePanelVisible && pointerPanelVisible && (
+          {variablePanelVisible && (pointerPanelVisible || classPanelVisible) && (
             <div className="left-sidebar-divider" />
           )}
 
@@ -3953,6 +3979,42 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 displayLanguage={displayLanguage}
                 collapsed={isPointersSectionCollapsed}
                 onToggleCollapsed={() => setIsPointersSectionCollapsed(value => !value)}
+              />
+            </div>
+          )}
+
+          {pointerPanelVisible && classPanelVisible && (
+            <div className="left-sidebar-divider" />
+          )}
+
+          {classPanelVisible && (
+            <div
+              className={`left-sidebar-section ${isClassesSectionCollapsed ? 'collapsed' : ''} ${shouldBalanceExpandedSections && !isClassesSectionCollapsed ? 'balanced' : ''}`}
+            >
+              <ClassPanel
+                graphState={graph}
+                onClassesChange={handleClassesChange}
+                displayLanguage={displayLanguage}
+                classStorageStatus={classStorageStatus}
+                classNodesAdvancedEnabled={classNodesAdvancedEnabled}
+                collapsed={isClassesSectionCollapsed}
+                onToggleCollapsed={() => setIsClassesSectionCollapsed(value => !value)}
+                onInsertClassNode={handleInsertClassNode}
+                onOpenClassSidecar={onOpenClassSidecar}
+                onOpenGraphMulticode={onOpenGraphMulticode}
+                onReloadClassStorage={onReloadClassStorage}
+                onRepairClassStorage={onRepairClassStorage}
+                onOpenClassEditor={(classId) => {
+                  window.dispatchEvent(
+                    new CustomEvent('multicode:ui-trace', {
+                      detail: {
+                        source: 'ClassPanel',
+                        action: 'openClassEditor',
+                        classId,
+                      },
+                    }),
+                  );
+                }}
               />
             </div>
           )}
@@ -4168,6 +4230,16 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 <span>🔗</span>
                 <span>{t.pointers}</span>
               </button>
+
+              {!isFunctionModal && (
+                <button
+                  onClick={() => setClassPanelVisible(v => !v)}
+                  className={`panel-btn ${classPanelVisible ? 'active-purple' : ''}`}
+                >
+                  <span>🏛️</span>
+                  <span>{t.classes}</span>
+                </button>
+              )}
               
               {/* Разделитель */}
               <div className="panel-divider" />

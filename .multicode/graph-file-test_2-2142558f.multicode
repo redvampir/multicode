@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "savedAt": "2026-03-02T10:48:00.065Z",
+  "savedAt": "2026-03-03T10:42:33.959Z",
   "data": {
     "id": "graph-file-test_2-2142558f",
     "name": "test_2",
+    "graphVersion": 3,
     "language": "cpp",
     "displayLanguage": "ru",
     "nodes": [
@@ -75,10 +76,169 @@
             "functionName": "newFunction2"
           }
         }
+      },
+      {
+        "id": "node-1772519526727-p60220i29",
+        "label": "Test_class.field1",
+        "type": "Variable",
+        "position": {
+          "x": -192,
+          "y": -48
+        },
+        "blueprintNode": {
+          "id": "node-1772519526727-p60220i29",
+          "label": "Test_class.field1",
+          "type": "GetMember",
+          "position": {
+            "x": -192,
+            "y": -48
+          },
+          "inputs": [
+            {
+              "id": "node-1772519526727-p60220i29-target",
+              "name": "Target",
+              "nameRu": "Объект",
+              "dataType": "class",
+              "direction": "input",
+              "index": 0,
+              "connected": false,
+              "typeName": "Test_class",
+              "classId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+              "targetClassId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "node-1772519526727-p60220i29-value",
+              "name": "field1",
+              "nameRu": "field1",
+              "dataType": "int32",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "properties": {
+            "classId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+            "memberId": "member-65a0824f-0772-4a66-a2d3-a80260209e9c",
+            "targetClassName": "Test_class",
+            "targetMemberName": "field1",
+            "targetMemberNameRu": "field1",
+            "kind": "class-get-member"
+          }
+        }
+      },
+      {
+        "id": "node-1772519622663-ypbd3993b",
+        "label": "Создать Test_class",
+        "type": "Variable",
+        "position": {
+          "x": -432,
+          "y": -128
+        },
+        "blueprintNode": {
+          "id": "node-1772519622663-ypbd3993b",
+          "label": "Создать Test_class",
+          "type": "ClassConstructorCall",
+          "position": {
+            "x": -432,
+            "y": -128
+          },
+          "inputs": [
+            {
+              "id": "node-1772519622663-ypbd3993b-exec-in",
+              "name": "",
+              "nameRu": "",
+              "dataType": "execution",
+              "direction": "input",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "outputs": [
+            {
+              "id": "node-1772519622663-ypbd3993b-exec-out",
+              "name": "",
+              "nameRu": "",
+              "dataType": "execution",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            },
+            {
+              "id": "node-1772519622663-ypbd3993b-instance",
+              "name": "Instance",
+              "nameRu": "Экземпляр",
+              "dataType": "class",
+              "direction": "output",
+              "index": 1,
+              "connected": false,
+              "typeName": "Test_class",
+              "classId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+              "targetClassId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322"
+            }
+          ],
+          "properties": {
+            "classId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+            "targetClassName": "Test_class",
+            "targetClassNameRu": "Test_class",
+            "targetClassTypeName": "Test_class",
+            "kind": "class-constructor"
+          }
+        }
       }
     ],
-    "edges": [],
-    "updatedAt": "2026-03-02T10:47:53.921Z",
+    "edges": [
+      {
+        "id": "edge-1772519591478-yvecid4",
+        "source": "node-1772519526727-p60220i29",
+        "target": "call-1772448445184-chtgku1yu",
+        "label": "data",
+        "kind": "data",
+        "blueprintEdge": {
+          "id": "edge-1772519591478-yvecid4",
+          "sourceNode": "node-1772519526727-p60220i29",
+          "sourcePort": "node-1772519526727-p60220i29-value",
+          "targetNode": "call-1772448445184-chtgku1yu",
+          "targetPort": "call-1772448445184-chtgku1yu-param-1772448397984-gd7fm7",
+          "kind": "data",
+          "dataType": "int32"
+        }
+      },
+      {
+        "id": "edge-1772519597326-tsf37m6",
+        "source": "node-1772519526727-p60220i29",
+        "target": "call-1772448445184-chtgku1yu",
+        "label": "data",
+        "kind": "data",
+        "blueprintEdge": {
+          "id": "edge-1772519597326-tsf37m6",
+          "sourceNode": "node-1772519526727-p60220i29",
+          "sourcePort": "node-1772519526727-p60220i29-value",
+          "targetNode": "call-1772448445184-chtgku1yu",
+          "targetPort": "call-1772448445184-chtgku1yu-param-1772448400383-bnjhyl",
+          "kind": "data",
+          "dataType": "int32"
+        }
+      },
+      {
+        "id": "edge-1772519629839-oceb828",
+        "source": "node-1772519622663-ypbd3993b",
+        "target": "node-1772519526727-p60220i29",
+        "label": "data",
+        "kind": "data",
+        "blueprintEdge": {
+          "id": "edge-1772519629839-oceb828",
+          "sourceNode": "node-1772519622663-ypbd3993b",
+          "sourcePort": "node-1772519622663-ypbd3993b-instance",
+          "targetNode": "node-1772519526727-p60220i29",
+          "targetPort": "node-1772519526727-p60220i29-target",
+          "kind": "data",
+          "dataType": "class"
+        }
+      }
+    ],
+    "updatedAt": "2026-03-03T10:42:33.484Z",
     "dirty": false,
     "variables": [],
     "functions": [
@@ -278,6 +438,14 @@
         "updatedAt": "2026-03-02T10:47:14.431Z"
       }
     ],
-    "classes": []
+    "classes": [],
+    "integrationBindings": [],
+    "symbolLocalization": {},
+    "classBindings": [
+      {
+        "classId": "class-138e29b0-e6e8-437d-b052-6b3ee0262322",
+        "file": ".multicode/classes/class-138e29b0-e6e8-437d-b052-6b3ee0262322.multicode"
+      }
+    ]
   }
 }

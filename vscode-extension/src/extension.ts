@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GraphPanel } from './panel/GraphPanel';
+import { registerCreateClassFilesAndBindCommand } from './commands/createClassFilesAndBind';
 
 export function activate(context: vscode.ExtensionContext): void {
   const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
@@ -66,6 +67,9 @@ export function activate(context: vscode.ExtensionContext): void {
     void panel.handleCompileAndRun();
   });
 
+  console.log('[MultiCode] Registering command: multicode.createClassFilesAndBind');
+  const createClassFilesAndBind = registerCreateClassFilesAndBindCommand();
+
   context.subscriptions.push(
     openEditor,
     newGraph,
@@ -75,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
     generateCodeBinding,
     translateGraph,
     compileAndRun,
+    createClassFilesAndBind,
     outputChannel
   );
   
@@ -86,7 +91,8 @@ export function activate(context: vscode.ExtensionContext): void {
     'multicode.loadGraph',
     'multicode.generateCode',
     'multicode.translateGraph',
-    'multicode.compileAndRun'
+    'multicode.compileAndRun',
+    'multicode.createClassFilesAndBind'
   ]);
   outputChannel.appendLine('[MultiCode] Extension activation complete!');
 }

@@ -95,6 +95,7 @@ const PORT_DATA_TYPES = new Set([
   'vector',
   'pointer',
   'class',
+  'object-reference',
   'array',
   'any',
 ]);
@@ -370,16 +371,9 @@ export class CppCodeGenerator implements ICodeGenerator {
   canGenerate(graph: BlueprintGraphState): { canGenerate: boolean; errors: CodeGenError[] } {
     const errors: CodeGenError[] = [];
     
-    // Проверить наличие Start узла
+    // Проверить количество Start узлов
     const startNodes = graph.nodes.filter(n => n.type === 'Start');
-    if (startNodes.length === 0) {
-      errors.push({
-        nodeId: '',
-        code: CodeGenErrorCode.NO_START_NODE,
-        message: 'Граф должен содержать узел "Начало"',
-        messageEn: 'Graph must contain a Start node',
-      });
-    } else if (startNodes.length > 1) {
+    if (startNodes.length > 1) {
       errors.push({
         nodeId: startNodes[1].id,
         code: CodeGenErrorCode.MULTIPLE_START_NODES,
@@ -456,49 +450,60 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     // Генерировать тело кода (нужно сделать до headers, чтобы собрать includes)
     const bodyLines: string[] = [];
+    const classEmissionMode = this.resolveClassEmissionMode(opts);
+    const classSections = this.generateClassSections(graph);
 
-    // Объявления и определения классов должны появиться до тела графа,
-    // чтобы вызовы узлов Class* могли ссылаться на корректные C++ типы.
-    if (opts.generateClassDeclarations) {
-      bodyLines.push(...this.generateClassDeclarationsAndDefinitions(graph));
-      if (bodyLines.length > 0) {
-        bodyLines.push('');
-      }
+    if (classEmissionMode === 'combined' || classEmissionMode === 'declarations-only') {
+      bodyLines.push(...classSections.declarations);
     }
-    
-    // Генерируем пользовательские функции перед main()
-    if (graph.functions && graph.functions.length > 0) {
-      for (const func of graph.functions) {
-        const funcLines = this.generateUserFunction(func, context, helpers);
-        bodyLines.push(...funcLines);
-        bodyLines.push('');
-      }
+    if (classSections.declarations.length > 0 && classSections.definitions.length > 0 && classEmissionMode === 'combined') {
+      bodyLines.push('');
     }
-    
-    // main() обёртка — открытие
-    if (opts.generateMainWrapper) {
-      bodyLines.push('int main() {');
-      context.indentLevel = 1;
+    if (classEmissionMode === 'combined' || classEmissionMode === 'definitions-only') {
+      bodyLines.push(...classSections.definitions);
+    }
+    if (bodyLines.length > 0 && opts.emitGraphBody !== false) {
+      bodyLines.push('');
     }
 
-    // Предобъявления переменных графа (Blueprint variables),
-    // чтобы GetVariable всегда имел валидный идентификатор в коде.
-    bodyLines.push(...this.generateGraphVariableDeclarations(context));
-    
-    // Найти Start узел и начать обход
+    const emitGraphBody = opts.emitGraphBody !== false;
     const startNode = graph.nodes.find(n => n.type === 'Start');
-    if (startNode) {
-      const nodeLines = this.generateFromNode(startNode, context, helpers);
-      bodyLines.push(...nodeLines);
-    }
-    
-    // Закрыть main()
-    if (opts.generateMainWrapper) {
-      const lastMeaningfulLine = this.getLastMeaningfulCodeLine(bodyLines);
-      if (!lastMeaningfulLine || !/^\s*return\b/.test(lastMeaningfulLine)) {
-        bodyLines.push(indent(1, opts.indentSize) + 'return 0;');
+    const hasStartNode = Boolean(startNode);
+
+    if (emitGraphBody) {
+      // Генерируем пользовательские функции перед main()
+      if (graph.functions && graph.functions.length > 0) {
+        for (const func of graph.functions) {
+          const funcLines = this.generateUserFunction(func, context, helpers);
+          bodyLines.push(...funcLines);
+          bodyLines.push('');
+        }
       }
-      bodyLines.push('}');
+      
+      // main() обёртка — открытие
+      if (opts.generateMainWrapper) {
+        bodyLines.push('int main() {');
+        context.indentLevel = 1;
+      }
+
+      // Предобъявления переменных графа (Blueprint variables),
+      // чтобы GetVariable всегда имел валидный идентификатор в коде.
+      bodyLines.push(...this.generateGraphVariableDeclarations(context));
+      
+      // Найти Start узел и начать обход
+      if (startNode) {
+        const nodeLines = this.generateFromNode(startNode, context, helpers);
+        bodyLines.push(...nodeLines);
+      }
+      
+      // Закрыть main()
+      if (opts.generateMainWrapper) {
+        const lastMeaningfulLine = this.getLastMeaningfulCodeLine(bodyLines);
+        if (!lastMeaningfulLine || !/^\s*return\b/.test(lastMeaningfulLine)) {
+          bodyLines.push(indent(1, opts.indentSize) + 'return 0;');
+        }
+        bodyLines.push('}');
+      }
     }
     
     // Теперь собираем всё вместе с правильными includes
@@ -601,7 +606,20 @@ export class CppCodeGenerator implements ICodeGenerator {
       for (const include of helperIncludes) {
         standardIncludes.add(include);
       }
+
+      for (const include of this.collectClassIncludes(graph)) {
+        standardIncludes.add(include);
+      }
       
+      const normalizedForcedIncludes = (opts.forcedIncludes ?? [])
+        .map((includeValue) => this.normalizeIncludeToken(includeValue))
+        .filter((includeValue): includeValue is string => includeValue !== null);
+
+      for (const include of normalizedForcedIncludes) {
+        lines.push(`#include ${include}`);
+        standardIncludes.delete(include);
+      }
+
       // Сортируем и выводим
       const sortedIncludes = Array.from(standardIncludes).sort();
       for (const inc of sortedIncludes) {
@@ -633,24 +651,28 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     const code = lines.join('\n');
     
-    // Найти неиспользованные узлы
-    for (const node of graph.nodes) {
-      if (context.processedNodes.has(node.id)) {
-        continue;
-      }
-      if (!this.isExecutionRelevantForUnusedWarning(node)) {
-        continue;
-      }
-      if (node.type === 'Comment') {
-        continue;
-      }
-      const readableLabel = this.getReadableNodeLabel(node, context);
-      if (!context.processedNodes.has(node.id)) {
-        context.warnings.push({
-          nodeId: node.id,
-          code: CodeGenWarningCode.UNUSED_NODE,
-          message: `Узел "${readableLabel}" не достижим из Start`,
-        });
+    if (emitGraphBody) {
+      // Найти неиспользованные узлы
+      for (const node of graph.nodes) {
+        if (context.processedNodes.has(node.id)) {
+          continue;
+        }
+        if (!this.isExecutionRelevantForUnusedWarning(node)) {
+          continue;
+        }
+        if (node.type === 'Comment') {
+          continue;
+        }
+        const readableLabel = this.getReadableNodeLabel(node, context);
+        if (!context.processedNodes.has(node.id)) {
+          context.warnings.push({
+            nodeId: node.id,
+            code: CodeGenWarningCode.UNUSED_NODE,
+            message: hasStartNode
+              ? `Узел "${readableLabel}" не достижим из Start`
+              : `Узел "${readableLabel}" пропущен: в графе нет Start`,
+          });
+        }
       }
     }
     
@@ -678,6 +700,77 @@ export class CppCodeGenerator implements ICodeGenerator {
     return getCppType(dataType);
   }
 
+  private normalizeIncludeToken(includeValue: string): string | null {
+    const trimmed = includeValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const direct = trimmed.match(/^(<[^>]+>|"[^"]+")$/);
+    if (direct) {
+      return direct[1];
+    }
+
+    const includeDirective = trimmed.match(/^#\s*include\s*(<[^>]+>|"[^"]+")$/);
+    if (includeDirective) {
+      return includeDirective[1];
+    }
+
+    if (trimmed.includes('<') || trimmed.includes('>') || trimmed.includes('"')) {
+      return null;
+    }
+
+    return `"${trimmed}"`;
+  }
+
+  private collectClassIncludes(graph: BlueprintGraphState): Set<string> {
+    const includes = new Set<string>();
+    const classes = Array.isArray(graph.classes) ? graph.classes : [];
+    for (const rawClass of classes) {
+      if (!rawClass || typeof rawClass !== 'object') {
+        continue;
+      }
+      const classEntry = rawClass as {
+        headerIncludes?: unknown;
+        sourceIncludes?: unknown;
+      };
+      const includeGroups = [classEntry.headerIncludes, classEntry.sourceIncludes];
+      for (const group of includeGroups) {
+        if (!Array.isArray(group)) {
+          continue;
+        }
+        for (const includeValue of group) {
+          if (typeof includeValue !== 'string') {
+            continue;
+          }
+          const normalized = this.normalizeIncludeToken(includeValue);
+          if (normalized) {
+            includes.add(normalized);
+          }
+        }
+      }
+    }
+    return includes;
+  }
+
+  private resolveClassEmissionMode(
+    options: CodeGenOptions
+  ): 'combined' | 'declarations-only' | 'definitions-only' | 'none' {
+    if (options.generateClassDeclarations === false) {
+      return 'none';
+    }
+    return options.classEmissionMode ?? 'combined';
+  }
+
+  private resolveQualifiedClassName(classModel: ClassModel): string {
+    const className = toValidIdentifier(classModel.name || 'UnnamedClass');
+    const namespacePath = typeof classModel.namespace === 'string' ? classModel.namespace.trim() : '';
+    if (!namespacePath) {
+      return className;
+    }
+    return `${namespacePath}::${className}`;
+  }
+
   private formatClassMemberDefault(member: ClassModelField): string {
     if (member.defaultValue === undefined || member.defaultValue === null) {
       return '';
@@ -698,9 +791,111 @@ export class CppCodeGenerator implements ICodeGenerator {
     return '';
   }
 
-  private formatMethodSignature(method: ClassModelMethod, className: string, withClassScope: boolean): string {
-    const returnType = this.resolveCppType(method.returnType, method.returnTypeName);
-    const methodName = toValidIdentifier(method.name);
+  private extractBaseTypeToken(typeName: string): string {
+    const noQualifiers = typeName
+      .replace(/\b(const|volatile|typename)\b/g, ' ')
+      .replace(/[&*]/g, ' ')
+      .trim();
+    const noTemplate = noQualifiers.replace(/<.*$/, '').trim();
+    const segments = noTemplate.split('::').filter((part) => part.length > 0);
+    return (segments[segments.length - 1] ?? noTemplate).toLowerCase();
+  }
+
+  private hasBaseResolutionHint(classModel: ClassModel, typeName: string): boolean {
+    const token = this.extractBaseTypeToken(typeName);
+    if (!token) {
+      return false;
+    }
+
+    const includes = [...classModel.headerIncludes, ...classModel.sourceIncludes];
+    for (const include of includes) {
+      const normalized = include
+        .toLowerCase()
+        .replace(/^#\s*include\s*/g, '')
+        .replace(/[<>"']/g, '')
+        .replace(/\.[a-z0-9]+$/g, '')
+        .trim();
+      if (normalized.includes(token)) {
+        return true;
+      }
+    }
+
+    for (const forwardDecl of classModel.forwardDecls) {
+      if (new RegExp(`\\b${token}\\b`, 'i').test(forwardDecl)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private resolveBaseClassSpec(
+    classModel: ClassModel,
+    rawBaseClass: string
+  ): { resolved: string | null; reason?: string } {
+    const trimmed = rawBaseClass.trim();
+    if (!trimmed) {
+      return { resolved: null, reason: 'пустое имя базового класса' };
+    }
+
+    const accessMatch = trimmed.match(/^(public|protected|private)\s+(.+)$/i);
+    const accessPrefix = accessMatch ? `${accessMatch[1].toLowerCase()} ` : '';
+    const typeName = (accessMatch ? accessMatch[2] : trimmed).trim();
+    if (!typeName) {
+      return { resolved: null, reason: 'не удалось разобрать тип базового класса' };
+    }
+
+    const hasQualifiedName = typeName.includes('::');
+    const hasResolutionHints = this.hasBaseResolutionHint(classModel, typeName);
+    if (!hasQualifiedName && !hasResolutionHints) {
+      return {
+        resolved: null,
+        reason: 'нет квалификации namespace и нет include/forward-decl подсказок',
+      };
+    }
+
+    return {
+      resolved: `${accessPrefix}${typeName}`,
+    };
+  }
+
+  private resolveMethodReturnSpec(method: ClassModelMethod): {
+    returnType: string;
+    shouldEmitReturn: boolean;
+    returnExpression: string | null;
+  } {
+    const methodKind = method.methodKind ?? 'method';
+    if (methodKind !== 'method') {
+      return { returnType: 'void', shouldEmitReturn: false, returnExpression: null };
+    }
+
+    const rawReturnType = this.resolveCppType(method.returnType, method.returnTypeName).trim();
+    const returnType = rawReturnType.length === 0 || rawReturnType === 'auto' ? 'void' : rawReturnType;
+    if (returnType === 'void' || method.returnType === 'execution') {
+      return { returnType: 'void', shouldEmitReturn: false, returnExpression: null };
+    }
+
+    const rawDefault = getDefaultValue(method.returnType);
+    const returnExpression =
+      rawDefault && rawDefault !== '{}'
+        ? rawDefault
+        : `${returnType}{}`;
+
+    return {
+      returnType,
+      shouldEmitReturn: true,
+      returnExpression,
+    };
+  }
+
+  private formatMethodSignature(
+    method: ClassModelMethod,
+    className: string,
+    withClassScope: boolean,
+    returnTypeOverride?: string
+  ): string {
+    const classParts = className.split('::').filter((part) => part.length > 0);
+    const classSimpleName = classParts.length > 0 ? classParts[classParts.length - 1] : className;
     const params = method.params
       .map((param, index) => {
         const paramType = this.resolveCppType(param.dataType, param.typeName);
@@ -708,28 +903,87 @@ export class CppCodeGenerator implements ICodeGenerator {
         return `${paramType} ${paramName}`;
       })
       .join(', ');
+    const methodKind = method.methodKind ?? 'method';
+    const noexceptSuffix = method.isNoexcept ? ' noexcept' : '';
+    const constSuffix = methodKind === 'method' && method.isConst ? ' const' : '';
+    const canBeVirtual = methodKind === 'method' || methodKind === 'destructor';
+    const virtualPrefix = !withClassScope && canBeVirtual && method.isVirtual && !method.isStatic ? 'virtual ' : '';
+    const overrideSuffix = !withClassScope && canBeVirtual && method.isOverride && !method.isStatic ? ' override' : '';
+    const pureVirtualSuffix = !withClassScope && methodKind === 'method' && method.isPureVirtual ? ' = 0' : '';
 
-    if (withClassScope) {
-      return `${returnType} ${className}::${methodName}(${params})`;
+    if (methodKind === 'constructor') {
+      return withClassScope
+        ? `${className}::${classSimpleName}(${params})${noexceptSuffix}`
+        : `${classSimpleName}(${params})${noexceptSuffix}`;
     }
 
-    const constSuffix = method.isConst ? ' const' : '';
+    if (methodKind === 'destructor') {
+      return withClassScope
+        ? `${className}::~${classSimpleName}()${noexceptSuffix}`
+        : `${virtualPrefix}~${classSimpleName}()${noexceptSuffix}${overrideSuffix}`;
+    }
+
+    const returnType = returnTypeOverride ?? this.resolveCppType(method.returnType, method.returnTypeName);
+    const methodName = toValidIdentifier(method.name);
+    if (withClassScope) {
+      return `${returnType} ${className}::${methodName}(${params})${constSuffix}${noexceptSuffix}`;
+    }
+
     const staticPrefix = method.isStatic ? 'static ' : '';
-    const virtualPrefix = method.isVirtual ? 'virtual ' : '';
-    const overrideSuffix = method.isOverride ? ' override' : '';
-    return `${virtualPrefix}${staticPrefix}${returnType} ${methodName}(${params})${constSuffix}${overrideSuffix}`;
+    return `${virtualPrefix}${staticPrefix}${returnType} ${methodName}(${params})${constSuffix}${noexceptSuffix}${overrideSuffix}${pureVirtualSuffix}`;
   }
 
-  private generateClassDeclarationsAndDefinitions(graph: BlueprintGraphState): string[] {
+  private generateClassSections(graph: BlueprintGraphState): { declarations: string[]; definitions: string[] } {
     const classes: ClassModel[] = buildClassModelFromGraph(graph, 'cpp');
     if (classes.length === 0) {
-      return [];
+      return { declarations: [], definitions: [] };
     }
 
-    const lines: string[] = [];
+    const declarations: string[] = [];
+    const definitions: string[] = [];
+    const forwardDecls = new Set<string>();
+    for (const blueprintClass of classes) {
+      for (const rawForwardDecl of blueprintClass.forwardDecls) {
+        const trimmed = rawForwardDecl.trim();
+        if (trimmed.length > 0) {
+          forwardDecls.add(trimmed.replace(/;$/, ''));
+        }
+      }
+    }
+
+    if (forwardDecls.size > 0) {
+      for (const forwardDecl of Array.from(forwardDecls).sort((left, right) => left.localeCompare(right, 'ru'))) {
+        declarations.push(`${forwardDecl};`);
+      }
+      declarations.push('');
+    }
+
     for (const blueprintClass of classes) {
       const className = toValidIdentifier(blueprintClass.name || 'UnnamedClass');
-      lines.push(`class ${className} {`);
+      const classKeyword = blueprintClass.classType === 'struct' ? 'struct' : 'class';
+      const rawBaseClasses = Array.isArray(blueprintClass.baseClasses) ? blueprintClass.baseClasses : [];
+      const baseClasses: string[] = [];
+      const skippedBaseClasses: string[] = [];
+      for (const baseClass of rawBaseClasses) {
+        const resolved = this.resolveBaseClassSpec(blueprintClass, baseClass);
+        if (resolved.resolved) {
+          baseClasses.push(resolved.resolved);
+          continue;
+        }
+        skippedBaseClasses.push(`${baseClass.trim()} (${resolved.reason ?? 'не удалось разрешить'})`);
+      }
+      const inheritanceClause = baseClasses.length > 0 ? ` : ${baseClasses.join(', ')}` : '';
+      const namespacePath = typeof blueprintClass.namespace === 'string' ? blueprintClass.namespace.trim() : '';
+      if (skippedBaseClasses.length > 0) {
+        for (const skipped of skippedBaseClasses) {
+          declarations.push(`// NOTE: базовый класс пропущен: ${skipped}`);
+        }
+      }
+
+      if (namespacePath.length > 0) {
+        declarations.push(`namespace ${namespacePath} {`);
+      }
+      declarations.push(`${classKeyword} ${className}${inheritanceClause} {`);
 
       const membersByAccess = new Map<string, ClassModelField[]>();
       const methodsByAccess = new Map<string, ClassModelMethod[]>();
@@ -751,47 +1005,59 @@ export class CppCodeGenerator implements ICodeGenerator {
       for (const access of ['public', 'protected', 'private'] as const) {
         const members = membersByAccess.get(access) ?? [];
         const methods = methodsByAccess.get(access) ?? [];
-
         if (members.length === 0 && methods.length === 0) {
           continue;
         }
 
-        lines.push(`${access}:`);
+        declarations.push(`${access}:`);
         for (const member of members) {
           const memberType = this.resolveCppType(member.dataType, member.typeName);
           const memberName = toValidIdentifier(member.name);
-          lines.push(indent(1) + `${memberType} ${memberName}${this.formatClassMemberDefault(member)};`);
+          const staticPrefix = member.isStatic ? 'static ' : '';
+          const initializer = member.isStatic ? '' : this.formatClassMemberDefault(member);
+          declarations.push(indent(1) + `${staticPrefix}${memberType} ${memberName}${initializer};`);
         }
 
         for (const method of methods) {
-          lines.push(indent(1) + `${this.formatMethodSignature(method, className, false)};`);
+          const returnSpec = this.resolveMethodReturnSpec(method);
+          declarations.push(indent(1) + `${this.formatMethodSignature(method, className, false, returnSpec.returnType)};`);
         }
       }
 
-      lines.push('};');
-      lines.push('');
+      declarations.push('};');
+      if (namespacePath.length > 0) {
+        declarations.push(`} // namespace ${namespacePath}`);
+      }
+      declarations.push('');
     }
 
     for (const blueprintClass of classes) {
-      const className = toValidIdentifier(blueprintClass.name || 'UnnamedClass');
+      const qualifiedClassName = this.resolveQualifiedClassName(blueprintClass);
       for (const method of blueprintClass.methods) {
-        lines.push(`${this.formatMethodSignature(method, className, true)} {`);
-        if (method.returnType !== 'execution') {
-          const returnType = this.resolveCppType(method.returnType, method.returnTypeName);
-          if (returnType !== 'void') {
-            lines.push(indent(1) + `return ${getDefaultValue(method.returnType)};`);
-          }
+        if (method.isPureVirtual === true) {
+          continue;
         }
-        lines.push('}');
-        lines.push('');
+
+        const returnSpec = this.resolveMethodReturnSpec(method);
+        definitions.push(
+          `${this.formatMethodSignature(method, qualifiedClassName, true, returnSpec.returnType)} {`
+        );
+        if (returnSpec.shouldEmitReturn && returnSpec.returnExpression) {
+          definitions.push(indent(1) + `return ${returnSpec.returnExpression};`);
+        }
+        definitions.push('}');
+        definitions.push('');
       }
     }
 
-    while (lines.length > 0 && lines[lines.length - 1] === '') {
-      lines.pop();
+    while (declarations.length > 0 && declarations[declarations.length - 1] === '') {
+      declarations.pop();
+    }
+    while (definitions.length > 0 && definitions[definitions.length - 1] === '') {
+      definitions.pop();
     }
 
-    return lines;
+    return { declarations, definitions };
   }
 
   private getRequiredHelperSet(context: CodeGenContext): Set<TypeConversionHelperId> {

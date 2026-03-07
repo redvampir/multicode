@@ -12,12 +12,25 @@ import {
   TypeConversionNodeGenerator,
   ClassMethodCallNodeGenerator,
   ClassConstructorCallNodeGenerator,
+  ConstructorOverloadCallNodeGenerator,
+  CallBaseMethodNodeGenerator,
   GetMemberNodeGenerator,
   SetMemberNodeGenerator,
   StaticMethodCallNodeGenerator,
+  StaticGetMemberNodeGenerator,
+  StaticSetMemberNodeGenerator,
+  CastStaticNodeGenerator,
+  CastDynamicNodeGenerator,
+  CastConstNodeGenerator,
+  IsTypeNodeGenerator,
+  MakeUniqueNodeGenerator,
+  MakeSharedNodeGenerator,
+  DeleteObjectNodeGenerator,
+  AddressOfMemberNodeGenerator,
+  InitListCtorNodeGenerator,
   createVariableGenerators,
 } from './variables';
-import type { BlueprintNode } from '../../shared/blueprintTypes';
+import type { BlueprintClass, BlueprintNode } from '../../shared/blueprintTypes';
 import type { CodeGenContext } from '../types';
 import type { GeneratorHelpers } from './base';
 
@@ -87,6 +100,50 @@ function createMockNode(type: string, label: string, options: Partial<BlueprintN
       { id: 'value', name: 'Value', dataType: 'float', direction: 'output', index: 1 },
     ],
     ...options,
+  };
+}
+
+function createPlayerClassFixture(): BlueprintClass {
+  return {
+    id: 'class-player',
+    name: 'Player',
+    baseClasses: ['ActorBase'],
+    members: [
+      { id: 'member-score', name: 'Score', dataType: 'int32', access: 'public' as const },
+      { id: 'member-total', name: 'Total', dataType: 'int32', access: 'public' as const, isStatic: true },
+    ],
+    methods: [
+      {
+        id: 'method-jump',
+        name: 'Jump',
+        returnType: 'bool' as const,
+        params: [{ id: 'param-height', name: 'height', dataType: 'double' as const }],
+        access: 'public' as const,
+      },
+      {
+        id: 'method-tick',
+        name: 'Tick',
+        returnType: 'bool' as const,
+        params: [{ id: 'param-speed', name: 'speed', dataType: 'float' as const }],
+        access: 'public' as const,
+      },
+      {
+        id: 'ctor-main',
+        name: 'Player',
+        methodKind: 'constructor' as const,
+        returnType: 'execution' as const,
+        params: [{ id: 'param-seed', name: 'seed', dataType: 'int32' as const }],
+        access: 'public' as const,
+      },
+      {
+        id: 'method-make',
+        name: 'Create',
+        isStatic: true,
+        returnType: 'int32' as const,
+        params: [],
+        access: 'public' as const,
+      },
+    ],
   };
 }
 
@@ -1201,6 +1258,51 @@ describe('ClassMethodCallNodeGenerator', () => {
       expect.stringContaining('Class not found')
     );
   });
+
+  it('should resolve method arguments by param-id based port first', () => {
+    const node = createMockNode('ClassMethodCall', 'Call Method', {
+      properties: {
+        classId: 'class-player',
+        methodId: 'method-jump',
+      },
+      inputs: [
+        { id: 'exec-in', name: 'In', dataType: 'execution', direction: 'input', index: 0 },
+        { id: 'target', name: 'Target', dataType: 'class', direction: 'input', index: 1 },
+        { id: 'arg-param-height', name: 'Height', dataType: 'double', direction: 'input', index: 2 },
+      ],
+    });
+
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((n: BlueprintNode, suffix: string) => {
+        if (n.id !== node.id) {
+          return null;
+        }
+        if (suffix === 'target') return 'player';
+        if (suffix === 'arg-param-height') return '8.0';
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    context.graph.classes = [
+      {
+        id: 'class-player',
+        name: 'Player',
+        methods: [
+          {
+            id: 'method-jump',
+            name: 'Jump',
+            returnType: 'bool',
+            params: [{ id: 'param-height', name: 'height', dataType: 'double' }],
+            access: 'public',
+          },
+        ],
+        members: [],
+      },
+    ];
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines[0]).toContain('player.jump(8.0)');
+  });
 });
 
 describe('Class nodes generators', () => {
@@ -1349,6 +1451,136 @@ describe('Class nodes generators', () => {
       expect.stringContaining('is not static')
     );
   });
+
+  it('should generate base method call for override node', () => {
+    const generator = new CallBaseMethodNodeGenerator();
+    const node = createMockNode('CallBaseMethod', 'Base Call', {
+      id: 'basecall-1',
+      properties: { classId: 'class-player', methodId: 'method-tick', baseClassName: 'ActorBase' },
+    });
+    const context = createMockContext();
+    context.graph.classes = [createPlayerClassFixture()];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => {
+        if (suffix === 'target') return 'player';
+        if (suffix === 'arg-param-speed') return '9.0f';
+        return null;
+      }),
+    });
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines[0]).toContain('auto base_method_result_basecall1 = player.ActorBase::tick(9.0f);');
+  });
+
+  it('should generate pointer cast expressions for advanced cast nodes', () => {
+    const context = createMockContext();
+    context.graph.classes = [createPlayerClassFixture()];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => (suffix === 'value' ? 'base_ptr' : null)),
+    });
+
+    const staticExpr = new CastStaticNodeGenerator().getOutputExpression(
+      createMockNode('CastStatic', 'static_cast', { properties: { classId: 'class-player' } }),
+      'result',
+      context,
+      helpers,
+    );
+    const dynamicExpr = new CastDynamicNodeGenerator().getOutputExpression(
+      createMockNode('CastDynamic', 'dynamic_cast', { properties: { classId: 'class-player' } }),
+      'result',
+      context,
+      helpers,
+    );
+    const constExpr = new CastConstNodeGenerator().getOutputExpression(
+      createMockNode('CastConst', 'const_cast', { properties: { classId: 'class-player' } }),
+      'result',
+      context,
+      helpers,
+    );
+
+    expect(staticExpr).toBe('static_cast<player*>(base_ptr)');
+    expect(dynamicExpr).toBe('dynamic_cast<player*>(base_ptr)');
+    expect(constExpr).toBe('const_cast<player*>(base_ptr)');
+  });
+
+  it('should generate make_unique/make_shared expressions using constructor params', () => {
+    const context = createMockContext();
+    context.graph.classes = [createPlayerClassFixture()];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => (suffix === 'arg-param-seed' ? '17' : null)),
+    });
+
+    const uniqueExpr = new MakeUniqueNodeGenerator().getOutputExpression(
+      createMockNode('MakeUnique', 'Make Unique', { properties: { classId: 'class-player', methodId: 'ctor-main' } }),
+      'result',
+      context,
+      helpers,
+    );
+    const sharedExpr = new MakeSharedNodeGenerator().getOutputExpression(
+      createMockNode('MakeShared', 'Make Shared', { properties: { classId: 'class-player', methodId: 'ctor-main' } }),
+      'result',
+      context,
+      helpers,
+    );
+
+    expect(uniqueExpr).toBe('std::make_unique<player>(17)');
+    expect(sharedExpr).toBe('std::make_shared<player>(17)');
+  });
+
+  it('should generate delete-object code and warning', () => {
+    const generator = new DeleteObjectNodeGenerator();
+    const node = createMockNode('DeleteObject', 'Delete', { properties: { classId: 'class-player' } });
+    const context = createMockContext();
+    context.graph.classes = [createPlayerClassFixture()];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => (suffix === 'target' ? 'raw_ptr' : null)),
+    });
+
+    const result = generator.generate(node, context, helpers);
+    expect(result.lines[0]).toContain('delete raw_ptr;');
+    expect(helpers.addWarning).toHaveBeenCalledWith(
+      node.id,
+      'DANGEROUS_OPERATION',
+      expect.stringContaining('raw delete')
+    );
+  });
+
+  it('should generate address-of-member, init-list and is-type expressions', () => {
+    const context = createMockContext();
+    context.graph.classes = [createPlayerClassFixture()];
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_n, suffix) => {
+        if (suffix === 'target') return 'player';
+        if (suffix === 'value') return 'maybe_player';
+        if (suffix === 'init-member-member-score') return '42';
+        if (suffix === 'init-member-member-total') return '100';
+        return null;
+      }),
+    });
+
+    const addressExpr = new AddressOfMemberNodeGenerator().getOutputExpression(
+      createMockNode('AddressOfMember', 'Address Of Member', { properties: { classId: 'class-player', memberId: 'member-score' } }),
+      'result',
+      context,
+      helpers,
+    );
+    const initExpr = new InitListCtorNodeGenerator().getOutputExpression(
+      createMockNode('InitListCtor', 'Init List', { properties: { classId: 'class-player' } }),
+      'instance',
+      context,
+      helpers,
+    );
+    const isTypeExpr = new IsTypeNodeGenerator().getOutputExpression(
+      createMockNode('IsType', 'Is Type', { properties: { classId: 'class-player' } }),
+      'result',
+      context,
+      helpers,
+    );
+
+    expect(addressExpr).toBe('&(player.score)');
+    expect(initExpr).toBe('player{42, 100}');
+    expect(isTypeExpr).toBe('dynamic_cast<player*>(maybe_player) != nullptr');
+  });
 });
 
 // ============================================
@@ -1359,15 +1591,28 @@ describe('createVariableGenerators', () => {
   it('should return array with all variable generators', () => {
     const generators = createVariableGenerators();
 
-    expect(generators).toHaveLength(9);
+    expect(generators).toHaveLength(22);
     expect(generators[0]).toBeInstanceOf(VariableNodeGenerator);
     expect(generators[1]).toBeInstanceOf(GetVariableNodeGenerator);
     expect(generators[2]).toBeInstanceOf(SetVariableNodeGenerator);
     expect(generators[3]).toBeInstanceOf(ClassMethodCallNodeGenerator);
     expect(generators[4]).toBeInstanceOf(ClassConstructorCallNodeGenerator);
-    expect(generators[5]).toBeInstanceOf(GetMemberNodeGenerator);
-    expect(generators[6]).toBeInstanceOf(SetMemberNodeGenerator);
-    expect(generators[7]).toBeInstanceOf(StaticMethodCallNodeGenerator);
-    expect(generators[8]).toBeInstanceOf(TypeConversionNodeGenerator);
+    expect(generators[5]).toBeInstanceOf(ConstructorOverloadCallNodeGenerator);
+    expect(generators[6]).toBeInstanceOf(CallBaseMethodNodeGenerator);
+    expect(generators[7]).toBeInstanceOf(GetMemberNodeGenerator);
+    expect(generators[8]).toBeInstanceOf(SetMemberNodeGenerator);
+    expect(generators[9]).toBeInstanceOf(StaticGetMemberNodeGenerator);
+    expect(generators[10]).toBeInstanceOf(StaticSetMemberNodeGenerator);
+    expect(generators[11]).toBeInstanceOf(StaticMethodCallNodeGenerator);
+    expect(generators[12]).toBeInstanceOf(CastStaticNodeGenerator);
+    expect(generators[13]).toBeInstanceOf(CastDynamicNodeGenerator);
+    expect(generators[14]).toBeInstanceOf(CastConstNodeGenerator);
+    expect(generators[15]).toBeInstanceOf(IsTypeNodeGenerator);
+    expect(generators[16]).toBeInstanceOf(MakeUniqueNodeGenerator);
+    expect(generators[17]).toBeInstanceOf(MakeSharedNodeGenerator);
+    expect(generators[18]).toBeInstanceOf(DeleteObjectNodeGenerator);
+    expect(generators[19]).toBeInstanceOf(AddressOfMemberNodeGenerator);
+    expect(generators[20]).toBeInstanceOf(InitListCtorNodeGenerator);
+    expect(generators[21]).toBeInstanceOf(TypeConversionNodeGenerator);
   });
 });

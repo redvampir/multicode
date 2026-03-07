@@ -3,6 +3,7 @@ import { parseGraphState } from './messages';
 import { deserializeGraphState, serializeGraphState } from './serializer';
 
 const GRAPH_MARKER_REGEX = /^\/\/\s*@multicode:graph\b/i;
+const CLASS_MARKER_REGEX = /^\/\/\s*@multicode:class\b/i;
 const SNAPSHOT_BEGIN_REGEX = /^\/\/\s*@multicode:snapshot\s+begin\b/i;
 const SNAPSHOT_END_REGEX = /^\/\/\s*@multicode:snapshot\s+end\b/i;
 const SNAPSHOT_CHUNK_REGEX = /^\/\/\s*@multicode:snapshot\s+chunk\s+([A-Za-z0-9+/=]+)\s*$/;
@@ -104,7 +105,13 @@ export const injectOrReplaceMulticodeGraphSnapshot = (source: string, state: Gra
   const cleanLines = stripSnapshotBlocks(sourceLines);
   const snapshotLines = buildSnapshotLines(state);
   const graphMarkerIndex = cleanLines.findIndex((line) => GRAPH_MARKER_REGEX.test(line.trim()));
-  const insertAt = graphMarkerIndex >= 0 ? graphMarkerIndex + 1 : 0;
+  let insertAt = graphMarkerIndex >= 0 ? graphMarkerIndex + 1 : 0;
+  if (graphMarkerIndex >= 0) {
+    // Если сразу после @multicode:graph идёт блок @multicode:class, не разрываем его snapshot'ом.
+    while (insertAt < cleanLines.length && CLASS_MARKER_REGEX.test((cleanLines[insertAt] ?? '').trim())) {
+      insertAt += 1;
+    }
+  }
 
   const nextLines = [
     ...cleanLines.slice(0, insertAt),

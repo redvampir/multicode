@@ -17,6 +17,10 @@ import {
   hasBlockingIncomingRetargetConnections,
   mutateGraphForEdgeDoubleClick,
 } from '../BlueprintEditor';
+import {
+  EXTERNAL_SYMBOL_DRAG_MIME,
+  serializeExternalSymbolDragPayload,
+} from '../externalSymbolNodeFactory';
 import { createUserFunction, type BlueprintGraphState, type BlueprintNode, type BlueprintEdge, type BlueprintVariable } from '../../shared/blueprintTypes';
 import type { SourceIntegration, SymbolDescriptor } from '../../shared/externalSymbols';
 import type { BlueprintFlowEdge, BlueprintFlowNode } from '../nodes/BlueprintNode';
@@ -383,6 +387,85 @@ function createGraphWithLegacySequenceNode(): BlueprintGraphState {
     displayLanguage: 'ru',
     nodes: [sequenceNode],
     edges: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createGraphWithClassPanelFixture(): BlueprintGraphState {
+  return {
+    id: 'test-class-graph',
+    name: 'Class Graph',
+    language: 'cpp',
+    displayLanguage: 'ru',
+    nodes: [
+      {
+        id: 'call-legacy',
+        type: 'ClassMethodCall',
+        label: 'Call Method',
+        position: { x: 300, y: 140 },
+        inputs: [
+          { id: 'call-legacy-exec-in', name: '', dataType: 'execution', direction: 'input', index: 0 },
+          { id: 'call-legacy-target', name: 'Target', dataType: 'class', direction: 'input', index: 1 },
+          { id: 'call-legacy-arg-0', name: 'Arg 1', dataType: 'any', direction: 'input', index: 2 },
+        ],
+        outputs: [
+          { id: 'call-legacy-exec-out', name: '', dataType: 'execution', direction: 'output', index: 0 },
+          { id: 'call-legacy-result', name: 'Result', dataType: 'any', direction: 'output', index: 1 },
+        ],
+        properties: {
+          classId: 'class-player',
+          methodId: 'method-jump',
+        },
+      },
+    ],
+    edges: [
+      {
+        id: 'edge-class-arg',
+        sourceNode: 'source-node',
+        sourcePort: 'source-out',
+        targetNode: 'call-legacy',
+        targetPort: 'call-legacy-arg-0',
+        kind: 'data',
+        dataType: 'float',
+      },
+    ],
+    classes: [
+      {
+        id: 'class-player',
+        name: 'Player',
+        nameRu: 'Игрок',
+        members: [
+          {
+            id: 'member-score',
+            name: 'score',
+            nameRu: 'Очки',
+            dataType: 'int32',
+            access: 'private',
+          },
+        ],
+        methods: [
+          {
+            id: 'method-jump',
+            name: 'Jump',
+            nameRu: 'Прыжок',
+            returnType: 'bool',
+            params: [
+              {
+                id: 'param-height',
+                name: 'height',
+                nameRu: 'Высота',
+                dataType: 'float',
+              },
+            ],
+            access: 'public',
+            isStatic: false,
+            isConst: false,
+            isVirtual: false,
+            isOverride: false,
+          },
+        ],
+      },
+    ],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -954,6 +1037,129 @@ describe('BlueprintEditor', () => {
           });
         });
         expect(hasExternalBoundNode).toBe(true);
+      });
+    });
+
+    it('should add external symbol via drag and drop payload on canvas', async () => {
+      const graph = createEmptyGraph();
+      const onGraphChange = vi.fn();
+      const externalSymbol: SymbolDescriptor = {
+        id: 'depcheck::print_status',
+        integrationId: 'depcheck',
+        symbolKind: 'function',
+        name: 'print_status',
+        signature: 'print_status(std::string_view message)',
+        signatureHash: 'sig-drop-1',
+        namespacePath: ['depcheck'],
+      };
+
+      const { container } = render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(container.querySelector('.react-flow')).toBeTruthy();
+      });
+
+      const dropTarget = container.querySelector('.react-flow') as HTMLElement;
+      const payload = serializeExternalSymbolDragPayload({
+        symbol: externalSymbol,
+        localizedName: 'Напечатать статус',
+      });
+
+      const dataTransfer = {
+        getData: (type: string) => (type === EXTERNAL_SYMBOL_DRAG_MIME ? payload : ''),
+        setData: vi.fn(),
+        dropEffect: 'move',
+        effectAllowed: 'move',
+      } as unknown as DataTransfer;
+
+      fireEvent.dragOver(dropTarget, { dataTransfer });
+      fireEvent.drop(dropTarget, {
+        dataTransfer,
+        clientX: 280,
+        clientY: 220,
+      });
+
+      await waitFor(() => {
+        const hasDroppedExternalNode = onGraphChange.mock.calls.some((call) => {
+          const state = call[0] as BlueprintGraphState;
+          return state.nodes.some((node) => {
+            const props = node.properties as Record<string, unknown> | undefined;
+            const binding = props?.externalSymbol as Record<string, unknown> | undefined;
+            return (
+              node.type === 'CallUserFunction' &&
+              props?.functionName === 'depcheck::print_status' &&
+              binding?.integrationId === 'depcheck' &&
+              binding?.symbolId === 'depcheck::print_status'
+            );
+          });
+        });
+        expect(hasDroppedExternalNode).toBe(true);
+      });
+    });
+  });
+
+  describe('Class Panel', () => {
+    it('should insert class constructor node from mini class panel', async () => {
+      const graph = createGraphWithClassPanelFixture();
+      const onGraphChange = vi.fn();
+
+      render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      const ctorButton = await screen.findByTitle('Добавить узел конструктора');
+      fireEvent.click(ctorButton);
+
+      await waitFor(() => {
+        const hasConstructorNode = onGraphChange.mock.calls.some((call) => {
+          const state = call[0] as BlueprintGraphState;
+          return state.nodes.some((node) => node.type === 'ClassConstructorCall');
+        });
+        expect(hasConstructorNode).toBe(true);
+      });
+    });
+
+    it('should rebind legacy class method arg ports after class change', async () => {
+      const graph = createGraphWithClassPanelFixture();
+      const onGraphChange = vi.fn();
+
+      render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      const ruInputs = await screen.findAllByPlaceholderText('RU имя');
+      fireEvent.change(ruInputs[0], { target: { value: 'Персонаж' } });
+
+      await waitFor(() => {
+        const hasReboundArgPort = onGraphChange.mock.calls.some((call) => {
+          const state = call[0] as BlueprintGraphState;
+          const methodNode = state.nodes.find((node) => node.id === 'call-legacy');
+          if (!methodNode) {
+            return false;
+          }
+          return methodNode.inputs.some((port) => port.id.endsWith('-arg-param-height'));
+        });
+        expect(hasReboundArgPort).toBe(true);
       });
     });
   });

@@ -124,6 +124,12 @@ export interface CodeGenOptions {
   generateMainWrapper: boolean;
   /** Генерировать объявления/определения классов из IR */
   generateClassDeclarations?: boolean;
+  /** Режим вывода class-блоков */
+  classEmissionMode?: 'combined' | 'declarations-only' | 'definitions-only' | 'none';
+  /** Выводить ли body графа (узлы/функции/main). Для header-режима может быть отключено */
+  emitGraphBody?: boolean;
+  /** Принудительные include (например, #include "MyClass.hpp"), вставляются в начало include-блока */
+  forcedIncludes?: string[];
 }
 
 /** Опции по умолчанию */
@@ -134,6 +140,9 @@ export const DEFAULT_CODEGEN_OPTIONS: CodeGenOptions = {
   includeHeaders: true,
   generateMainWrapper: true,
   generateClassDeclarations: true,
+  classEmissionMode: 'combined',
+  emitGraphBody: true,
+  forcedIncludes: [],
 };
 
 /** Контекст генерации (передаётся между узлами) */
@@ -287,6 +296,7 @@ export function getCppType(dataType: string, vectorElementType?: string): string
     'vector': `std::vector<${resolvedVectorElementType}>`,
     'pointer': 'std::shared_ptr<void>',  // Умный указатель
     'class': 'auto',                      // Класс по значению (требуется typeName)
+    'object-reference': 'auto',
     'array': 'std::vector<int>',
     'any': 'auto',
   };

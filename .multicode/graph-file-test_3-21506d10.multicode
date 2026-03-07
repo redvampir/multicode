@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "savedAt": "2026-03-03T11:40:04.738Z",
+  "data": {
+    "id": "graph-file-test_3-21506d10",
+    "name": "test_3",
+    "graphVersion": 3,
+    "language": "cpp",
+    "displayLanguage": "ru",
+    "nodes": [
+      {
+        "id": "node-1772536613970-pd0badayi",
+        "label": "Создать test_3",
+        "type": "Variable",
+        "position": {
+          "x": 176,
+          "y": -80
+        },
+        "blueprintNode": {
+          "id": "node-1772536613970-pd0badayi",
+          "label": "Создать test_3",
+          "type": "ClassConstructorCall",
+          "position": {
+            "x": 176,
+            "y": -80
+          },
+          "inputs": [
+            {
+              "id": "node-1772536613970-pd0badayi-exec-in",
+              "name": "",
+              "nameRu": "",
+              "dataType": "execution",
+              "direction": "input",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "outputs": [
+            {
+              "id": "node-1772536613970-pd0badayi-exec-out",
+              "name": "",
+              "nameRu": "",
+              "dataType": "execution",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            },
+            {
+              "id": "node-1772536613970-pd0badayi-instance",
+              "name": "Instance",
+              "nameRu": "Экземпляр",
+              "dataType": "class",
+              "direction": "output",
+              "index": 1,
+              "connected": false,
+              "typeName": "Test_class_1::test_3",
+              "classId": "class-test_3-mmaidj6o",
+              "targetClassId": "class-test_3-mmaidj6o"
+            }
+          ],
+          "properties": {
+            "classId": "class-test_3-mmaidj6o",
+            "targetClassName": "test_3",
+            "targetClassNameRu": "test_3",
+            "targetClassTypeName": "Test_class_1::test_3",
+            "kind": "class-constructor"
+          }
+        }
+      }
+    ],
+    "edges": [],
+    "updatedAt": "2026-03-03T11:40:04.272Z",
+    "dirty": false,
+    "variables": [],
+    "functions": [],
+    "classes": [],
+    "classBindings": [
+      {
+        "classId": "class-test_3-mmaidj6o",
+        "file": ".multicode/classes/class-test_3-mmaidj6o.multicode"
+      }
+    ],
+    "integrationBindings": [],
+    "symbolLocalization": {}
+  }
+}

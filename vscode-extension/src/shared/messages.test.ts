@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extensionToWebviewMessageSchema,
   externalIpcRequestSchema,
   externalIpcResponseSchema,
   ipcErrorSchema,
+  parseExtensionMessage,
   parseExternalIpcRequest,
   parseExternalIpcResponse,
 } from './messages';
@@ -76,6 +78,20 @@ describe('messages IPC схемы', () => {
         payload: {
           rootFile: 'src/main.cpp',
           includeSystem: false,
+        },
+      },
+      {
+        type: 'file/pick',
+        payload: {
+          purpose: 'bind',
+          openLabel: 'Выбрать рабочий файл',
+        },
+      },
+      {
+        type: 'file/open',
+        payload: {
+          filePath: 'F:/workspace/.multicode/classes/class-player.multicode',
+          preview: false,
         },
       },
       {
@@ -179,6 +195,73 @@ describe('messages IPC схемы', () => {
     }
   });
 
+  it('сохраняет расширенную схему class/upsert и обратную совместимость', () => {
+    const extendedRequest = {
+      type: 'class/upsert' as const,
+      payload: {
+        classItem: {
+          id: 'class-vehicle',
+          name: 'Vehicle',
+          nameRu: 'Транспорт',
+          namespace: 'Gameplay',
+          members: [
+            {
+              id: 'member-speed',
+              name: 'speed',
+              nameRu: 'Скорость',
+              dataType: 'float',
+              access: 'private',
+            },
+          ],
+          methods: [
+            {
+              id: 'method-boost',
+              name: 'Boost',
+              nameRu: 'Ускориться',
+              returnType: 'bool',
+              access: 'public',
+              isStatic: false,
+              isConst: true,
+              isVirtual: true,
+              isOverride: false,
+              params: [
+                {
+                  id: 'param-amount',
+                  name: 'amount',
+                  nameRu: 'Значение',
+                  dataType: 'float',
+                },
+              ],
+            },
+            // legacy method payload without params should remain valid
+            {
+              id: 'method-legacy',
+              name: 'Legacy',
+              returnType: 'void',
+              access: 'public',
+            },
+          ],
+        },
+      },
+    };
+
+    const parsed = parseExternalIpcRequest(extendedRequest);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data.type).toBe('class/upsert');
+    if (parsed.data.type !== 'class/upsert') {
+      return;
+    }
+
+    const classItem = parsed.data.payload.classItem;
+    expect(classItem.nameRu).toBe('Транспорт');
+    expect(classItem.methods[0]?.params).toHaveLength(1);
+    expect(classItem.methods[0]?.params[0]?.nameRu).toBe('Значение');
+    expect(classItem.methods[1]?.params).toEqual([]);
+  });
+
   it('валидирует success/error ответы с общей схемой ошибки', () => {
     const successResponse = {
       type: 'symbols/query',
@@ -195,6 +278,22 @@ describe('messages IPC схемы', () => {
         ],
       },
     };
+    const filePickResponse = {
+      type: 'file/pick',
+      ok: true,
+      payload: {
+        filePath: 'F:/workspace/main.cpp',
+        fileName: 'main.cpp',
+      },
+    };
+    const fileOpenResponse = {
+      type: 'file/open',
+      ok: true,
+      payload: {
+        filePath: 'F:/workspace/.multicode/classes/class-player.multicode',
+        fileName: 'class-player.multicode',
+      },
+    };
 
     const errorResponse = {
       type: 'integration/remove',
@@ -207,6 +306,8 @@ describe('messages IPC схемы', () => {
     };
 
     expect(parseExternalIpcResponse(successResponse).success).toBe(true);
+    expect(parseExternalIpcResponse(filePickResponse).success).toBe(true);
+    expect(parseExternalIpcResponse(fileOpenResponse).success).toBe(true);
     expect(parseExternalIpcResponse(errorResponse).success).toBe(true);
   });
 
@@ -271,5 +372,33 @@ describe('messages IPC схемы', () => {
 
     expect(externalIpcRequestSchema.safeParse(unknownMessage).success).toBe(false);
     expect(parseExternalIpcRequest(unknownMessage).success).toBe(false);
+  });
+
+  it('валидирует extension-сообщение classStorageStatusChanged', () => {
+    const message = {
+      type: 'classStorageStatusChanged',
+      payload: {
+        mode: 'sidecar',
+        isBoundSource: true,
+        graphFilePath: 'F:/workspace/.multicode/graph-1.multicode',
+        classesDirPath: 'F:/workspace/.multicode/classes',
+        bindingsTotal: 2,
+        classesLoaded: 2,
+        missing: 0,
+        failed: 0,
+        fallbackEmbedded: 0,
+        updatedAt: '2026-03-03T10:00:00.000Z',
+        classItems: [
+          {
+            classId: 'class-player',
+            filePath: 'F:/workspace/.multicode/classes/class-player.multicode',
+            status: 'ok',
+          },
+        ],
+      },
+    };
+
+    expect(extensionToWebviewMessageSchema.safeParse(message).success).toBe(true);
+    expect(parseExtensionMessage(message).success).toBe(true);
   });
 });

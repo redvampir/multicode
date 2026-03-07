@@ -27,6 +27,27 @@ describe('store slices', () => {
     expect(state.symbolLocalizations[key]).toBeUndefined();
     expect(state.graph.symbolLocalization?.[key]).toBeUndefined();
     expect(state.localizationError).toBe('IPC unavailable');
+    expect(state.lastChangeOrigin).toBe('local');
+  });
+
+  it('помечает изменение локализации как local-origin для graphChanged', async () => {
+    const store = createStore();
+
+    await store.getState().renameRuOverlayOptimistic(
+      {
+        integrationId: 'dep-text',
+        symbolId: 'dep-text::print_status',
+        signatureHash: 'sig-ru',
+        localizedNameRu: 'Напечатать статус'
+      },
+      async () => Promise.resolve()
+    );
+
+    const key = makeLocalizationKey('dep-text', 'dep-text::print_status', 'sig-ru');
+    const state = store.getState();
+    expect(state.symbolLocalizations[key]?.localizedNameRu).toBe('Напечатать статус');
+    expect(state.graph.symbolLocalization?.[key]?.localizedNameRu).toBe('Напечатать статус');
+    expect(state.lastChangeOrigin).toBe('local');
   });
 
   it('помечает перевод как stale при несовпадении signatureHash', () => {

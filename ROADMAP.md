@@ -38,16 +38,16 @@
   - [x] Последовательность вызовов (execution flow)
   - [x] Переменные (`Variable`, `SetVariable`, `GetVariable`)
   - [x] Условия (`Branch` → if/else)
-  - [ ] Циклы (`WhileLoop`, `DoWhile`, `ForEach`) — пока не реализованы в C++ core
-  - [ ] Управление потоком (`Break`, `Continue`, `Switch`) — пока не реализовано в C++ core
-  - [ ] Математика (`Subtract`, `Multiply`, `Divide`, `Modulo`) — пока не реализована в C++ core
-  - [ ] Сравнение (`Equal`, `NotEqual`, `Greater`, `Less`, `GreaterEqual`, `LessEqual`) — пока не реализовано в C++ core
-  - [ ] Логика (`And`, `Or`, `Not`) — пока не реализована в C++ core
-  - [ ] Ввод (`Input`) — пока не реализован в C++ core
-  - [ ] Русские комментарии с названиями узлов — пока не реализованы в C++ core
-  - [ ] Транслитерация русских переменных — пока не реализована в C++ core
-  - [ ] Source map (маппинг узлов на строки кода) — пока не реализован в C++ core
-  - [ ] Статистика генерации (время, количество узлов/строк) — пока не реализована в C++ core
+  - [x] Циклы (`WhileLoop`, `DoWhile`, `ForEach`)
+  - [x] Управление потоком (`Break`, `Continue`, `Switch`)
+  - [x] Математика (`Subtract`, `Multiply`, `Divide`, `Modulo`)
+  - [x] Сравнение (`Equal`, `NotEqual`, `Greater`, `Less`, `GreaterEqual`, `LessEqual`)
+  - [x] Логика (`And`, `Or`, `Not`)
+  - [x] Ввод (`Input`)
+  - [x] Русские комментарии с названиями узлов
+  - [x] Транслитерация русских переменных
+  - [x] Source map (маппинг узлов на строки кода)
+  - [x] Статистика генерации (время, количество узлов/строк)
 - [x] Плагинная архитектура генераторов (`generators/`)
 - [x] Предпросмотр кода в панели (split view с синхронной подсветкой)
 - [x] Binding к исходникам: маркеры `// multicode:begin` / `// multicode:end`
@@ -98,7 +98,7 @@
 
 ## v0.6 — «Пользовательские функции» 🚧 В РАБОТЕ
 
-> Текущее состояние (релиз `0.4.1`): UI/модель функций есть, но в пользовательском сценарии **C++ код пользовательских функций пока не генерируется**.
+> Текущее состояние (релиз `0.4.1`): UI/модель и кодогенерация пользовательских функций работают end-to-end; в фокусе — стабилизация и UX.
 
 - [x] UI панель для управления функциями (`FunctionListPanel`)
   - [x] Создание/редактирование/удаление функций
@@ -108,17 +108,74 @@
 - [x] Типы для функций в `blueprintTypes.ts`
   - [x] `BlueprintFunction`, `FunctionParameter`
   - [x] `FunctionEntry`, `FunctionReturn`, `CallUserFunction`
-- [ ] Кодогенерация пользовательских функций (интеграция end-to-end)
-  - [ ] `FunctionEntryNodeGenerator`
-  - [ ] `FunctionReturnNodeGenerator`
-  - [ ] `CallUserFunctionNodeGenerator`
-  - [ ] Генерация сигнатуры с C++ типами
-  - [ ] Поддержка множественных выходных параметров (`std::tuple`)
-  - [ ] Транслитерация русских имён
-  - [ ] Русские комментарии
-- [ ] Расширенный `CodeGenContext` с `currentFunction` и `functions`
-- [ ] `CppCodeGenerator.generateUserFunction()` в основном пайплайне генерации
-- [ ] Тесты end-to-end: функция создаётся в UI, вызывается из EventGraph, и генерируется корректный C++ (unit + интеграционные)
+- [x] Кодогенерация пользовательских функций (интеграция end-to-end)
+  - [x] `FunctionEntryNodeGenerator`
+  - [x] `FunctionReturnNodeGenerator`
+  - [x] `CallUserFunctionNodeGenerator`
+  - [x] Генерация сигнатуры с C++ типами
+  - [x] Поддержка множественных выходных параметров (`std::tuple`)
+  - [x] Транслитерация русских имён
+  - [x] Русские комментарии
+- [x] Расширенный `CodeGenContext` с `currentFunction` и `functions`
+- [x] `CppCodeGenerator.generateUserFunction()` в основном пайплайне генерации
+- [x] Тесты end-to-end: функция создаётся в UI, вызывается из EventGraph, и генерируется корректный C++ (unit + интеграционные)
+- [ ] Dependency View v2 (переработка окна зависимостей)
+  - [x] Этап 1: UI-скелет
+    - [x] Блок "Прикреплено к активному файлу"
+    - [x] Группировка символов по типам (function/method/class/struct/enum/variable)
+    - [x] Скроллируемые области для больших списков
+    - [x] Инспектор символа: namespace, сигнатура, источник
+  - [x] Этап 2: Перенос символов в граф
+    - [x] Клик-добавление узла по symbol (function/method)
+    - [x] Drag&Drop символа на Blueprint canvas
+    - [x] Поддержка двух режимов UI: отдельный dependency-режим + боковая панель в Blueprint
+  - [x] Этап 3: Дерево зависимостей
+    - [x] Мини-дерево: active file -> integration -> attached files
+    - [x] Фильтры и счетчики по типам символов
+    - [x] Отображение параметров/сигнатур (включая шаблонные и сложные случаи)
+  - [x] Этап 4: Масштабирование и UX для больших фреймворков
+    - [x] Виртуализация списков символов
+    - [x] Оптимизация селекторов и рендеринга
+    - [x] Стресс-проверка на больших C++/UE заголовках
+- [ ] Class System v2
+  - [x] Итерация A: embedded + modal + nodes
+    - [x] Разделение codeName (`name`) и UI-оверлея (`nameRu`) для класса/полей/методов/параметров
+    - [x] Mini ClassPanel в едином стиле sidebar (добавить узел / открыть редактор / удалить)
+    - [x] Полноразмерный modal ClassEditor
+    - [x] Фабрика готовых class-node (`ctor`, `method`, `static`, `get`, `set`)
+    - [x] Ребиндинг class-node при изменении сигнатуры класса
+  - [x] Итерация B: sidecar class files
+    - [x] ClassStorageAdapter (`embedded`/`sidecar`)
+    - [x] `.multicode/classes/<classId>.multicode` + binding-маркер
+    - [x] Мягкая миграция без ломки текущих графов
+  - [ ] Class Sidecar UX + новые class-узлы
+    - [x] Заход 1: Диагностика sidecar + центр файлов классов
+      - [x] Расширенный `classStorageStatusChanged` (источник/причина/путь/exists/lastChecked)
+      - [x] Секция "Файлы классов" с действиями `Открыть / Перечитать / Починить`
+      - [x] Статусы и mode-бейджи в Header/Сводке/ClassPanel
+    - [x] Заход 2: Вертикальный UX + DnD из ClassPanel
+      - [x] Фильтры `Все / Проблемные / Изменённые`
+      - [x] Drag&Drop метода/поля из ClassPanel на canvas
+      - [x] Устранение горизонтального overflow в ClassPanel
+    - [x] Заход 3: Core class-узлы
+      - [x] `StaticGetMember`
+      - [x] `StaticSetMember`
+      - [x] `ConstructorOverloadCall`
+    - [x] Заход 4: Advanced class-узлы (feature-flag `multicode.classNodes.advanced`)
+      - [x] `CallBaseMethod`
+      - [x] `CastStatic`
+      - [x] `CastDynamic`
+      - [x] `CastConst`
+      - [x] `IsType`
+      - [x] `MakeUnique`
+      - [x] `MakeShared`
+      - [x] `DeleteObject`
+      - [x] `AddressOfMember`
+      - [x] `InitListCtor`
+    - [x] Заход 5: финальная полировка UX/документации
+      - [x] Badge `Class Nodes: CORE/ADVANCED` в toolbar/summary
+      - [x] Advanced actions в ClassPanel без горизонтального overflow
+      - [x] README обновлён под sidecar + advanced class nodes
 
 ## v0.7 — «Проектная работа» 🚧 ПЛАНИРУЕТСЯ
 

@@ -2,6 +2,8 @@ import React from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultGraphState, type GraphState } from '../../shared/graphState';
+import type { BlueprintGraphState } from '../../shared/blueprintTypes';
+import type { SymbolDescriptor } from '../../shared/externalSymbols';
 import type { ThemeMessage } from '../../shared/messages';
 
 type WebviewGlobals = typeof globalThis & {
@@ -26,7 +28,7 @@ const acquireVsCodeApiMock: WebviewGlobals['acquireVsCodeApi'] = <T,>() => ({
 });
 
 vi.mock('../BlueprintEditor', () => ({
-  BlueprintEditor: ({ graph, onGraphChange }: { graph: any; onGraphChange: (next: any) => void }) => (
+  BlueprintEditor: ({ graph, onGraphChange }: { graph: BlueprintGraphState; onGraphChange: (next: BlueprintGraphState) => void }) => (
     <div data-testid="blueprint-editor-mock">
       Blueprint Editor Mock
       <button
@@ -58,7 +60,32 @@ vi.mock('../HelpPanel', () => ({
   default: () => <div data-testid="help-panel-mock">Help Panel Mock</div>
 }));
 
-const setEditorMode = (mode: 'blueprint' | 'cytoscape'): void => {
+vi.mock('../DependencyViewPanel', () => ({
+  DependencyViewPanel: ({ onInsertSymbol }: { onInsertSymbol?: (symbol: SymbolDescriptor, localizedName: string) => void }) => {
+    const symbol: SymbolDescriptor = {
+      id: 'depcheck::print_status',
+      integrationId: 'depcheck',
+      symbolKind: 'function',
+      name: 'print_status',
+      signature: 'print_status(std::string_view message)',
+      signatureHash: 'sig-main-test',
+      namespacePath: ['depcheck'],
+    };
+
+    return (
+      <div data-testid="dependency-view-panel-mock">
+        <button
+          type="button"
+          onClick={() => onInsertSymbol?.(symbol, 'Напечатать статус')}
+        >
+          Insert External Symbol
+        </button>
+      </div>
+    );
+  },
+}));
+
+const setEditorMode = (mode: 'blueprint' | 'cytoscape' | 'dependency'): void => {
   const editorModeSelect = screen.getAllByRole('combobox')[0];
   fireEvent.change(editorModeSelect, { target: { value: mode } });
 };
@@ -94,6 +121,26 @@ const dispatchSetState = (graph: GraphState): void => {
       })
     );
   });
+};
+
+const dispatchExternalIpcResponse = (data: unknown): void => {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: '',
+        data,
+      })
+    );
+  });
+};
+
+const openWorkingFilesMenu = async (): Promise<void> => {
+  const trigger = screen.getByTestId('toolbar-working-files-menu-trigger');
+  fireEvent.click(trigger);
+  if (!screen.queryByTestId('toolbar-working-file-menu-popup')) {
+    fireEvent.click(trigger);
+  }
+  await screen.findByTestId('toolbar-working-file-menu-popup');
 };
 
 describe('main.tsx integration', () => {
@@ -196,5 +243,216 @@ describe('main.tsx integration', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('graphChanged включает symbolLocalization после локального изменения', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+    vi.useFakeTimers();
+
+    const localizationKey = 'file_dep::file_dep::print_status::*';
+    dispatchSetState({
+      ...createDefaultGraphState(),
+      id: 'graph-localization',
+      name: 'Graph with localization',
+      displayLanguage: 'ru',
+      language: 'cpp',
+      symbolLocalization: {
+        [localizationKey]: {
+          integrationId: 'file_dep',
+          symbolId: 'file_dep::print_status',
+          localizedNameRu: 'Напечатать статус',
+        },
+      },
+    });
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate Blueprint Change' }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(220);
+      });
+
+      const graphChangedCalls = postMessageMock.mock.calls
+        .map((entry) => entry[0])
+        .filter((message) => message?.type === 'graphChanged');
+      expect(graphChangedCalls.length).toBeGreaterThan(0);
+
+      const payload = graphChangedCalls[graphChangedCalls.length - 1]?.payload as Record<string, unknown>;
+      expect(payload.symbolLocalization).toEqual(
+        expect.objectContaining({
+          [localizationKey]: expect.objectContaining({
+            localizedNameRu: 'Напечатать статус',
+          }),
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('в режиме Dependency добавляет внешний symbol в graph state по клику', async () => {
+    setEditorMode('dependency');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Insert External Symbol' })).toBeInTheDocument();
+    });
+
+    postMessageMock.mockClear();
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Insert External Symbol' }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(220);
+      });
+
+      const graphChangedCalls = postMessageMock.mock.calls
+        .map((entry) => entry[0])
+        .filter((message) => message?.type === 'graphChanged');
+      expect(graphChangedCalls.length).toBeGreaterThan(0);
+
+      const payload = graphChangedCalls[graphChangedCalls.length - 1]?.payload as Record<string, unknown>;
+      const nodes = payload.nodes as Array<Record<string, unknown>>;
+      expect(nodes.length).toBeGreaterThan(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('кнопки выбора файлов отправляют file/pick с нужной целью', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+
+    fireEvent.click(screen.getByTestId('toolbar-bind-file-pick'));
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file/pick',
+        payload: expect.objectContaining({ purpose: 'bind' }),
+      })
+    );
+    dispatchExternalIpcResponse({
+      type: 'file/pick',
+      ok: true,
+      payload: {
+        filePath: null,
+        fileName: null,
+      },
+    });
+
+    fireEvent.click(screen.getByTestId('toolbar-dependency-file-pick'));
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'file/pick',
+        payload: expect.objectContaining({ purpose: 'dependency' }),
+      })
+    );
+    dispatchExternalIpcResponse({
+      type: 'file/pick',
+      ok: true,
+      payload: {
+        filePath: null,
+        fileName: null,
+      },
+    });
+  });
+
+  it('меню рабочего файла позволяет открыть файл и блокирует удаление активного', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+
+    dispatchExternalIpcResponse({
+      type: 'editableFilesChanged',
+      payload: {
+        files: [
+          {
+            fileName: 'alpha.cpp',
+            filePath: 'f:/workspace/alpha.cpp',
+          },
+        ],
+      },
+    });
+
+    await openWorkingFilesMenu();
+    expect(screen.getByTestId('toolbar-working-file-menu-popup')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'alpha.cpp' }));
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'bindFile',
+        payload: { filePath: 'f:/workspace/alpha.cpp' },
+      })
+    );
+
+    await openWorkingFilesMenu();
+    fireEvent.click(screen.getByLabelText('Убрать из списка alpha.cpp'));
+
+    await openWorkingFilesMenu();
+    expect(screen.getByRole('button', { name: 'alpha.cpp' })).toBeInTheDocument();
+  });
+
+  it('поиск в меню рабочих файлов фильтрует список по имени', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+
+    dispatchExternalIpcResponse({
+      type: 'editableFilesChanged',
+      payload: {
+        files: [
+          {
+            fileName: 'alpha.cpp',
+            filePath: 'f:/workspace/alpha.cpp',
+          },
+          {
+            fileName: 'beta.cpp',
+            filePath: 'f:/workspace/beta.cpp',
+          },
+        ],
+      },
+    });
+
+    await openWorkingFilesMenu();
+    expect(screen.getByTestId('toolbar-working-file-menu-popup')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('toolbar-working-file-search'), { target: { value: 'beta' } });
+
+    expect(screen.getByRole('button', { name: 'beta.cpp' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'alpha.cpp' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'beta.cpp' }));
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'bindFile',
+        payload: { filePath: 'f:/workspace/beta.cpp' },
+      })
+    );
+  });
+
+  it('показывает статус class storage в header и сводке графа', async () => {
+    setEditorMode('blueprint');
+
+    dispatchExternalIpcResponse({
+      type: 'classStorageStatusChanged',
+      payload: {
+        mode: 'sidecar',
+        isBoundSource: true,
+        graphFilePath: 'f:/workspace/.multicode/graph-1.multicode',
+        classesDirPath: 'f:/workspace/.multicode/classes',
+        bindingsTotal: 2,
+        classesLoaded: 2,
+        missing: 1,
+        failed: 0,
+        fallbackEmbedded: 1,
+        updatedAt: new Date().toISOString(),
+        classItems: [
+          { classId: 'class-a', filePath: 'f:/workspace/.multicode/classes/class-a.multicode', status: 'ok' },
+          { classId: 'class-b', filePath: 'f:/workspace/.multicode/classes/class-b.multicode', status: 'missing' },
+        ],
+      },
+    });
+
+    expect(await screen.findByTestId('class-storage-badge')).toHaveTextContent('Class Storage: SIDECAR');
+    expect(screen.getAllByText(/(Class Storage|Хранение классов)/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/miss 1/i)).toBeInTheDocument();
   });
 });

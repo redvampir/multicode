@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "savedAt": "2026-03-02T11:30:04.893Z",
+  "savedAt": "2026-03-03T08:03:11.890Z",
   "data": {
     "id": "graph-1772448508528",
     "name": "Untitled Graph",
+    "graphVersion": 3,
     "language": "cpp",
     "displayLanguage": "ru",
     "nodes": [
@@ -107,24 +108,24 @@
         }
       },
       {
-        "id": "call-1772450991395-s7nhmlhaa",
-        "label": "Напечатать статус",
+        "id": "call-1772499041821-do2dr4t2t",
+        "label": "Напечатать_статус",
         "type": "Function",
         "position": {
-          "x": 416,
-          "y": 80
+          "x": 400,
+          "y": 64
         },
         "blueprintNode": {
-          "id": "call-1772450991395-s7nhmlhaa",
-          "label": "Напечатать статус",
+          "id": "call-1772499041821-do2dr4t2t",
+          "label": "Напечатать_статус",
           "type": "CallUserFunction",
           "position": {
-            "x": 416,
-            "y": 80
+            "x": 400,
+            "y": 64
           },
           "inputs": [
             {
-              "id": "call-1772450991395-s7nhmlhaa-exec-in",
+              "id": "call-1772499041821-do2dr4t2t-exec-in",
               "name": "",
               "dataType": "execution",
               "direction": "input",
@@ -132,7 +133,7 @@
               "connected": false
             },
             {
-              "id": "call-1772450991395-s7nhmlhaa-ext_arg_1_message",
+              "id": "call-1772499041821-do2dr4t2t-ext_arg_1_message",
               "name": "message",
               "nameRu": "message",
               "dataType": "string",
@@ -143,7 +144,7 @@
           ],
           "outputs": [
             {
-              "id": "call-1772450991395-s7nhmlhaa-exec-out",
+              "id": "call-1772499041821-do2dr4t2t-exec-out",
               "name": "",
               "dataType": "execution",
               "direction": "output",
@@ -175,53 +176,53 @@
     ],
     "edges": [
       {
-        "id": "edge-1772450995331-dy9d1fo",
+        "id": "edge-1772499045149-qbjohbd",
         "source": "node-start",
-        "target": "call-1772450991395-s7nhmlhaa",
+        "target": "call-1772499041821-do2dr4t2t",
         "label": "flow",
         "kind": "execution",
         "blueprintEdge": {
-          "id": "edge-1772450995331-dy9d1fo",
+          "id": "edge-1772499045149-qbjohbd",
           "sourceNode": "node-start",
           "sourcePort": "exec-out",
-          "targetNode": "call-1772450991395-s7nhmlhaa",
-          "targetPort": "call-1772450991395-s7nhmlhaa-exec-in",
+          "targetNode": "call-1772499041821-do2dr4t2t",
+          "targetPort": "call-1772499041821-do2dr4t2t-exec-in",
           "kind": "execution"
         }
       },
       {
-        "id": "edge-1772450996866-fqhs0hh",
-        "source": "call-1772450991395-s7nhmlhaa",
+        "id": "edge-1772499046645-e99ezy7",
+        "source": "call-1772499041821-do2dr4t2t",
         "target": "node-end",
         "label": "flow",
         "kind": "execution",
         "blueprintEdge": {
-          "id": "edge-1772450996866-fqhs0hh",
-          "sourceNode": "call-1772450991395-s7nhmlhaa",
-          "sourcePort": "call-1772450991395-s7nhmlhaa-exec-out",
+          "id": "edge-1772499046645-e99ezy7",
+          "sourceNode": "call-1772499041821-do2dr4t2t",
+          "sourcePort": "call-1772499041821-do2dr4t2t-exec-out",
           "targetNode": "node-end",
           "targetPort": "exec-in",
           "kind": "execution"
         }
       },
       {
-        "id": "edge-1772450998539-ce364j3",
+        "id": "edge-1772499049637-tboo4x7",
         "source": "node-1772448617727-aw92u50u9",
-        "target": "call-1772450991395-s7nhmlhaa",
+        "target": "call-1772499041821-do2dr4t2t",
         "label": "data",
         "kind": "data",
         "blueprintEdge": {
-          "id": "edge-1772450998539-ce364j3",
+          "id": "edge-1772499049637-tboo4x7",
           "sourceNode": "node-1772448617727-aw92u50u9",
           "sourcePort": "node-1772448617727-aw92u50u9-value-out",
-          "targetNode": "call-1772450991395-s7nhmlhaa",
-          "targetPort": "call-1772450991395-s7nhmlhaa-ext_arg_1_message",
+          "targetNode": "call-1772499041821-do2dr4t2t",
+          "targetPort": "call-1772499041821-do2dr4t2t-ext_arg_1_message",
           "kind": "data",
           "dataType": "string"
         }
       }
     ],
-    "updatedAt": "2026-03-02T11:30:04.429Z",
+    "updatedAt": "2026-03-03T08:03:11.433Z",
     "dirty": false,
     "variables": [
       {
@@ -240,7 +241,79 @@
         "createdAt": "2026-03-02T10:50:11.935Z"
       }
     ],
-    "functions": [],
+    "functions": [
+      {
+        "id": "func-1772453043025-40f45zk2g",
+        "name": "newFunction1",
+        "nameRu": "Новая функция 1",
+        "parameters": [],
+        "variables": [],
+        "graph": {
+          "nodes": [
+            {
+              "id": "func-1772453043025-40f45zk2g-entry",
+              "label": "newFunction1",
+              "type": "FunctionEntry",
+              "position": {
+                "x": 100,
+                "y": 200
+              },
+              "inputs": [],
+              "outputs": [
+                {
+                  "id": "func-1772453043025-40f45zk2g-entry-exec-out",
+                  "name": "",
+                  "dataType": "execution",
+                  "direction": "output",
+                  "index": 0,
+                  "connected": false
+                }
+              ],
+              "properties": {
+                "functionId": "func-1772453043025-40f45zk2g"
+              }
+            },
+            {
+              "id": "func-1772453043025-40f45zk2g-return",
+              "label": "Return",
+              "type": "FunctionReturn",
+              "position": {
+                "x": 500,
+                "y": 200
+              },
+              "inputs": [
+                {
+                  "id": "func-1772453043025-40f45zk2g-return-exec-in",
+                  "name": "",
+                  "dataType": "execution",
+                  "direction": "input",
+                  "index": 0,
+                  "connected": false
+                }
+              ],
+              "outputs": [],
+              "properties": {
+                "functionId": "func-1772453043025-40f45zk2g"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "edge-1772453043025-ch87aq2xa",
+              "sourceNode": "func-1772453043025-40f45zk2g-entry",
+              "sourcePort": "func-1772453043025-40f45zk2g-entry-exec-out",
+              "targetNode": "func-1772453043025-40f45zk2g-return",
+              "targetPort": "func-1772453043025-40f45zk2g-return-exec-in",
+              "kind": "execution"
+            }
+          ]
+        },
+        "isPure": false,
+        "categoryColor": "#9C27B0",
+        "createdAt": "2026-03-02T12:04:03.025Z",
+        "updatedAt": "2026-03-02T12:04:03.048Z"
+      }
+    ],
     "classes": [],
     "integrationBindings": [
       {
@@ -260,7 +333,19 @@
         }
       }
     ],
-    "graphVersion": 3,
-    "symbolLocalization": {}
+    "symbolLocalization": {
+      "file_dep_check_text_a1eac043::file_dep_check_text_a1eac043::print_status::73351b92c2cc05d843acdf29468acde0b3762310": {
+        "integrationId": "file_dep_check_text_a1eac043",
+        "symbolId": "file_dep_check_text_a1eac043::print_status",
+        "signatureHash": "73351b92c2cc05d843acdf29468acde0b3762310",
+        "localizedNameRu": "Напечатать_статус"
+      },
+      "file_dep_check_text_a1eac043::file_dep_check_text_a1eac043::count_words::57d71efa7735bffe03aa3d0b5ab345a9332727a0": {
+        "integrationId": "file_dep_check_text_a1eac043",
+        "symbolId": "file_dep_check_text_a1eac043::count_words",
+        "signatureHash": "57d71efa7735bffe03aa3d0b5ab345a9332727a0",
+        "localizedNameRu": ""
+      }
+    }
   }
 }

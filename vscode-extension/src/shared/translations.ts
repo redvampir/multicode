@@ -26,11 +26,18 @@ export type TranslationKey =
   | 'toolbar.codegenProfile.learn'
   | 'toolbar.codegenProfile.debug'
   | 'toolbar.codegenProfile.recovery'
+  | 'toolbar.codegenEntrypointMode'
+  | 'toolbar.codegenEntrypointMode.auto'
+  | 'toolbar.codegenEntrypointMode.executable'
+  | 'toolbar.codegenEntrypointMode.library'
   | 'overview.title'
   | 'overview.nodes'
   | 'overview.edges'
   | 'overview.language'
   | 'overview.synced'
+  | 'overview.classStorage'
+  | 'overview.classStorageSidecar'
+  | 'overview.classStorageEmbedded'
   | 'inspector.title'
   | 'graph.id'
   | 'graph.name'
@@ -73,6 +80,7 @@ export type TranslationKey =
   | 'toasts.connectionCreated'
   | 'toasts.nodesDeleted'
   | 'toasts.codegenProfileChanged'
+  | 'toasts.codegenEntrypointModeChanged'
   | 'toast.close'
   | 'toast.generation.success'
   | 'toast.generation.error'
@@ -109,6 +117,7 @@ export type TranslationKey =
   | 'errors.codeWriteTargetMissing'
   | 'errors.codeWriteFailed'
   | 'errors.codegenProfileUpdateFailed'
+  | 'errors.codegenEntrypointModeUpdateFailed'
   | 'errors.ipc.validation.webviewMessage'
   | 'errors.ipc.validation.extensionResponse'
   | 'palette.title'
@@ -201,11 +210,18 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.codegenProfile.learn': 'Учебный',
     'toolbar.codegenProfile.debug': 'Отладка',
     'toolbar.codegenProfile.recovery': 'Восстановление',
+    'toolbar.codegenEntrypointMode': 'Режим entrypoint',
+    'toolbar.codegenEntrypointMode.auto': 'Авто',
+    'toolbar.codegenEntrypointMode.executable': 'Исполняемый',
+    'toolbar.codegenEntrypointMode.library': 'Библиотека',
     'overview.title': 'Сводка графа',
     'overview.nodes': 'Узлы',
     'overview.edges': 'Связи',
     'overview.language': 'Язык',
     'overview.synced': 'Синхронизировано',
+    'overview.classStorage': 'Хранение классов',
+    'overview.classStorageSidecar': 'Sidecar',
+    'overview.classStorageEmbedded': 'режим embedded',
     'inspector.title': 'Инспектор',
     'graph.id': 'ID',
     'graph.name': 'Имя',
@@ -248,6 +264,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Связь создана',
     'toasts.nodesDeleted': '{count} узлов удалено',
     'toasts.codegenProfileChanged': 'Профиль генерации: {profile}',
+    'toasts.codegenEntrypointModeChanged': 'Режим entrypoint: {mode}',
     'toast.close': 'Закрыть уведомление',
     'toast.generation.success': 'Код успешно сгенерирован',
     'toast.generation.error': 'Ошибка генерации кода',
@@ -284,6 +301,7 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.codeWriteTargetMissing': 'Нет привязанного файла для записи кода',
     'errors.codeWriteFailed': 'Не удалось записать код в файл: {reason}',
     'errors.codegenProfileUpdateFailed': 'Не удалось изменить профиль генерации',
+    'errors.codegenEntrypointModeUpdateFailed': 'Не удалось изменить режим entrypoint',
     'errors.ipc.validation.webviewMessage': 'Некорректное сообщение от webview',
     'errors.ipc.validation.extensionResponse': 'Некорректный IPC-ответ расширения',
     'palette.title': 'Быстрое добавление',
@@ -380,11 +398,18 @@ const translations: Record<Locale, TranslationMap> = {
     'toolbar.codegenProfile.learn': 'Learn',
     'toolbar.codegenProfile.debug': 'Debug',
     'toolbar.codegenProfile.recovery': 'Recovery',
+    'toolbar.codegenEntrypointMode': 'Entrypoint mode',
+    'toolbar.codegenEntrypointMode.auto': 'Auto',
+    'toolbar.codegenEntrypointMode.executable': 'Executable',
+    'toolbar.codegenEntrypointMode.library': 'Library',
     'overview.title': 'Graph overview',
     'overview.nodes': 'Nodes',
     'overview.edges': 'Edges',
     'overview.language': 'Language',
     'overview.synced': 'Synced',
+    'overview.classStorage': 'Class Storage',
+    'overview.classStorageSidecar': 'Sidecar',
+    'overview.classStorageEmbedded': 'embedded mode',
     'inspector.title': 'Inspector',
     'graph.id': 'ID',
     'graph.name': 'Name',
@@ -427,6 +452,7 @@ const translations: Record<Locale, TranslationMap> = {
     'toasts.connectionCreated': 'Connection created',
     'toasts.nodesDeleted': '{count} nodes removed',
     'toasts.codegenProfileChanged': 'Code generation profile: {profile}',
+    'toasts.codegenEntrypointModeChanged': 'Entrypoint mode: {mode}',
     'toast.close': 'Close notification',
     'toast.generation.success': 'Code generated successfully',
     'toast.generation.error': 'Code generation error',
@@ -463,6 +489,7 @@ const translations: Record<Locale, TranslationMap> = {
     'errors.codeWriteTargetMissing': 'No bound file to write generated code',
     'errors.codeWriteFailed': 'Failed to write code to file: {reason}',
     'errors.codegenProfileUpdateFailed': 'Failed to update code generation profile',
+    'errors.codegenEntrypointModeUpdateFailed': 'Failed to update entrypoint mode',
     'errors.ipc.validation.webviewMessage': 'Invalid message received from webview',
     'errors.ipc.validation.extensionResponse': 'Invalid IPC response from extension',
     'palette.title': 'Quick Add',

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "savedAt": "2026-03-02T10:23:34.976Z",
+  "savedAt": "2026-03-03T03:56:07.501Z",
   "data": {
     "id": "graph-1771817389591",
     "name": "Untitled Graph",
@@ -79,7 +79,7 @@
       }
     ],
     "edges": [],
-    "updatedAt": "2026-03-02T10:23:34.523Z",
+    "updatedAt": "2026-03-03T03:56:07.041Z",
     "dirty": false,
     "variables": [],
     "functions": [
@@ -279,7 +279,35 @@
         "updatedAt": "2026-03-02T10:17:55.750Z"
       }
     ],
-    "classes": [],
+    "classes": [
+      {
+        "id": "class-4b159f24-4b03-4e9e-ac49-46c266083ec3",
+        "name": "NewClass1",
+        "members": [
+          {
+            "id": "member-4d447a04-7eb8-4ed8-a489-c212bd03c4ab",
+            "name": "field1",
+            "dataType": "int32",
+            "access": "private"
+          },
+          {
+            "id": "member-e610e2d0-9584-4831-a3aa-0b1a255cd49e",
+            "name": "field2",
+            "dataType": "int32",
+            "access": "private"
+          }
+        ],
+        "methods": [
+          {
+            "id": "method-eda42e46-22e6-4bf7-9d6f-9afcef532e8c",
+            "name": "method1",
+            "returnType": "any",
+            "params": [],
+            "access": "public"
+          }
+        ]
+      }
+    ],
     "integrationBindings": [
       {
         "integrationId": "file_dep_check_math_efad1c9e",

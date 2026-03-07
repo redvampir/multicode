@@ -42,7 +42,8 @@
     "onCommand:multicode.loadGraph",
     "onCommand:multicode.generateCode",
     "onCommand:multicode.translateGraph",
-    "onCommand:multicode.generateCodeBinding"
+    "onCommand:multicode.generateCodeBinding",
+    "onCommand:multicode.createClassFilesAndBind"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -81,6 +82,11 @@
         "command": "multicode.generateCodeBinding",
         "title": "МультиКод: Вставить код в существующий файл",
         "icon": "$(link)"
+      },
+      {
+        "command": "multicode.createClassFilesAndBind",
+        "title": "МультиКод: Создать файлы класса и привязать к редактору",
+        "icon": "$(symbol-class)"
       }
     ],
     "keybindings": [
@@ -160,6 +166,13 @@
           "when": "editorLangId == cpp || editorLangId == rust",
           "group": "multicode@6"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "multicode.createClassFilesAndBind",
+          "when": "explorerResourceIsFolder || resourceExtname == .cpp || resourceExtname == .cc || resourceExtname == .cxx || resourceExtname == .h || resourceExtname == .hpp || resourceExtname == .hh || resourceExtname == .hxx",
+          "group": "multicode@1"
+        }
       ]
     },
     "configuration": {
@@ -219,6 +232,16 @@
           ],
           "default": "clean",
           "description": "Generated C++ output profile: clean (minimal), learn (readable comments), debug (node markers), recovery (debug + embedded snapshot)"
+        },
+        "multicode.codegen.entrypointMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "executable",
+            "library"
+          ],
+          "default": "auto",
+          "description": "Entrypoint generation mode: auto (add main() only when Start node exists), executable (always add main()), library (never add main())"
         },
         "multicode.graphExport.compatibilityMode": {
           "type": "string",
@@ -287,6 +310,20 @@
           "default": true,
           "description": "Связывать исходники с .multicode-файлами через комментарий @multicode:graph"
         },
+        "multicode.classStorage.mode": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "sidecar"
+          ],
+          "default": "embedded",
+          "description": "Хранение классов: embedded (внутри графового .multicode) или sidecar (в .multicode/classes/*.multicode + classBindings)."
+        },
+        "multicode.classNodes.advanced": {
+          "type": "boolean",
+          "default": false,
+          "description": "Включить расширенный пакет class-узлов (cast/base/delete/make* и др.)"
+        },
         "multicode.graphBinding.autoSave": {
           "type": "boolean",
           "default": true,
@@ -351,6 +388,8 @@
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
+    "vsix": "npx @vscode/vsce package",
+    "vsix:no-deps": "npx @vscode/vsce package --no-dependencies",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
@@ -370,6 +409,7 @@
     "@types/node": "^18.0.0",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.22",
+    "@types/react-window": "^1.8.8",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -399,6 +439,7 @@
     "dagre": "^0.8.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-window": "^1.8.10",
     "zod": "^3.23.8",
     "zustand": "^4.4.0"
   }

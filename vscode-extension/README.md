@@ -46,6 +46,19 @@
 | `multicode.loadGraph` | MultiCode: Load Graph | — | Загрузить граф из JSON |
 | `multicode.translateGraph` | MultiCode: Translate Graph (Marian) | — | Запустить офлайн-перевод подписей графа |
 | `multicode.generateCode` | MultiCode: Generate Code | `Ctrl+Shift+G` | Генерация кода из графа |
+| `multicode.createClassFilesAndBind` | MultiCode: Создать файлы класса и привязать к редактору | — | Создать `ClassName.hpp/.cpp`, маркеры `@multicode:*` и сразу открыть MultiCode |
+
+### Быстрое создание class-файлов из Explorer
+
+1. В проводнике VS Code кликните правой кнопкой по папке (или по C++ файлу).
+2. Выберите **«МультиКод: Создать файлы класса и привязать к редактору»**.
+3. Пройдите мини-мастер:
+   - формат файлов: `hpp/cpp` или `h/cpp`;
+   - стиль заголовка: `#pragma once` или include guard;
+   - policy для include в `.cpp`: `"Class.hpp"` или `<Class.hpp>`;
+   - namespace (опционально);
+   - базовый класс (опционально).
+4. Расширение создаст пару файлов класса (`*.hpp/*.cpp` или `*.h/*.cpp`), подготовит привязку `.multicode` и откроет визуальный редактор MultiCode на новом файле.
 
 ### Настройки
 
@@ -57,6 +70,40 @@
 - `multicode.translation.cacheLimit` — размер кэша переводов
 - `multicode.aiNaming.enabled` — AI-именование узлов (экспериментальная функция)
 - `multicode.codegen.autoGenerate` — автоматическая генерация при изменении графа
+- `multicode.classStorage.mode` — режим хранения классов:
+  - `embedded` — классы хранятся внутри графового `.multicode`;
+  - `sidecar` — классы хранятся в `.multicode/classes/*.multicode`, а в графе остаются только `classBindings`.
+- `multicode.classNodes.advanced` — включить расширенный пакет class-узлов (по умолчанию `false`)
+
+### Sidecar режим классов: как проверить и чинить
+
+1. Включите `multicode.classStorage.mode = sidecar`.
+2. Сохраните граф кнопкой `Сохранить`:
+   - появятся файлы `.multicode/classes/<classId>.multicode`;
+   - в graph `.multicode` будут записаны `classBindings`.
+3. В ClassPanel откройте секцию **Файлы классов**:
+   - статус по каждому классу: `ok/missing/failed/fallback/dirty/conflict/unbound`;
+   - действия: `Открыть`, `Перечитать`, `Починить`.
+4. Для массового восстановления используйте кнопки:
+  - `Перечитать` — повторно гидрирует классы из sidecar;
+  - `Починить привязки` — восстанавливает отсутствующие bindings/sidecar (fail-safe, без удаления orphan-файлов).
+
+### Advanced class nodes
+
+Если включить `multicode.classNodes.advanced = true`, в toolbar и сводке появится маркер `Class Nodes: ADVANCED`, а в `ClassPanel` откроется расширенный пакет C++-узлов.
+
+Доступные advanced узлы:
+
+- class-level: `InitListCtor`, `MakeUnique`, `MakeShared`, `CastStatic`, `CastDynamic`, `CastConst`, `IsType`, `DeleteObject`
+- method-level: `CallBaseMethod`
+- member-level: `AddressOfMember`
+
+Практический смысл:
+
+- `InitListCtor` — чистое brace-init выражение `Type{...}` без exec-потока;
+- `MakeUnique` / `MakeShared` — генерация `std::make_unique` / `std::make_shared`;
+- `Cast*` / `IsType` — инженерные RTTI/cast операции для class/pointer сценариев;
+- `DeleteObject` — намеренно опасный raw `delete`, в кодогенерации помечается предупреждением.
 
 ### Формат файлов графа
 
@@ -119,6 +166,8 @@ vscode-extension/
 npm run watch              # Инкрементальная сборка
 npm run compile            # Однократная сборка
 npm run vscode:prepublish  # Подготовка релиза
+npm run vsix               # Собрать .vsix (с зависимостями)
+npm run vsix:no-deps       # Собрать .vsix без пересчёта зависимостей
 ```
 
 ### Быстрая проверка и сборка через скрипт
@@ -201,7 +250,7 @@ scripts/vscode-test-i-sborka.sh
 cd vscode-extension
 npm install
 npm run compile && npm run package
-npx vsce package --no-dependencies
+npm run vsix:no-deps
 ```
 
 Затем: **Extensions > ... > Install from VSIX** и выберите файл `.vsix`.

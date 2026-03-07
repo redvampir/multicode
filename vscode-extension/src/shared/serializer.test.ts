@@ -153,6 +153,19 @@ describe('serializer', () => {
       expect(result.data.displayLanguage).toBe('en');
       expect(result.data.dirty).toBe(false);
     });
+
+    it('должен сохранять classBindings', () => {
+      const state = createValidGraphState();
+      state.classBindings = [
+        { classId: 'class-a', file: '.multicode/classes/class-a.multicode' },
+        { classId: 'class-b', file: '.multicode/classes/class-b.multicode' },
+      ];
+
+      const serialized = serializeGraphState(state);
+      const restored = deserializeGraphState(serialized);
+
+      expect(restored.classBindings).toEqual(state.classBindings);
+    });
   });
 
   describe('parseSerializedGraph', () => {

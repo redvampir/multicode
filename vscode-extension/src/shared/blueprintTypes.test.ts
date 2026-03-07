@@ -773,7 +773,9 @@ describe('blueprintTypes - Migration', () => {
 
     expect(migrated.classes).toHaveLength(1);
     expect(migrated.classes?.[0].id).toBe('class-player');
+    expect(migrated.classes?.[0].nameRu).toBe('Player');
     expect(migrated.classes?.[0].methods[0].name).toBe('Jump');
+    expect(migrated.classes?.[0].methods[0].nameRu).toBe('Jump');
   });
 
   it('should preserve classes through round-trip migration', () => {
@@ -782,8 +784,9 @@ describe('blueprintTypes - Migration', () => {
       {
         id: 'class-player',
         name: 'Player',
+        nameRu: 'Игрок',
         members: [],
-        methods: [{ id: 'method-jump', name: 'Jump', returnType: 'bool', params: [], access: 'public' }],
+        methods: [{ id: 'method-jump', name: 'Jump', nameRu: 'Прыжок', returnType: 'bool', params: [], access: 'public' }],
       },
     ];
 
@@ -791,6 +794,8 @@ describe('blueprintTypes - Migration', () => {
 
     expect(restored.classes).toHaveLength(1);
     expect(restored.classes?.[0].name).toBe('Player');
+    expect(restored.classes?.[0].nameRu).toBe('Игрок');
+    expect(restored.classes?.[0].methods[0].nameRu).toBe('Прыжок');
   });
 
   it('should preserve class members and methods through migrate round-trip', () => {
@@ -826,9 +831,12 @@ describe('blueprintTypes - Migration', () => {
     const restored = migrateToBlueprintFormat(migrateFromBlueprintFormat(migrateToBlueprintFormat(oldState)));
 
     expect(restored.classes).toHaveLength(1);
-    const legacyClass = oldState.classes?.[0] as { members: unknown[]; methods: unknown[] } | undefined;
-    expect(restored.classes?.[0].members).toEqual(legacyClass?.members);
-    expect(restored.classes?.[0].methods).toEqual(legacyClass?.methods);
+    expect(restored.classes?.[0].members[0]?.name).toBe('health');
+    expect(restored.classes?.[0].members[0]?.nameRu).toBe('health');
+    expect(restored.classes?.[0].methods[0]?.name).toBe('Attack');
+    expect(restored.classes?.[0].methods[0]?.nameRu).toBe('Attack');
+    expect(restored.classes?.[0].methods[0]?.params[0]?.name).toBe('damage');
+    expect(restored.classes?.[0].methods[0]?.params[0]?.nameRu).toBe('damage');
   });
 
   describe('migrateFromBlueprintFormat', () => {

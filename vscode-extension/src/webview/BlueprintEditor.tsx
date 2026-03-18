@@ -66,7 +66,8 @@ import { FunctionListPanel } from './FunctionListPanel';
 import { VariableListPanel } from './VariableListPanel';
 import { PointerReferencePanel } from './PointerReferencePanel';
 import { ClassPanel } from './ClassPanel';
-import type { BlueprintClass, BlueprintFunction } from '../shared/blueprintTypes';
+import { UeMacroPanel } from './UeMacroPanel';
+import type { BlueprintClass, BlueprintFunction, UeMacroBinding } from '../shared/blueprintTypes';
 import type { SourceIntegration, SymbolDescriptor } from '../shared/externalSymbols';
 import type { BundledPackageSettings } from '../shared/bundledPackages';
 import { resolveSymbolUiStatus, type SymbolBadgeState } from './externalSymbolUi';
@@ -1685,6 +1686,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
   const [isPointersSectionCollapsed, setIsPointersSectionCollapsed] = useState(false);
   const [isClassesSectionCollapsed, setIsClassesSectionCollapsed] = useState(false);
+  const [isUeMacrosSectionCollapsed, setIsUeMacrosSectionCollapsed] = useState(false);
+  const [ueMacroAttachModeId, setUeMacroAttachModeId] = useState<string | null>(null);
   const [pointerAttachPointerId, setPointerAttachPointerId] = useState<string | null>(null);
   const [pointerAttachError, setPointerAttachError] = useState<string | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
@@ -3333,6 +3336,64 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, flowNode: Node) => {
+      // ── UE Macro attach mode ──
+      if (ueMacroAttachModeId) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const payload = flowNode.data as Partial<BlueprintNodeData> | undefined;
+        const blueprintNode = payload?.node;
+        if (!blueprintNode) return;
+
+        const macros = graph.ueMacros ?? [];
+        const macro = macros.find((m) => m.id === ueMacroAttachModeId);
+        if (!macro) { setUeMacroAttachModeId(null); return; }
+
+        // Определяем targetId и targetKind по типу узла
+        let targetId: string | undefined;
+        let targetKind: import('../shared/blueprintTypes').UeMacroTargetKind | undefined;
+
+        const props = (typeof blueprintNode.properties === 'object' && blueprintNode.properties !== null
+          ? blueprintNode.properties as Record<string, unknown>
+          : {});
+
+        if (blueprintNode.type === 'GetVariable' || blueprintNode.type === 'SetVariable') {
+          const varId = typeof props.variableId === 'string' ? props.variableId : undefined;
+          if (varId) { targetId = varId; targetKind = 'variable'; }
+        } else if (blueprintNode.type === 'FunctionEntry' || blueprintNode.type === 'FunctionReturn' || blueprintNode.type === 'CallUserFunction') {
+          const fnId = typeof props.functionId === 'string' ? props.functionId : undefined;
+          if (fnId) { targetId = fnId; targetKind = 'function'; }
+        } else if (blueprintNode.type === 'ClassMethodCall') {
+          const methodId = typeof props.methodId === 'string' ? props.methodId : undefined;
+          if (methodId) { targetId = methodId; targetKind = 'method'; }
+        } else if (blueprintNode.type === 'GetMember' || blueprintNode.type === 'SetMember') {
+          const memberId = typeof props.memberId === 'string' ? props.memberId : undefined;
+          if (memberId) { targetId = memberId; targetKind = 'member'; }
+        }
+
+        if (targetId && targetKind) {
+          const allowedTargets = ['class', 'method', 'member', 'variable', 'function'] as const;
+          const macroAllowed: Record<string, readonly string[]> = {
+            UCLASS: ['class'],
+            UFUNCTION: ['method', 'function'],
+            UPROPERTY: ['member', 'variable'],
+            USTRUCT: ['class'],
+            UENUM: ['class'],
+            UINTERFACE: ['class'],
+          };
+          const allowed = macroAllowed[macro.macroType] ?? allowedTargets;
+          if (allowed.includes(targetKind)) {
+            const updatedMacros = macros.map((m) =>
+              m.id === ueMacroAttachModeId ? { ...m, targetId, targetKind } : m,
+            );
+            onGraphChange({ ...graph, ueMacros: updatedMacros, dirty: true });
+          }
+        }
+
+        setUeMacroAttachModeId(null);
+        return;
+      }
+
       if (!pointerAttachPointerId) {
         return;
       }
@@ -3509,6 +3570,9 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
       scopedVariables,
       handleVariablesChange,
       pointerAttachPointerId,
+      ueMacroAttachModeId,
+      graph,
+      onGraphChange,
     ]
   );
 
@@ -3845,7 +3909,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     redo: displayLanguage === 'ru' ? 'Повторить' : 'Redo',
     fit: displayLanguage === 'ru' ? 'Вписать (F)' : 'Fit (F)',
     layout: displayLanguage === 'ru' ? 'Автолейаут (L)' : 'Layout (L)',
-    eventGraph: 'EventGraph',
+    eventGraph: displayLanguage === 'ru' ? 'Граф событий' : 'EventGraph',
   }), [displayLanguage]);
   
   // Заголовок текущего графа
@@ -4018,9 +4082,29 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
               />
             </div>
           )}
+
+          {/* ── UE Macros Section ── */}
+          {graph.language === 'ue' && (
+            <div
+              className={`left-sidebar-section ${isUeMacrosSectionCollapsed ? 'collapsed' : ''} ${shouldBalanceExpandedSections && !isUeMacrosSectionCollapsed ? 'balanced' : ''}`}
+            >
+              <UeMacroPanel
+                graphState={graph}
+                onUeMacrosChange={(macros: UeMacroBinding[]) => {
+                  onGraphChange({ ...graph, ueMacros: macros, dirty: true });
+                }}
+                attachModeId={ueMacroAttachModeId}
+                onRequestAttach={(macroId: string) => setUeMacroAttachModeId(macroId)}
+                onCancelAttach={() => setUeMacroAttachModeId(null)}
+                displayLanguage={displayLanguage}
+                collapsed={isUeMacrosSectionCollapsed}
+                onToggleCollapsed={() => setIsUeMacrosSectionCollapsed((v) => !v)}
+              />
+            </div>
+          )}
         </div>
       )}
-      
+
       <div style={editorStyles.graphContainer}>
         {pointerAttachPointerId && (
           <div

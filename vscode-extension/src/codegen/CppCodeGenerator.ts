@@ -8,8 +8,9 @@
  * - Control Flow: Start, End, Branch, ForLoop, WhileLoop, Sequence
  * - Variables: Variable, GetVariable, SetVariable
  * - Math: ConstNumber, ConstString, ConstBool, Add, Subtract, Multiply, Divide, Modulo
+ * - String & Collection: StringConcat, StringLength, Substring, Contains, Split, Trim, MakeArray, ArrayGet, ArraySet, ArrayPushBack, ArraySize, ArrayClear, RandomFromArray
  * - Comparison: Equal, NotEqual, Greater, Less, GreaterEqual, LessEqual
- * - Logic: And, Or, Not
+ * - Logic & Conversion: And, Or, Not, ToInt, ToFloat, ToBool, ToString, ParseInt, ParseFloat, RandomInt
  * - I/O: Print, Input
  * 
  * Особенности:

@@ -87,6 +87,26 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
   const [classFilter, setClassFilter] = useState<'all' | 'problem' | 'changed'>('all');
 
   const getStatusLabel = useCallback((status: ClassStorageStatusItem['status']): string => {
+    if (isRu) {
+      switch (status) {
+        case 'ok':
+          return 'готово';
+        case 'missing':
+          return 'нет';
+        case 'failed':
+          return 'ошибка';
+        case 'fallbackEmbedded':
+          return 'в графе';
+        case 'dirty':
+          return 'изменено';
+        case 'conflict':
+          return 'конфликт';
+        case 'unbound':
+        default:
+          return 'не привязано';
+      }
+    }
+
     switch (status) {
       case 'ok':
         return 'ok';
@@ -104,7 +124,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
       default:
         return 'unbound';
     }
-  }, []);
+  }, [isRu]);
 
   const updateClass = useCallback((classId: string, updater: (target: BlueprintClass) => BlueprintClass) => {
     onClassesChange(classes.map((item) => (item.id === classId ? updater(item) : item)));
@@ -264,7 +284,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
           </button>
           <h3>{translate('panel.classes.title', 'Классы')}</h3>
           <span className={`class-advanced-chip ${classNodesAdvancedEnabled ? 'class-advanced-chip--enabled' : ''}`}>
-            {classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE'}
+            {isRu ? (classNodesAdvancedEnabled ? 'РАСШИР.' : 'БАЗОВЫЕ') : (classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE')}
           </span>
         </div>
         <button type="button" className="btn-add-class" onClick={handleCreateClass}>
@@ -283,17 +303,17 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
           <div className="class-files-section">
             <div className="class-files-section-header">
               <strong>{isRu ? 'Файлы классов' : 'Class files'}</strong>
-              <span className="class-files-mode-chip">{isSidecarMode ? 'SIDECAR' : 'EMBEDDED'}</span>
+              <span className="class-files-mode-chip">{isRu ? (isSidecarMode ? 'ВНЕШНИЕ' : 'В ГРАФЕ') : (isSidecarMode ? 'SIDECAR' : 'EMBEDDED')}</span>
             </div>
             <div className="class-files-actions">
-              <button type="button" className="btn-add-class-subitem" onClick={() => onOpenGraphMulticode?.()} disabled={!onOpenGraphMulticode || !canOpenGraphMulticode}>{isRu ? 'Открыть graph' : 'Open graph'}</button>
+              <button type="button" className="btn-add-class-subitem" onClick={() => onOpenGraphMulticode?.()} disabled={!onOpenGraphMulticode || !canOpenGraphMulticode}>{isRu ? 'Открыть граф' : 'Open graph'}</button>
               <button type="button" className="btn-add-class-subitem" onClick={() => onReloadClassStorage?.()} disabled={!onReloadClassStorage || !isSidecarMode}>{isRu ? 'Перечитать' : 'Reload'}</button>
               <button type="button" className="btn-add-class-subitem" onClick={() => onRepairClassStorage?.()} disabled={!onRepairClassStorage || !isSidecarMode}>{isRu ? 'Починить привязки' : 'Repair'}</button>
             </div>
             {isSidecarMode ? (
               <div className="class-files-list">
                 {visibleStorageItems.length === 0 && (
-                  <div className="class-section-empty">{isRu ? 'Нет class sidecar записей для фильтра' : 'No class sidecar entries for current filter'}</div>
+                  <div className="class-section-empty">{isRu ? 'Нет файлов классов для текущего фильтра' : 'No class sidecar entries for current filter'}</div>
                 )}
                 {visibleStorageItems.map((storageItem) => {
                   const canOpenSidecar = Boolean(storageItem.filePath?.trim());
@@ -305,7 +325,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                         <span className="class-file-item-name">{storageItem.className || storageItem.classId}</span>
                         <span className={`class-storage-chip class-storage-chip--${storageItem.status}`}>{storageLabel}</span>
                       </div>
-                      <div className="class-file-item-path" title={storageReason || (isRu ? 'Состояние class sidecar' : 'Class sidecar status')}>
+                      <div className="class-file-item-path" title={storageReason || (isRu ? 'Состояние файла класса' : 'Class sidecar status')}>
                         {storageItem.bindingFile || storageItem.filePath || '—'}
                       </div>
                       {storageReason && <div className="class-file-item-reason">{storageReason}</div>}
@@ -319,7 +339,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                 })}
               </div>
             ) : (
-              <div className="class-section-empty">{isRu ? 'Режим sidecar отключён, классы хранятся в графе.' : 'Sidecar mode is off, classes are stored in graph.'}</div>
+              <div className="class-section-empty">{isRu ? 'Внешние файлы классов отключены, данные хранятся в графе.' : 'Sidecar mode is off, classes are stored in graph.'}</div>
             )}
           </div>
 
@@ -335,18 +355,18 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
               <article className="class-item class-item-v2" key={item.id}>
                 <div className="class-item-header class-item-header-v2">
                   <div className="class-row-fields class-row-fields-header">
-                    <input className="class-input" aria-label={translate('panel.classes.name', 'Имя класса')} value={item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, name: normalizeCodeName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'Code имя' : 'Code name'} />
-                    <input className="class-input class-input-secondary" aria-label={isRu ? 'RU имя класса' : 'Class RU name'} value={item.nameRu ?? item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, nameRu: normalizeDisplayName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'RU имя' : 'RU name'} />
+                    <input className="class-input" aria-label={translate('panel.classes.name', 'Имя класса')} value={item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, name: normalizeCodeName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'Кодовое имя' : 'Code name'} />
+                    <input className="class-input class-input-secondary" aria-label={isRu ? 'Отображаемое имя класса' : 'Class RU name'} value={item.nameRu ?? item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, nameRu: normalizeDisplayName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'Отображаемое имя' : 'RU name'} />
                   </div>
                   <div className="class-storage-row">
                     <span className={`class-storage-chip class-storage-chip--${storageItem?.status ?? 'unbound'}`} title={storageReason || (isRu ? 'Статус хранения класса' : 'Class storage status')} data-testid={`class-storage-chip-${item.id}`}>{storageLabel}</span>
-                    {isSidecarMode && <button type="button" className="btn-add-class-subitem" onClick={() => onOpenClassSidecar?.(item.id)} disabled={!onOpenClassSidecar || !canOpenSidecar}>Sidecar</button>}
-                    <button type="button" className="btn-add-class-subitem" onClick={() => onOpenGraphMulticode?.()} disabled={!onOpenGraphMulticode || !canOpenGraphMulticode}>Graph</button>
+                    {isSidecarMode && <button type="button" className="btn-add-class-subitem" onClick={() => onOpenClassSidecar?.(item.id)} disabled={!onOpenClassSidecar || !canOpenSidecar}>{isRu ? 'Файл' : 'Sidecar'}</button>}
+                    <button type="button" className="btn-add-class-subitem" onClick={() => onOpenGraphMulticode?.()} disabled={!onOpenGraphMulticode || !canOpenGraphMulticode}>{isRu ? 'Граф' : 'Graph'}</button>
                     <button type="button" className="btn-add-class-subitem" onClick={() => onReloadClassStorage?.(item.id)} disabled={!onReloadClassStorage}>{isRu ? 'Перечитать' : 'Reload'}</button>
                     <button type="button" className="btn-add-class-subitem" onClick={() => onRepairClassStorage?.(item.id)} disabled={!onRepairClassStorage}>{isRu ? 'Починить' : 'Repair'}</button>
                   </div>
                   <div className="class-row-actions class-row-actions-header">
-                    <button type="button" className="btn-add-class-subitem" onClick={() => onInsertClassNode?.({ kind: 'constructor', classId: item.id })} title={isRu ? 'Добавить узел конструктора' : 'Insert constructor node'} disabled={!onInsertClassNode}>+Ctor</button>
+                    <button type="button" className="btn-add-class-subitem" onClick={() => onInsertClassNode?.({ kind: 'constructor', classId: item.id })} title={isRu ? 'Добавить узел конструктора' : 'Insert constructor node'} disabled={!onInsertClassNode}>{isRu ? '+Констр' : '+Ctor'}</button>
                     <button type="button" className="btn-add-class-subitem" onClick={() => handleOpenClassEditor(item.id)} title={isRu ? 'Открыть расширенный редактор' : 'Open full editor'}>{isRu ? 'Редактор' : 'Editor'}</button>
                     <button type="button" className="btn-class-remove" onClick={() => handleDeleteClass(item.id)} title={translate('panel.classes.delete', 'Удалить')}>×</button>
                   </div>
@@ -355,7 +375,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                 {classNodesAdvancedEnabled && (
                   <div className="class-section class-section-advanced">
                     <div className="class-section-header">
-                      <strong>{isRu ? 'Advanced class nodes' : 'Advanced class nodes'}</strong>
+                      <strong>{isRu ? 'Расширенные узлы классов' : 'Advanced class nodes'}</strong>
                       <span className="class-section-empty">{isRu ? 'Точечные C++ операции' : 'Targeted C++ operations'}</span>
                     </div>
                     <div className="class-row-actions class-row-actions-advanced">
@@ -381,8 +401,8 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                     {item.members.map((member) => (
                       <div className="class-row class-row-v2" key={member.id} draggable={Boolean(onInsertClassNode)} onDragStart={(event) => handleClassDragStart(event, member.isStatic ? { kind: 'static-get-member', classId: item.id, memberId: member.id } : { kind: 'get-member', classId: item.id, memberId: member.id })}>
                         <div className="class-row-fields">
-                          <input className="class-input" aria-label={translate('panel.classes.field.name', 'Имя поля')} value={member.name} onChange={(event) => handleUpdateMember(item.id, member.id, { name: normalizeCodeName(event.currentTarget.value, member.name) })} placeholder={isRu ? 'code имя' : 'code name'} />
-                          <input className="class-input class-input-secondary" aria-label={isRu ? 'RU имя поля' : 'Field RU name'} value={member.nameRu ?? member.name} onChange={(event) => handleUpdateMember(item.id, member.id, { nameRu: normalizeDisplayName(event.currentTarget.value, member.name) })} placeholder={isRu ? 'RU имя' : 'RU name'} />
+                          <input className="class-input" aria-label={translate('panel.classes.field.name', 'Имя поля')} value={member.name} onChange={(event) => handleUpdateMember(item.id, member.id, { name: normalizeCodeName(event.currentTarget.value, member.name) })} placeholder={isRu ? 'Кодовое имя' : 'Code name'} />
+                          <input className="class-input class-input-secondary" aria-label={isRu ? 'Отображаемое имя поля' : 'Field RU name'} value={member.nameRu ?? member.name} onChange={(event) => handleUpdateMember(item.id, member.id, { nameRu: normalizeDisplayName(event.currentTarget.value, member.name) })} placeholder={isRu ? 'Отображаемое имя' : 'RU name'} />
                           <select className="class-select" aria-label={translate('panel.classes.field.type', 'Тип поля')} value={member.dataType} onChange={(event) => handleUpdateMember(item.id, member.id, { dataType: event.currentTarget.value as PortDataType })}>
                             {dataTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                           </select>
@@ -410,8 +430,8 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                     {item.methods.map((method) => (
                       <div className="class-row class-row-v2" key={method.id} draggable={Boolean(onInsertClassNode)} onDragStart={(event) => handleClassDragStart(event, (method.methodKind ?? 'method') === 'constructor' ? { kind: 'constructor-overload', classId: item.id, methodId: method.id } : method.isStatic === true ? { kind: 'static-method', classId: item.id, methodId: method.id } : { kind: 'method', classId: item.id, methodId: method.id })}>
                         <div className="class-row-fields">
-                          <input className="class-input" aria-label={translate('panel.classes.method.name', 'Имя метода')} value={method.name} onChange={(event) => handleUpdateMethod(item.id, method.id, { name: normalizeCodeName(event.currentTarget.value, method.name) })} placeholder={isRu ? 'code имя' : 'code name'} />
-                          <input className="class-input class-input-secondary" aria-label={isRu ? 'RU имя метода' : 'Method RU name'} value={method.nameRu ?? method.name} onChange={(event) => handleUpdateMethod(item.id, method.id, { nameRu: normalizeDisplayName(event.currentTarget.value, method.name) })} placeholder={isRu ? 'RU имя' : 'RU name'} />
+                          <input className="class-input" aria-label={translate('panel.classes.method.name', 'Имя метода')} value={method.name} onChange={(event) => handleUpdateMethod(item.id, method.id, { name: normalizeCodeName(event.currentTarget.value, method.name) })} placeholder={isRu ? 'Кодовое имя' : 'Code name'} />
+                          <input className="class-input class-input-secondary" aria-label={isRu ? 'Отображаемое имя метода' : 'Method RU name'} value={method.nameRu ?? method.name} onChange={(event) => handleUpdateMethod(item.id, method.id, { nameRu: normalizeDisplayName(event.currentTarget.value, method.name) })} placeholder={isRu ? 'Отображаемое имя' : 'RU name'} />
                           <select className="class-select" aria-label={translate('panel.classes.method.returnType', 'Возвращаемый тип')} value={method.returnType} onChange={(event) => handleUpdateMethod(item.id, method.id, { returnType: event.currentTarget.value as PortDataType })}>
                             {dataTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                           </select>

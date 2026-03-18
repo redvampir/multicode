@@ -32,6 +32,15 @@ const resolveInputExpression = (
   fallback: string,
   helpers: GeneratorHelpers
 ): string => {
+  const resolved = resolveOptionalInputExpression(node, portId, helpers);
+  return resolved ?? fallback;
+};
+
+const resolveOptionalInputExpression = (
+  node: BlueprintNode,
+  portId: string,
+  helpers: GeneratorHelpers
+): string | null => {
   const connected = helpers.getInputExpression(node, portId);
   if (connected !== null) {
     return connected;
@@ -45,8 +54,121 @@ const resolveInputExpression = (
     return formatLiteral(port.defaultValue);
   }
 
-  return fallback;
+  return null;
 };
+
+export class StringConcatNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['StringConcat'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const leftExpr = resolveInputExpression(node, 'a', '""', helpers);
+    const rightExpr = resolveInputExpression(node, 'b', '""', helpers);
+    return `([&]() { const std::string multicode_left = ${leftExpr}; const std::string multicode_right = ${rightExpr}; return multicode_left + multicode_right; })()`;
+  }
+}
+
+export class StringLengthNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['StringLength'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolveInputExpression(node, 'value', '""', helpers);
+    return `([&]() { const std::string multicode_value = ${valueExpr}; return static_cast<int>(multicode_value.size()); })()`;
+  }
+}
+
+export class SubstringNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Substring'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolveInputExpression(node, 'value', '""', helpers);
+    const startExpr = resolveInputExpression(node, 'start', '0', helpers);
+    const lengthExpr = resolveInputExpression(node, 'length', '0', helpers);
+    return `([&]() { const std::string multicode_value = ${valueExpr}; const int multicode_start = static_cast<int>(${startExpr}); const int multicode_length = static_cast<int>(${lengthExpr}); if (multicode_start < 0 || multicode_length <= 0 || multicode_start >= static_cast<int>(multicode_value.size())) { return std::string{}; } const std::size_t multicode_offset = static_cast<std::size_t>(multicode_start); const std::size_t multicode_count = static_cast<std::size_t>(multicode_length); return multicode_value.substr(multicode_offset, multicode_count); })()`;
+  }
+}
+
+export class ContainsNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Contains'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolveInputExpression(node, 'value', '""', helpers);
+    const searchExpr = resolveInputExpression(node, 'search', '""', helpers);
+    return `([&]() { const std::string multicode_value = ${valueExpr}; const std::string multicode_search = ${searchExpr}; return multicode_value.find(multicode_search) != std::string::npos; })()`;
+  }
+}
+
+export class SplitNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Split'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolveInputExpression(node, 'value', '""', helpers);
+    const delimiterExpr = resolveInputExpression(node, 'delimiter', '" "', helpers);
+    return `([&]() { const std::string multicode_value = ${valueExpr}; const std::string multicode_delimiter = ${delimiterExpr}; std::vector<std::string> multicode_parts; if (multicode_delimiter.empty()) { multicode_parts.reserve(multicode_value.size()); for (char multicode_char : multicode_value) { multicode_parts.emplace_back(1, multicode_char); } return multicode_parts; } std::size_t multicode_start = 0; while (multicode_start <= multicode_value.size()) { const std::size_t multicode_pos = multicode_value.find(multicode_delimiter, multicode_start); if (multicode_pos == std::string::npos) { multicode_parts.push_back(multicode_value.substr(multicode_start)); break; } multicode_parts.push_back(multicode_value.substr(multicode_start, multicode_pos - multicode_start)); multicode_start = multicode_pos + multicode_delimiter.size(); } return multicode_parts; })()`;
+  }
+}
+
+export class TrimNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['Trim'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolveInputExpression(node, 'value', '""', helpers);
+    return `([&]() { const std::string multicode_value = ${valueExpr}; const std::size_t multicode_begin = multicode_value.find_first_not_of(" \\t\\n\\r\\f\\v"); if (multicode_begin == std::string::npos) { return std::string{}; } const std::size_t multicode_end = multicode_value.find_last_not_of(" \\t\\n\\r\\f\\v"); return multicode_value.substr(multicode_begin, multicode_end - multicode_begin + 1); })()`;
+  }
+}
 
 /**
  * Comment — комментарий в коде
@@ -164,6 +286,87 @@ export class ArrayPushBackNodeGenerator extends BaseNodeGenerator {
     const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
     const valueExpr = resolveInputExpression(node, 'value', '0', helpers);
     return `([&]() { auto multicode_array = ${arrayExpr}; multicode_array.push_back(${valueExpr}); return multicode_array; })()`;
+  }
+}
+
+export class MakeArrayNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['MakeArray'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const itemExpressions = node.inputs
+      .filter((input) => /item-\d+$/i.test(input.id))
+      .sort((left, right) => left.index - right.index || left.id.localeCompare(right.id))
+      .map((input) => resolveOptionalInputExpression(node, input.id, helpers))
+      .filter((input): input is string => input !== null);
+
+    if (itemExpressions.length === 0) {
+      return 'std::vector<int>{}';
+    }
+
+    return `(std::vector{${itemExpressions.join(', ')}})`;
+  }
+}
+
+export class ArraySizeNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ArraySize'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    return `([&]() { const auto multicode_array = ${arrayExpr}; return static_cast<int>(multicode_array.size()); })()`;
+  }
+}
+
+export class ArrayClearNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ArrayClear'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    return `([&]() { auto multicode_array = ${arrayExpr}; multicode_array.clear(); return multicode_array; })()`;
+  }
+}
+
+export class RandomFromArrayNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['RandomFromArray'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const arrayExpr = resolveInputExpression(node, 'array', 'std::vector<int>{}', helpers);
+    return `([&]() { const auto multicode_array = ${arrayExpr}; using MulticodeValue = std::decay_t<decltype(multicode_array[0])>; if (multicode_array.empty()) { if constexpr (std::is_convertible_v<MulticodeValue, const char*>) { return ""; } else { return MulticodeValue{}; } } static thread_local std::mt19937 multicode_rng(std::random_device{}()); std::uniform_int_distribution<int> multicode_dist(0, static_cast<int>(multicode_array.size()) - 1); return multicode_array[static_cast<std::size_t>(multicode_dist(multicode_rng))]; })()`;
   }
 }
 
@@ -383,9 +586,19 @@ export function createOtherGenerators(): BaseNodeGenerator[] {
   return [
     new CommentNodeGenerator(),
     new RerouteNodeGenerator(),
+    new StringConcatNodeGenerator(),
+    new StringLengthNodeGenerator(),
+    new SubstringNodeGenerator(),
+    new ContainsNodeGenerator(),
+    new SplitNodeGenerator(),
+    new TrimNodeGenerator(),
+    new MakeArrayNodeGenerator(),
     new ArrayGetNodeGenerator(),
     new ArraySetNodeGenerator(),
     new ArrayPushBackNodeGenerator(),
+    new ArraySizeNodeGenerator(),
+    new ArrayClearNodeGenerator(),
+    new RandomFromArrayNodeGenerator(),
     new MakeExpectedNodeGenerator(),
     new ExpectedHasValueNodeGenerator(),
     new ExpectedValueNodeGenerator(),

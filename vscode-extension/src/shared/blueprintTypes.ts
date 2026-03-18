@@ -88,6 +88,7 @@ export type BlueprintNodeType =
   | 'ArrayPushBack'
   | 'ArraySize'
   | 'ArrayClear'
+  | 'RandomFromArray'
   | 'MakeExpected'
   | 'ExpectedHasValue'
   | 'ExpectedValue'
@@ -106,6 +107,7 @@ export type BlueprintNodeType =
   | 'ToString'
   | 'ParseInt'
   | 'ParseFloat'
+  | 'RandomInt'
   | 'Add'
   | 'Subtract'
   | 'Multiply'
@@ -494,6 +496,231 @@ export interface BlueprintClass {
   methods: BlueprintClassMethod[];
 }
 
+// ============================================
+// UE Macro Bindings (привязка UE-макросов к сущностям)
+// ============================================
+
+/** Тип UE-макроса */
+export type UeMacroType = 'UCLASS' | 'UFUNCTION' | 'UPROPERTY' | 'USTRUCT' | 'UENUM' | 'UINTERFACE';
+
+/** К какой сущности привязан макрос */
+export type UeMacroTargetKind = 'class' | 'method' | 'member' | 'variable' | 'function';
+
+/** Предопределённые спецификаторы для каждого типа макроса */
+export const UE_MACRO_SPECIFIERS: Record<UeMacroType, readonly string[]> = {
+  UCLASS: [
+    'BlueprintType',
+    'Blueprintable',
+    'NotBlueprintable',
+    'Abstract',
+    'MinimalAPI',
+    'ClassGroup',
+    'Within',
+    'Transient',
+    'NonTransient',
+    'DefaultToInstanced',
+    'EditInlineNew',
+    'NotEditInlineNew',
+    'HideDropdown',
+    'ShowWorldContextPin',
+    'ConversionRoot',
+    'ComponentWrapperClass',
+    'Experimental',
+    'EarlyAccessPreview',
+    'Deprecated',
+  ],
+  UFUNCTION: [
+    'BlueprintCallable',
+    'BlueprintPure',
+    'BlueprintImplementableEvent',
+    'BlueprintNativeEvent',
+    'BlueprintAuthorityOnly',
+    'BlueprintCosmetic',
+    'CallInEditor',
+    'Client',
+    'Server',
+    'NetMulticast',
+    'Reliable',
+    'Unreliable',
+    'Exec',
+    'WithValidation',
+    'BlueprintGetter',
+    'BlueprintSetter',
+    'SealedEvent',
+  ],
+  UPROPERTY: [
+    'EditAnywhere',
+    'EditDefaultsOnly',
+    'EditInstanceOnly',
+    'VisibleAnywhere',
+    'VisibleDefaultsOnly',
+    'VisibleInstanceOnly',
+    'BlueprintReadWrite',
+    'BlueprintReadOnly',
+    'BlueprintAssignable',
+    'BlueprintCallable',
+    'BlueprintAuthorityOnly',
+    'Transient',
+    'DuplicateTransient',
+    'SaveGame',
+    'Replicated',
+    'ReplicatedUsing',
+    'NotReplicated',
+    'Interp',
+    'Config',
+    'GlobalConfig',
+    'AdvancedDisplay',
+    'SimpleDisplay',
+    'NoClear',
+    'Export',
+    'NonPIEDuplicateTransient',
+    'TextExportTransient',
+    'SkipSerialization',
+  ],
+  USTRUCT: [
+    'BlueprintType',
+    'Atomic',
+    'NoExport',
+  ],
+  UENUM: [
+    'BlueprintType',
+  ],
+  UINTERFACE: [
+    'BlueprintType',
+    'MinimalAPI',
+    'CannotImplementInterfaceInBlueprint',
+  ],
+} as const;
+
+/** Привязка UE-макроса к сущности графа */
+export interface UeMacroBinding {
+  /** Уникальный ID привязки */
+  id: string;
+  /** Отображаемое имя (EN) */
+  name: string;
+  /** Отображаемое имя (RU) */
+  nameRu: string;
+  /** Тип макроса */
+  macroType: UeMacroType;
+  /** Выбранные спецификаторы */
+  specifiers: string[];
+  /** Значение Category="..." */
+  category: string;
+  /** Пользовательские мета-аргументы (например meta=(DisplayName="...")) */
+  meta?: Record<string, string>;
+  /** ID целевой сущности (класс, метод, поле, переменная, функция) */
+  targetId?: string;
+  /** Тип целевой сущности */
+  targetKind?: UeMacroTargetKind;
+  /** Дата создания */
+  createdAt?: string;
+}
+
+export const UE_MACRO_TYPES: UeMacroType[] = [
+  'UCLASS', 'UFUNCTION', 'UPROPERTY', 'USTRUCT', 'UENUM', 'UINTERFACE',
+];
+
+export const isUeMacroType = (value: unknown): value is UeMacroType =>
+  typeof value === 'string' && UE_MACRO_TYPES.includes(value as UeMacroType);
+
+/** Цвета для типов макросов */
+export const UE_MACRO_COLORS: Record<UeMacroType, string> = {
+  UCLASS: '#E53935',
+  UFUNCTION: '#1E88E5',
+  UPROPERTY: '#43A047',
+  USTRUCT: '#FB8C00',
+  UENUM: '#8E24AA',
+  UINTERFACE: '#00ACC1',
+};
+
+/** Метки типов макросов (RU/EN) */
+export const UE_MACRO_LABELS: Record<UeMacroType, { ru: string; en: string }> = {
+  UCLASS: { ru: 'Класс UE', en: 'UE Class' },
+  UFUNCTION: { ru: 'Функция UE', en: 'UE Function' },
+  UPROPERTY: { ru: 'Свойство UE', en: 'UE Property' },
+  USTRUCT: { ru: 'Структура UE', en: 'UE Struct' },
+  UENUM: { ru: 'Перечисление UE', en: 'UE Enum' },
+  UINTERFACE: { ru: 'Интерфейс UE', en: 'UE Interface' },
+};
+
+/** Какие макросы к каким целям можно привязывать */
+export const UE_MACRO_ALLOWED_TARGETS: Record<UeMacroType, readonly UeMacroTargetKind[]> = {
+  UCLASS: ['class'],
+  UFUNCTION: ['method', 'function'],
+  UPROPERTY: ['member', 'variable'],
+  USTRUCT: ['class'],
+  UENUM: ['class'],
+  UINTERFACE: ['class'],
+};
+
+/** Создать новую привязку макроса */
+export function createUeMacroBinding(
+  macroType: UeMacroType,
+  options?: Partial<Omit<UeMacroBinding, 'id' | 'macroType'>>
+): UeMacroBinding {
+  const label = UE_MACRO_LABELS[macroType];
+  return {
+    id: `uemacro_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: options?.name || label.en,
+    nameRu: options?.nameRu || label.ru,
+    macroType,
+    specifiers: options?.specifiers || getDefaultSpecifiers(macroType),
+    category: options?.category || 'MultiCode',
+    meta: options?.meta,
+    targetId: options?.targetId,
+    targetKind: options?.targetKind,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Спецификаторы по умолчанию для каждого типа макроса */
+function getDefaultSpecifiers(macroType: UeMacroType): string[] {
+  switch (macroType) {
+    case 'UCLASS': return ['BlueprintType'];
+    case 'UFUNCTION': return ['BlueprintCallable'];
+    case 'UPROPERTY': return ['EditAnywhere', 'BlueprintReadWrite'];
+    case 'USTRUCT': return ['BlueprintType'];
+    case 'UENUM': return ['BlueprintType'];
+    case 'UINTERFACE': return ['BlueprintType'];
+  }
+}
+
+/** Собрать строку макроса из привязки */
+export function renderUeMacroString(binding: UeMacroBinding): string {
+  const parts: string[] = [...binding.specifiers];
+  if (binding.category) {
+    parts.push(`Category = "${binding.category}"`);
+  }
+  if (binding.meta) {
+    const metaParts = Object.entries(binding.meta)
+      .map(([k, v]) => `${k} = "${v}"`)
+      .join(', ');
+    if (metaParts) {
+      parts.push(`meta = (${metaParts})`);
+    }
+  }
+  return `${binding.macroType}(${parts.join(', ')})`;
+}
+
+/** Нормализовать привязку макроса (для десериализации) */
+export const normalizeUeMacroBinding = (value: unknown): UeMacroBinding | null => {
+  if (typeof value !== 'object' || value === null) return null;
+  const source = value as Partial<UeMacroBinding>;
+  if (!isUeMacroType(source.macroType)) return null;
+  return {
+    id: typeof source.id === 'string' ? source.id : `uemacro_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: typeof source.name === 'string' ? source.name : UE_MACRO_LABELS[source.macroType].en,
+    nameRu: typeof source.nameRu === 'string' ? source.nameRu : UE_MACRO_LABELS[source.macroType].ru,
+    macroType: source.macroType,
+    specifiers: Array.isArray(source.specifiers) ? source.specifiers.filter((s): s is string => typeof s === 'string') : getDefaultSpecifiers(source.macroType),
+    category: typeof source.category === 'string' ? source.category : 'MultiCode',
+    meta: typeof source.meta === 'object' && source.meta !== null ? source.meta : undefined,
+    targetId: typeof source.targetId === 'string' ? source.targetId : undefined,
+    targetKind: typeof source.targetKind === 'string' ? source.targetKind as UeMacroTargetKind : undefined,
+    createdAt: typeof source.createdAt === 'string' ? source.createdAt : undefined,
+  };
+};
+
 /** Полное состояние Blueprint-графа */
 export interface BlueprintGraphState {
   id: string;
@@ -518,6 +745,8 @@ export interface BlueprintGraphState {
   variables?: BlueprintVariable[];
   /** Реестр классов для классовых узлов */
   classes?: BlueprintClass[];
+  /** Привязки UE-макросов к сущностям графа */
+  ueMacros?: UeMacroBinding[];
 }
 
 // ============================================
@@ -2427,6 +2656,22 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
       { id: 'array-out', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'output' }
     ],
   },
+  RandomFromArray: {
+    type: 'RandomFromArray',
+    label: 'Random From Array',
+    labelRu: 'Случайный элемент массива',
+    icon: 'array',
+    category: 'collection',
+    description: 'Pick a random element from an array',
+    descriptionRu: 'Выбрать случайный элемент из массива',
+    headerColor: '#FF9800',
+    inputs: [
+      { id: 'array', name: 'Array', nameRu: 'Массив', dataType: 'array', direction: 'input' }
+    ],
+    outputs: [
+      { id: 'value', name: 'Value', nameRu: 'Значение', dataType: 'any', direction: 'output' }
+    ],
+  },
   MakeExpected: {
     type: 'MakeExpected',
     label: 'Make Expected',
@@ -2686,6 +2931,23 @@ export const NODE_TYPE_DEFINITIONS: Record<BlueprintNodeType, NodeTypeDefinition
     ],
     outputs: [
       { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'float', direction: 'output' }
+    ],
+  },
+  RandomInt: {
+    type: 'RandomInt',
+    label: 'Random Int',
+    labelRu: 'Случайное целое',
+    icon: 'math',
+    category: 'math',
+    description: 'Generate random int32 in inclusive range',
+    descriptionRu: 'Сгенерировать случайное int32 в заданном диапазоне включительно',
+    headerColor: '#607D8B',
+    inputs: [
+      { id: 'min', name: 'Min', nameRu: 'Минимум', dataType: 'int32', direction: 'input', defaultValue: 0 },
+      { id: 'max', name: 'Max', nameRu: 'Максимум', dataType: 'int32', direction: 'input', defaultValue: 10 }
+    ],
+    outputs: [
+      { id: 'result', name: 'Result', nameRu: 'Результат', dataType: 'int32', direction: 'output' }
     ],
   },
   Add: {

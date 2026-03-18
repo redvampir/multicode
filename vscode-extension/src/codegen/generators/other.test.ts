@@ -8,9 +8,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { 
   CommentNodeGenerator,
   RerouteNodeGenerator,
+  StringConcatNodeGenerator,
+  StringLengthNodeGenerator,
+  SubstringNodeGenerator,
+  ContainsNodeGenerator,
+  SplitNodeGenerator,
+  TrimNodeGenerator,
+  MakeArrayNodeGenerator,
   ArrayGetNodeGenerator,
   ArraySetNodeGenerator,
   ArrayPushBackNodeGenerator,
+  ArraySizeNodeGenerator,
+  ArrayClearNodeGenerator,
+  RandomFromArrayNodeGenerator,
   MakeExpectedNodeGenerator,
   ExpectedHasValueNodeGenerator,
   ExpectedValueNodeGenerator,
@@ -205,6 +215,158 @@ describe('RerouteNodeGenerator', () => {
 // ============================================
 
 describe('Array generators', () => {
+  it('String utilities build expected expressions', () => {
+    const concatGenerator = new StringConcatNodeGenerator();
+    const lengthGenerator = new StringLengthNodeGenerator();
+    const substringGenerator = new SubstringNodeGenerator();
+    const containsGenerator = new ContainsNodeGenerator();
+    const trimGenerator = new TrimNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'a') return 'leftExpr';
+        if (portId === 'b') return 'rightExpr';
+        if (portId === 'value') return 'rawValue';
+        if (portId === 'search') return '"needle"';
+        if (portId === 'start') return '2';
+        if (portId === 'length') return '4';
+        return null;
+      }),
+    });
+    const context = createMockContext();
+
+    const concatNode = createMockNode('StringConcat', 'Concat', {
+      inputs: [
+        { id: 'a', name: 'A', dataType: 'string', direction: 'input', index: 0 },
+        { id: 'b', name: 'B', dataType: 'string', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'string', direction: 'output', index: 0 }],
+    });
+    const stringNode = createMockNode('StringLength', 'Length', {
+      inputs: [{ id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 }],
+      outputs: [{ id: 'length', name: 'Length', dataType: 'int32', direction: 'output', index: 0 }],
+    });
+    const substringNode = createMockNode('Substring', 'Substring', {
+      inputs: [
+        { id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 },
+        { id: 'start', name: 'Start', dataType: 'int32', direction: 'input', index: 1 },
+        { id: 'length', name: 'Length', dataType: 'int32', direction: 'input', index: 2 },
+      ],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'string', direction: 'output', index: 0 }],
+    });
+    const containsNode = createMockNode('Contains', 'Contains', {
+      inputs: [
+        { id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 },
+        { id: 'search', name: 'Search', dataType: 'string', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'result', name: 'Found', dataType: 'bool', direction: 'output', index: 0 }],
+    });
+    const trimNode = createMockNode('Trim', 'Trim', {
+      inputs: [{ id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'string', direction: 'output', index: 0 }],
+    });
+
+    expect(concatGenerator.getOutputExpression(concatNode, 'result', context, helpers)).toContain('multicode_left + multicode_right');
+    expect(lengthGenerator.getOutputExpression(stringNode, 'length', context, helpers)).toContain('static_cast<int>(multicode_value.size())');
+    expect(substringGenerator.getOutputExpression(substringNode, 'result', context, helpers)).toContain('multicode_value.substr(multicode_offset, multicode_count)');
+    expect(containsGenerator.getOutputExpression(containsNode, 'result', context, helpers)).toContain('multicode_value.find(multicode_search) != std::string::npos');
+    expect(trimGenerator.getOutputExpression(trimNode, 'result', context, helpers)).toContain('find_first_not_of(" \\t\\n\\r\\f\\v")');
+  });
+
+  it('Split handles delimiter and empty-delimiter fallback', () => {
+    const generator = new SplitNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'value') {
+          return 'rawValue';
+        }
+        if (portId === 'delimiter') {
+          return '"-"';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    const node = createMockNode('Split', 'Split', {
+      inputs: [
+        { id: 'value', name: 'String', dataType: 'string', direction: 'input', index: 0 },
+        { id: 'delimiter', name: 'Delimiter', dataType: 'string', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'result', name: 'Items', dataType: 'array', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'result', context, helpers);
+
+    expect(expression).toContain('std::vector<std::string> multicode_parts;');
+    expect(expression).toContain('if (multicode_delimiter.empty())');
+    expect(expression).toContain('multicode_value.find(multicode_delimiter, multicode_start)');
+  });
+
+  it('MakeArray keeps item order and ArraySize/ArrayClear operate on cloned array', () => {
+    const makeArrayGenerator = new MakeArrayNodeGenerator();
+    const sizeGenerator = new ArraySizeNodeGenerator();
+    const clearGenerator = new ArrayClearNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'node-make-item-0') {
+          return '"alpha"';
+        }
+        if (portId === 'node-make-item-1') {
+          return '"beta"';
+        }
+        if (portId === 'array') {
+          return 'items';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+
+    const makeArrayNode = createMockNode('MakeArray', 'Make Array', {
+      id: 'node-make',
+      inputs: [
+        { id: 'node-make-item-0', name: 'Item 0', dataType: 'any', direction: 'input', index: 0 },
+        { id: 'node-make-item-1', name: 'Item 1', dataType: 'any', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'node-make-array', name: 'Array', dataType: 'array', direction: 'output', index: 0 }],
+    });
+    const arrayNode = createMockNode('ArraySize', 'Array Size', {
+      inputs: [{ id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 }],
+      outputs: [{ id: 'size', name: 'Size', dataType: 'int32', direction: 'output', index: 0 }],
+    });
+    const clearNode = createMockNode('ArrayClear', 'Array Clear', {
+      inputs: [{ id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 }],
+      outputs: [{ id: 'array-out', name: 'Array', dataType: 'array', direction: 'output', index: 0 }],
+    });
+
+    expect(makeArrayGenerator.getOutputExpression(makeArrayNode, 'node-make-array', context, helpers)).toBe('(std::vector{"alpha", "beta"})');
+    expect(sizeGenerator.getOutputExpression(arrayNode, 'size', context, helpers)).toContain('static_cast<int>(multicode_array.size())');
+    expect(clearGenerator.getOutputExpression(clearNode, 'array-out', context, helpers)).toContain('multicode_array.clear();');
+  });
+
+  it('RandomFromArray returns guarded random element expression', () => {
+    const generator = new RandomFromArrayNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'array') {
+          return 'items';
+        }
+        return null;
+      }),
+    });
+    const context = createMockContext();
+    const node = createMockNode('RandomFromArray', 'Random From Array', {
+      inputs: [{ id: 'array', name: 'Array', dataType: 'array', direction: 'input', index: 0 }],
+      outputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'output', index: 0 }],
+    });
+
+    const expression = generator.getOutputExpression(node, 'value', context, helpers);
+
+    expect(expression).toContain('using MulticodeValue = std::decay_t<decltype(multicode_array[0])>;');
+    expect(expression).toContain('if constexpr (std::is_convertible_v<MulticodeValue, const char*>) { return ""; }');
+    expect(expression).toContain('std::mt19937 multicode_rng(std::random_device{}())');
+    expect(expression).toContain('std::uniform_int_distribution<int> multicode_dist(0, static_cast<int>(multicode_array.size()) - 1);');
+  });
+
   it('ArrayGet uses bounds guard and fallback in debug/recovery mode', () => {
     const generator = new ArrayGetNodeGenerator();
     const helpers = createMockHelpers({
@@ -512,23 +674,33 @@ describe('createOtherGenerators', () => {
   it('should return array with all other generators', () => {
     const generators = createOtherGenerators();
 
-    expect(generators).toHaveLength(17);
+    expect(generators).toHaveLength(27);
     expect(generators[0]).toBeInstanceOf(CommentNodeGenerator);
     expect(generators[1]).toBeInstanceOf(RerouteNodeGenerator);
-    expect(generators[2]).toBeInstanceOf(ArrayGetNodeGenerator);
-    expect(generators[3]).toBeInstanceOf(ArraySetNodeGenerator);
-    expect(generators[4]).toBeInstanceOf(ArrayPushBackNodeGenerator);
-    expect(generators[5]).toBeInstanceOf(MakeExpectedNodeGenerator);
-    expect(generators[6]).toBeInstanceOf(ExpectedHasValueNodeGenerator);
-    expect(generators[7]).toBeInstanceOf(ExpectedValueNodeGenerator);
-    expect(generators[8]).toBeInstanceOf(ExpectedErrorNodeGenerator);
-    expect(generators[9]).toBeInstanceOf(MakeOptionalNodeGenerator);
-    expect(generators[10]).toBeInstanceOf(OptionalHasValueNodeGenerator);
-    expect(generators[11]).toBeInstanceOf(OptionalValueOrNodeGenerator);
-    expect(generators[12]).toBeInstanceOf(MakeVariantNodeGenerator);
-    expect(generators[13]).toBeInstanceOf(HoldsAlternativeNodeGenerator);
-    expect(generators[14]).toBeInstanceOf(VisitVariantNodeGenerator);
-    expect(generators[15]).toBeInstanceOf(FormatNodeGenerator);
-    expect(generators[16]).toBeInstanceOf(FallbackNodeGenerator);
+    expect(generators[2]).toBeInstanceOf(StringConcatNodeGenerator);
+    expect(generators[3]).toBeInstanceOf(StringLengthNodeGenerator);
+    expect(generators[4]).toBeInstanceOf(SubstringNodeGenerator);
+    expect(generators[5]).toBeInstanceOf(ContainsNodeGenerator);
+    expect(generators[6]).toBeInstanceOf(SplitNodeGenerator);
+    expect(generators[7]).toBeInstanceOf(TrimNodeGenerator);
+    expect(generators[8]).toBeInstanceOf(MakeArrayNodeGenerator);
+    expect(generators[9]).toBeInstanceOf(ArrayGetNodeGenerator);
+    expect(generators[10]).toBeInstanceOf(ArraySetNodeGenerator);
+    expect(generators[11]).toBeInstanceOf(ArrayPushBackNodeGenerator);
+    expect(generators[12]).toBeInstanceOf(ArraySizeNodeGenerator);
+    expect(generators[13]).toBeInstanceOf(ArrayClearNodeGenerator);
+    expect(generators[14]).toBeInstanceOf(RandomFromArrayNodeGenerator);
+    expect(generators[15]).toBeInstanceOf(MakeExpectedNodeGenerator);
+    expect(generators[16]).toBeInstanceOf(ExpectedHasValueNodeGenerator);
+    expect(generators[17]).toBeInstanceOf(ExpectedValueNodeGenerator);
+    expect(generators[18]).toBeInstanceOf(ExpectedErrorNodeGenerator);
+    expect(generators[19]).toBeInstanceOf(MakeOptionalNodeGenerator);
+    expect(generators[20]).toBeInstanceOf(OptionalHasValueNodeGenerator);
+    expect(generators[21]).toBeInstanceOf(OptionalValueOrNodeGenerator);
+    expect(generators[22]).toBeInstanceOf(MakeVariantNodeGenerator);
+    expect(generators[23]).toBeInstanceOf(HoldsAlternativeNodeGenerator);
+    expect(generators[24]).toBeInstanceOf(VisitVariantNodeGenerator);
+    expect(generators[25]).toBeInstanceOf(FormatNodeGenerator);
+    expect(generators[26]).toBeInstanceOf(FallbackNodeGenerator);
   });
 });

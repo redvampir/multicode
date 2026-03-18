@@ -300,6 +300,75 @@ const normalizeClassStorageStatus = (status: ClassStorageStatus): ClassStorageSt
   })),
 });
 
+const formatClassStorageBadgeLabel = (
+  locale: GraphDisplayLanguage,
+  status: ClassStorageStatus,
+  sidecarOkCount: number,
+): string =>
+  status.mode === 'sidecar'
+    ? (locale === 'ru'
+      ? `Хранение классов: внешние файлы (${sidecarOkCount}/${status.bindingsTotal})`
+      : `Class Storage: SIDECAR (${sidecarOkCount}/${status.bindingsTotal})`)
+    : (locale === 'ru' ? 'Хранение классов: внутри графа' : 'Class Storage: EMBEDDED');
+
+const formatClassStorageBadgeTitle = (
+  locale: GraphDisplayLanguage,
+  status: ClassStorageStatus,
+  sidecarOkCount: number,
+): string => {
+  if (status.mode !== 'sidecar') {
+    return locale === 'ru'
+      ? 'Классы хранятся внутри графового .multicode'
+      : 'Classes are stored inside the graph .multicode';
+  }
+
+  if (locale === 'ru') {
+    return `готово=${sidecarOkCount}, отсутствует=${status.missing}, ошибки=${status.failed}, встроено=${status.fallbackEmbedded}`;
+  }
+
+  return `ok=${sidecarOkCount}, missing=${status.missing}, failed=${status.failed}, fallback=${status.fallbackEmbedded}`;
+};
+
+const formatClassNodesBadgeLabel = (
+  locale: GraphDisplayLanguage,
+  classNodesAdvancedEnabled: boolean,
+): string =>
+  locale === 'ru'
+    ? `Узлы классов: ${classNodesAdvancedEnabled ? 'расширенные' : 'базовые'}`
+    : `Class Nodes: ${classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE'}`;
+
+const formatClassStorageModeValue = (
+  locale: GraphDisplayLanguage,
+  status: ClassStorageStatus,
+): string =>
+  status.mode === 'sidecar'
+    ? (locale === 'ru' ? 'внешние файлы' : 'SIDECAR')
+    : (locale === 'ru' ? 'внутри графа' : 'EMBEDDED');
+
+const formatClassStorageStatsValue = (
+  locale: GraphDisplayLanguage,
+  status: ClassStorageStatus,
+  sidecarOkCount: number,
+): string => {
+  if (status.mode !== 'sidecar') {
+    return locale === 'ru' ? 'классы встроены в граф' : 'embedded mode';
+  }
+
+  if (locale === 'ru') {
+    return `готово ${sidecarOkCount} · нет ${status.missing} · ошибки ${status.failed}`;
+  }
+
+  return `ok ${sidecarOkCount} · miss ${status.missing} · fail ${status.failed}`;
+};
+
+const formatClassNodesValue = (
+  locale: GraphDisplayLanguage,
+  classNodesAdvancedEnabled: boolean,
+): string =>
+  locale === 'ru'
+    ? (classNodesAdvancedEnabled ? 'расширенные' : 'базовые')
+    : (classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE');
+
 const extractFileName = (filePath: string): string => {
   const normalized = normalizeFilePath(filePath);
   const segments = normalized.split('/');
@@ -455,11 +524,8 @@ const Toolbar: React.FC<{
   const cppStandard: CppStandard = 'cpp23';
   const sidecarOkCount = classStorageStatus.classItems.filter((item) => item.status === 'ok').length;
   const hasStorageIssues = classStorageStatus.missing > 0 || classStorageStatus.failed > 0;
-  const storageBadgeLabel =
-    classStorageStatus.mode === 'sidecar'
-      ? `Class Storage: SIDECAR (${sidecarOkCount}/${classStorageStatus.bindingsTotal})`
-      : 'Class Storage: EMBEDDED';
-  const classNodesBadgeLabel = classNodesAdvancedEnabled ? 'Class Nodes: ADVANCED' : 'Class Nodes: CORE';
+  const storageBadgeLabel = formatClassStorageBadgeLabel(locale, classStorageStatus, sidecarOkCount);
+  const classNodesBadgeLabel = formatClassNodesBadgeLabel(locale, classNodesAdvancedEnabled);
 
   const flushCurrentGraphState = (): void => {
     const snapshot = useGraphStore.getState().graph;
@@ -596,11 +662,7 @@ const Toolbar: React.FC<{
           {translate('toolbar.targetPlatform', '{language}', { language: graph.language.toUpperCase() })}
           <span
             className={hasStorageIssues ? 'toolbar-storage-badge toolbar-storage-badge--warn' : 'toolbar-storage-badge toolbar-storage-badge--ok'}
-            title={
-              classStorageStatus.mode === 'sidecar'
-                ? `ok=${sidecarOkCount}, missing=${classStorageStatus.missing}, failed=${classStorageStatus.failed}, fallback=${classStorageStatus.fallbackEmbedded}`
-                : 'Классы хранятся внутри графового .multicode'
-            }
+            title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
             data-testid="class-storage-badge"
           >
             {' · '}{storageBadgeLabel}
@@ -1031,6 +1093,7 @@ const GraphFacts: React.FC<{
   const nodeCount = graph.nodes.length;
   const edgeCount = graph.edges.length;
   const sidecarOkCount = classStorageStatus.classItems.filter((item) => item.status === 'ok').length;
+  const locale = graph.displayLanguage;
 
   return (
     <div className="panel">
@@ -1057,19 +1120,15 @@ const GraphFacts: React.FC<{
         </div>
         <div>
           <div className="panel-label">{translate('overview.classStorage', 'Class Storage')}</div>
-          <div className="panel-value">{classStorageStatus.mode.toUpperCase()}</div>
+          <div className="panel-value">{formatClassStorageModeValue(locale, classStorageStatus)}</div>
         </div>
         <div>
           <div className="panel-label">{translate('overview.classStorageSidecar', 'Sidecar')}</div>
-          <div className="panel-value">
-            {classStorageStatus.mode === 'sidecar'
-              ? `ok ${sidecarOkCount} · miss ${classStorageStatus.missing} · fail ${classStorageStatus.failed}`
-              : translate('overview.classStorageEmbedded', 'embedded mode')}
-          </div>
+          <div className="panel-value">{formatClassStorageStatsValue(locale, classStorageStatus, sidecarOkCount)}</div>
         </div>
         <div>
           <div className="panel-label">{translate('overview.classNodes' as TranslationKey, 'Class Nodes')}</div>
-          <div className="panel-value">{classNodesAdvancedEnabled ? 'ADVANCED' : 'CORE'}</div>
+          <div className="panel-value">{formatClassNodesValue(locale, classNodesAdvancedEnabled)}</div>
         </div>
       </div>
     </div>
@@ -1154,6 +1213,26 @@ const ValidationPanel: React.FC<{
         normalized = normalized.split(id).join(label);
       }
     });
+
+    if (graph.displayLanguage === 'ru') {
+      normalized = normalized
+        .replace('Graph must contain at least one node.', 'Граф должен содержать хотя бы один узел.')
+        .replace('Graph has no Start node. Entry-point checks are skipped.', 'В графе нет стартового узла. Проверка точки входа пропущена.')
+        .replace('Only one Start node is allowed.', 'Допустим только один стартовый узел.')
+        .replace('Graph must contain at least one End node.', 'Граф должен содержать хотя бы один конечный узел.')
+        .replace('Graph does not contain execution flow connections.', 'В графе нет связей потока выполнения.')
+        .replace('Start node cannot have incoming execution edges.', 'Стартовый узел не может иметь входящих связей выполнения.')
+        .replace('Start node has no outgoing execution edges.', 'У стартового узла нет исходящих связей выполнения.')
+        .replace(/Edge #(\d+) references missing nodes\./, 'Связь #$1 ссылается на отсутствующие узлы.')
+        .replace(/Edge (.+?) creates a self-loop\./, 'Связь $1 образует петлю на самой себе.')
+        .replace(/Execution edge (.+?) -> (.+?) cannot start from End node "(.+?)"\./, 'Связь выполнения $1 -> $2 не может выходить из конечного узла "$3".')
+        .replace(/Execution edge (.+?) -> (.+?) cannot target Start node "(.+?)"\./, 'Связь выполнения $1 -> $2 не может вести в стартовый узел "$3".')
+        .replace(/Data edge (.+?) -> (.+?) cannot involve Start nodes\./, 'Связь данных $1 -> $2 не может быть связана со стартовыми узлами.')
+        .replace(/Data edge (.+?) -> (.+?) cannot originate from End nodes\./, 'Связь данных $1 -> $2 не может выходить из конечных узлов.')
+        .replace(/End node "(.+?)" cannot have outgoing execution edges\./, 'Конечный узел "$1" не может иметь исходящих связей выполнения.')
+        .replace(/End node "(.+?)" has no incoming execution edges\./, 'У конечного узла "$1" нет входящих связей выполнения.')
+        .replace(/Execution cycle detected: (.+)/, 'Обнаружен цикл выполнения: $1');
+    }
 
     return normalized;
   };
@@ -2381,10 +2460,10 @@ const App: React.FC = () => {
     const item = classStorageStatus.classItems.find((entry) => entry.classId === classId);
     const targetPath = item?.filePath?.trim();
     if (!targetPath) {
-      pushToast('warning', 'Для этого класса sidecar-файл не найден');
+      pushToast('warning', 'Для этого класса не найден внешний файл');
       return;
     }
-    void openPathInEditor(targetPath, 'Не удалось открыть class sidecar');
+    void openPathInEditor(targetPath, 'Не удалось открыть файл класса');
   }, [classStorageStatus.classItems, openPathInEditor, pushToast]);
 
   const handleOpenGraphMulticode = useCallback((): void => {
@@ -2393,7 +2472,7 @@ const App: React.FC = () => {
       pushToast('warning', 'Графовый .multicode-файл не найден');
       return;
     }
-    void openPathInEditor(targetPath, 'Не удалось открыть graph .multicode');
+    void openPathInEditor(targetPath, 'Не удалось открыть файл графа .multicode');
   }, [classStorageStatus.graphFilePath, openPathInEditor, pushToast]);
 
   const handleReloadClassStorage = useCallback(async (classId?: string): Promise<void> => {
@@ -2407,13 +2486,13 @@ const App: React.FC = () => {
       }
       const count = response.payload.reloaded;
       if (count > 0) {
-        pushToast('success', classId ? 'Класс перечитан из sidecar' : `Перечитано классов: ${count}`);
+        pushToast('success', classId ? 'Класс перечитан из внешнего файла' : `Перечитано классов: ${count}`);
       } else {
         pushToast('info', 'Нечего перечитывать');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      pushToast('error', `Не удалось перечитать class sidecar: ${message}`);
+      pushToast('error', `Не удалось перечитать внешний файл класса: ${message}`);
     }
   }, [pushToast, requestExternalIpc]);
 
@@ -2428,13 +2507,13 @@ const App: React.FC = () => {
       }
       const repaired = response.payload.repaired;
       if (repaired > 0) {
-        pushToast('success', classId ? 'Привязка/sidecar класса восстановлена' : `Исправлено элементов class storage: ${repaired}`);
+        pushToast('success', classId ? 'Привязка файла класса восстановлена' : `Исправлено элементов хранения классов: ${repaired}`);
       } else {
         pushToast('info', 'Исправления не требуются');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      pushToast('error', `Не удалось починить class sidecar: ${message}`);
+      pushToast('error', `Не удалось восстановить файл класса: ${message}`);
     }
   }, [pushToast, requestExternalIpc]);
 
@@ -2841,7 +2920,7 @@ const App: React.FC = () => {
                   className="panel-title"
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                 >
-                  <span>{locale === 'ru' ? 'Dependency View' : 'Dependency View'}</span>
+                  <span>{locale === 'ru' ? 'Зависимости' : 'Dependency View'}</span>
                   <button
                     type="button"
                     onClick={() => setShowDependencySidebar((value) => !value)}
@@ -2853,7 +2932,7 @@ const App: React.FC = () => {
                   </button>
                  </div>
                   {showDependencySidebar && (
-                  <div style={{ height: 420, minHeight: 0, overflow: 'hidden' }}>
+                  <div style={{ height: 'clamp(300px, 42vh, 520px)', minHeight: 0, overflow: 'hidden' }}>
                     <DependencyViewPanel
                       useGraphStore={useGraphStore}
                       mode="sidebar"

@@ -1241,9 +1241,10 @@ describe('blueprintTypes - Node Definitions', () => {
         'Start', 'End', 'Branch', 'ForLoop', 'WhileLoop', 'Sequence',
         'Function', 'FunctionCall', 'Event',
         'Variable', 'GetVariable', 'SetVariable', 'TypeConversion', 'ClassMethodCall', 'ClassConstructorCall', 'GetMember', 'SetMember', 'StaticMethodCall',
-        'ConstNumber', 'ConstString', 'ConstBool', 'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
+        'ConstNumber', 'ConstString', 'ConstBool', 'RandomInt', 'Add', 'Subtract', 'Multiply', 'Divide', 'Modulo',
         'Equal', 'NotEqual', 'Greater', 'Less', 'GreaterEqual', 'LessEqual',
         'And', 'Or', 'Not',
+        'MakeArray', 'ArrayGet', 'ArraySet', 'ArrayPushBack', 'ArraySize', 'ArrayClear', 'RandomFromArray',
         'Print', 'Input',
         'Comment', 'Reroute', 'Custom',
       ];
@@ -1282,6 +1283,19 @@ describe('blueprintTypes - Node Definitions', () => {
       expect(switchSelection?.nameRu).toBe('Значение');
       expect(printValue?.nameRu).toBe('Значение');
       expect(constNumberValue?.nameRu).toBe('Значение');
+    });
+
+    it('should define random utility nodes with expected ports', () => {
+      const randomIntMin = NODE_TYPE_DEFINITIONS.RandomInt.inputs.find((port) => port.id === 'min');
+      const randomIntMax = NODE_TYPE_DEFINITIONS.RandomInt.inputs.find((port) => port.id === 'max');
+      const randomFromArrayInput = NODE_TYPE_DEFINITIONS.RandomFromArray.inputs.find((port) => port.id === 'array');
+      const randomFromArrayValue = NODE_TYPE_DEFINITIONS.RandomFromArray.outputs.find((port) => port.id === 'value');
+
+      expect(randomIntMin?.nameRu).toBe('Минимум');
+      expect(randomIntMax?.nameRu).toBe('Максимум');
+      expect(randomIntMax?.defaultValue).toBe(10);
+      expect(randomFromArrayInput?.dataType).toBe('array');
+      expect(randomFromArrayValue?.dataType).toBe('any');
     });
   });
 

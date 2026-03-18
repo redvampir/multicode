@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx node:*)",
+      "Bash(python -c \":*)",
+      "Bash(npx vitest:*)",
+      "Bash(./node_modules/.bin/vitest run:*)",
+      "Bash(PATH=\"/c/Program Files/nodejs:$PATH\" node ./node_modules/.bin/vitest run src/codegen/model/classModel.test.ts --reporter=verbose)",
+      "Bash(PATH=\"/c/Program Files/nodejs:$PATH\" node node_modules/vitest/vitest.mjs run src/codegen/model/classModel.test.ts --reporter=verbose)",
+      "Bash(PATH=\"/c/Program Files/nodejs:$PATH\" node node_modules/vitest/vitest.mjs run src/codegen/UeCodeGenerator.test.ts src/codegen/targetGolden.test.ts --reporter=verbose)"
+    ]
+  }
+}

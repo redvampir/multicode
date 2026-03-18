@@ -547,6 +547,97 @@ export class ParseFloatNodeGenerator extends BaseNodeGenerator {
   }
 }
 
+export class ToIntNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ToInt'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', '0', helpers);
+    return `([&]() { std::stringstream multicode_write_stream; multicode_write_stream << ${valueExpr}; const std::string multicode_serialized = multicode_write_stream.str(); std::stringstream multicode_read_stream(multicode_serialized); int multicode_result = 0; char multicode_tail = '\\0'; const bool multicode_ok = static_cast<bool>(multicode_read_stream >> multicode_result) && !(multicode_read_stream >> multicode_tail); return multicode_ok ? multicode_result : 0; })()`;
+  }
+}
+
+export class ToFloatNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ToFloat'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', '0.0', helpers);
+    return `([&]() { std::stringstream multicode_write_stream; multicode_write_stream << ${valueExpr}; const std::string multicode_serialized = multicode_write_stream.str(); std::stringstream multicode_read_stream(multicode_serialized); double multicode_result = 0.0; char multicode_tail = '\\0'; const bool multicode_ok = static_cast<bool>(multicode_read_stream >> multicode_result) && !(multicode_read_stream >> multicode_tail); return multicode_ok ? multicode_result : 0.0; })()`;
+  }
+}
+
+export class ToBoolNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ToBool'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', 'false', helpers);
+    return `([&]() { std::stringstream multicode_write_stream; multicode_write_stream << std::boolalpha << ${valueExpr}; const std::string multicode_serialized = multicode_write_stream.str(); std::stringstream multicode_bool_stream(multicode_serialized); bool multicode_result = false; if ((multicode_bool_stream >> std::boolalpha >> multicode_result) && (multicode_bool_stream >> std::ws).eof()) { return multicode_result; } std::stringstream multicode_numeric_stream(multicode_serialized); double multicode_numeric = 0.0; char multicode_tail = '\\0'; const bool multicode_numeric_ok = static_cast<bool>(multicode_numeric_stream >> multicode_numeric) && !(multicode_numeric_stream >> multicode_tail); return multicode_numeric_ok ? multicode_numeric != 0.0 : false; })()`;
+  }
+}
+
+export class ToStringNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['ToString'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const valueExpr = resolvePortExpression(node, 'value', '""', helpers);
+    return `([&]() { std::stringstream multicode_stream; multicode_stream << std::boolalpha << ${valueExpr}; return multicode_stream.str(); })()`;
+  }
+}
+
+export class RandomIntNodeGenerator extends BaseNodeGenerator {
+  readonly nodeTypes: BlueprintNodeType[] = ['RandomInt'];
+
+  generate(): NodeGenerationResult {
+    return this.noop();
+  }
+
+  getOutputExpression(
+    node: BlueprintNode,
+    _portId: string,
+    _context: CodeGenContext,
+    helpers: GeneratorHelpers
+  ): string {
+    const minExpr = resolvePortExpression(node, 'min', '0', helpers);
+    const maxExpr = resolvePortExpression(node, 'max', '10', helpers);
+    return `([&]() { int multicode_min = static_cast<int>(${minExpr}); int multicode_max = static_cast<int>(${maxExpr}); if (multicode_min > multicode_max) { const int multicode_tmp = multicode_min; multicode_min = multicode_max; multicode_max = multicode_tmp; } static thread_local std::mt19937 multicode_rng(std::random_device{}()); std::uniform_int_distribution<int> multicode_dist(multicode_min, multicode_max); return multicode_dist(multicode_rng); })()`;
+  }
+}
+
 /**
  * Фабричная функция для создания всех Math/Comparison/Logic генераторов
  */
@@ -573,6 +664,11 @@ export function createMathLogicGenerators(): BaseNodeGenerator[] {
     new AndNodeGenerator(),
     new OrNodeGenerator(),
     new NotNodeGenerator(),
+    new ToIntNodeGenerator(),
+    new ToFloatNodeGenerator(),
+    new ToBoolNodeGenerator(),
+    new ToStringNodeGenerator(),
+    new RandomIntNodeGenerator(),
     new ParseIntNodeGenerator(),
     new ParseFloatNodeGenerator(),
   ];

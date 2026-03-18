@@ -161,7 +161,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
           onClick={() => onSelectFunction(null)}
         >
           <span className="function-icon">📊</span>
-          <span className="function-name">EventGraph</span>
+          <span className="function-name">{isRu ? 'Граф событий' : 'EventGraph'}</span>
         </div>
         
         {/* Список пользовательских функций */}
@@ -195,7 +195,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                         e.stopPropagation();
                         onCreateFunctionCallNode(func.id);
                       }}
-                      title={isRu ? 'Добавить вызов в EventGraph' : 'Add call node to EventGraph'}
+                      title={isRu ? 'Добавить вызов в граф событий' : 'Add call node to EventGraph'}
                       data-testid={`function-call-add-${func.id}`}
                     >
                       ↗

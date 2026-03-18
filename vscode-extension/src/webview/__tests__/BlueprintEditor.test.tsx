@@ -875,7 +875,7 @@ describe('BlueprintEditor', () => {
 
       expect(screen.queryByText('Глобальная')).toBeNull();
 
-      const importButton = screen.getByTitle('Импортировать переменные EventGraph');
+      const importButton = screen.getByTitle('Импортировать переменные из графа событий');
       fireEvent.click(importButton);
 
       await waitFor(() => {
@@ -1147,7 +1147,7 @@ describe('BlueprintEditor', () => {
         </TestWrapper>
       );
 
-      const ruInputs = await screen.findAllByPlaceholderText('RU имя');
+      const ruInputs = await screen.findAllByPlaceholderText('Отображаемое имя');
       fireEvent.change(ruInputs[0], { target: { value: 'Персонаж' } });
 
       await waitFor(() => {

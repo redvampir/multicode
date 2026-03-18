@@ -1,7 +1,7 @@
 {
   "$schema": "../../schemas/multicode-ue-package.schema.json",
   "name": "@multicode/ue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Unreal Engine Nodes",
   "displayNameRu": "Узлы Unreal Engine",
   "description": "UE-specific nodes for Blueprint-like workflows in MultiCode",
@@ -52,6 +52,138 @@
         }
       }
     },
+
+    {
+      "type": "EventTick",
+      "label": "Event Tick",
+      "labelRu": "Событие Tick",
+      "category": "flow",
+      "description": "Called every frame",
+      "descriptionRu": "Вызывается каждый кадр",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "delta-seconds",
+          "name": "Delta Seconds",
+          "nameRu": "Дельта времени",
+          "dataType": "float"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "void {{prop.className}}::Tick(float {{output.delta-seconds}}) {\n    Super::Tick({{output.delta-seconds}});",
+          "after": "}"
+        }
+      }
+    },
+    {
+      "type": "EventBeginOverlap",
+      "label": "Event Begin Overlap",
+      "labelRu": "Начало перекрытия",
+      "category": "flow",
+      "description": "Fired when another actor begins overlapping",
+      "descriptionRu": "Срабатывает при начале перекрытия с другим actor",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "other-actor",
+          "name": "Other Actor",
+          "nameRu": "Другой Actor",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "// OnActorBeginOverlap — {{node.labelRu}}\n// AActor* {{output.other-actor}}"
+        }
+      }
+    },
+    {
+      "type": "EventEndOverlap",
+      "label": "Event End Overlap",
+      "labelRu": "Конец перекрытия",
+      "category": "flow",
+      "description": "Fired when another actor stops overlapping",
+      "descriptionRu": "Срабатывает при окончании перекрытия с другим actor",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "other-actor",
+          "name": "Other Actor",
+          "nameRu": "Другой Actor",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "// OnActorEndOverlap — {{node.labelRu}}\n// AActor* {{output.other-actor}}"
+        }
+      }
+    },
+    {
+      "type": "EventHit",
+      "label": "Event Hit",
+      "labelRu": "Событие столкновения",
+      "category": "flow",
+      "description": "Fired when this actor hits or is hit by something",
+      "descriptionRu": "Срабатывает при столкновении с другим объектом",
+      "headerColor": "#E53935",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "other-actor",
+          "name": "Other Actor",
+          "nameRu": "Другой Actor",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "normal-impulse",
+          "name": "Normal Impulse",
+          "nameRu": "Импульс нормали",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "// OnHit — {{node.labelRu}}"
+        }
+      }
+    },
+
     {
       "type": "SpawnActor",
       "label": "Spawn Actor",
@@ -74,6 +206,22 @@
           "typeName": "UClass*",
           "typeId": "UE.Object",
           "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "location",
+          "name": "Location",
+          "nameRu": "Позиция",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "rotation",
+          "name": "Rotation",
+          "nameRu": "Поворот",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
         }
       ],
       "outputs": [
@@ -91,12 +239,1838 @@
           "typeId": "UE.Actor",
           "compatibilityPolicyVersion": "2.0.0"
         }
-      ]
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "AActor* {{output.actor}} = GetWorld()->SpawnActor<AActor>({{input.class}}, &{{input.location}}, &{{input.rotation}});"
+        }
+      }
+    },
+    {
+      "type": "DestroyActor",
+      "label": "Destroy Actor",
+      "labelRu": "Уничтожить Actor",
+      "category": "function",
+      "description": "Destroy the specified actor",
+      "descriptionRu": "Уничтожить указанный actor",
+      "headerColor": "#C62828",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->Destroy();"
+        }
+      }
+    },
+
+    {
+      "type": "GetActorLocation",
+      "label": "Get Actor Location",
+      "labelRu": "Получить позицию Actor",
+      "category": "function",
+      "description": "Get the actor's world location",
+      "descriptionRu": "Получить мировые координаты actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "location",
+          "name": "Location",
+          "nameRu": "Позиция",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector {{output.location}} = {{input.target}}->GetActorLocation();"
+        }
+      }
+    },
+    {
+      "type": "SetActorLocation",
+      "label": "Set Actor Location",
+      "labelRu": "Установить позицию Actor",
+      "category": "function",
+      "description": "Set the actor's world location",
+      "descriptionRu": "Установить мировые координаты actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "new-location",
+          "name": "New Location",
+          "nameRu": "Новая позиция",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "sweep",
+          "name": "Sweep",
+          "nameRu": "Проверка столкновений",
+          "dataType": "bool",
+          "defaultValue": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->SetActorLocation({{input.new-location}}, {{input.sweep}});"
+        }
+      }
+    },
+    {
+      "type": "GetActorRotation",
+      "label": "Get Actor Rotation",
+      "labelRu": "Получить поворот Actor",
+      "category": "function",
+      "description": "Get the actor's world rotation",
+      "descriptionRu": "Получить мировой поворот actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rotation",
+          "name": "Rotation",
+          "nameRu": "Поворот",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FRotator {{output.rotation}} = {{input.target}}->GetActorRotation();"
+        }
+      }
+    },
+    {
+      "type": "SetActorRotation",
+      "label": "Set Actor Rotation",
+      "labelRu": "Установить поворот Actor",
+      "category": "function",
+      "description": "Set the actor's world rotation",
+      "descriptionRu": "Установить мировой поворот actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "new-rotation",
+          "name": "New Rotation",
+          "nameRu": "Новый поворот",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->SetActorRotation({{input.new-rotation}});"
+        }
+      }
+    },
+    {
+      "type": "GetActorScale",
+      "label": "Get Actor Scale",
+      "labelRu": "Получить масштаб Actor",
+      "category": "function",
+      "description": "Get the actor's world scale",
+      "descriptionRu": "Получить мировой масштаб actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "scale",
+          "name": "Scale",
+          "nameRu": "Масштаб",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector {{output.scale}} = {{input.target}}->GetActorScale3D();"
+        }
+      }
+    },
+    {
+      "type": "SetActorScale",
+      "label": "Set Actor Scale",
+      "labelRu": "Установить масштаб Actor",
+      "category": "function",
+      "description": "Set the actor's world scale",
+      "descriptionRu": "Установить мировой масштаб actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "new-scale",
+          "name": "New Scale",
+          "nameRu": "Новый масштаб",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->SetActorScale3D({{input.new-scale}});"
+        }
+      }
+    },
+    {
+      "type": "GetActorForwardVector",
+      "label": "Get Actor Forward Vector",
+      "labelRu": "Получить вектор вперёд Actor",
+      "category": "function",
+      "description": "Get the forward direction vector of the actor",
+      "descriptionRu": "Получить вектор направления вперёд actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "forward",
+          "name": "Forward",
+          "nameRu": "Вперёд",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector {{output.forward}} = {{input.target}}->GetActorForwardVector();"
+        }
+      }
+    },
+    {
+      "type": "AddActorLocalOffset",
+      "label": "Add Actor Local Offset",
+      "labelRu": "Сместить Actor локально",
+      "category": "function",
+      "description": "Add a delta to the actor's location in local space",
+      "descriptionRu": "Добавить смещение к позиции actor в локальных координатах",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "delta",
+          "name": "Delta",
+          "nameRu": "Смещение",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "sweep",
+          "name": "Sweep",
+          "nameRu": "Проверка столкновений",
+          "dataType": "bool",
+          "defaultValue": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->AddActorLocalOffset({{input.delta}}, {{input.sweep}});"
+        }
+      }
+    },
+
+    {
+      "type": "GetPlayerController",
+      "label": "Get Player Controller",
+      "labelRu": "Получить контроллер игрока",
+      "category": "function",
+      "description": "Get the player controller for the given player index",
+      "descriptionRu": "Получить контроллер игрока по индексу",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "player-index",
+          "name": "Player Index",
+          "nameRu": "Индекс игрока",
+          "dataType": "int32",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "controller",
+          "name": "Controller",
+          "nameRu": "Контроллер",
+          "dataType": "pointer",
+          "typeName": "APlayerController*",
+          "typeId": "UE.PlayerController",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "APlayerController* {{output.controller}} = UGameplayStatics::GetPlayerController(GetWorld(), {{input.player-index}});",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetPlayerPawn",
+      "label": "Get Player Pawn",
+      "labelRu": "Получить пешку игрока",
+      "category": "function",
+      "description": "Get the pawn for the given player index",
+      "descriptionRu": "Получить пешку игрока по индексу",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "player-index",
+          "name": "Player Index",
+          "nameRu": "Индекс игрока",
+          "dataType": "int32",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "pawn",
+          "name": "Pawn",
+          "nameRu": "Пешка",
+          "dataType": "pointer",
+          "typeName": "APawn*",
+          "typeId": "UE.Pawn",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "APawn* {{output.pawn}} = UGameplayStatics::GetPlayerPawn(GetWorld(), {{input.player-index}});",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetPlayerCharacter",
+      "label": "Get Player Character",
+      "labelRu": "Получить персонажа игрока",
+      "category": "function",
+      "description": "Get the character for the given player index",
+      "descriptionRu": "Получить персонажа игрока по индексу",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "player-index",
+          "name": "Player Index",
+          "nameRu": "Индекс игрока",
+          "dataType": "int32",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "character",
+          "name": "Character",
+          "nameRu": "Персонаж",
+          "dataType": "pointer",
+          "typeName": "ACharacter*",
+          "typeId": "UE.Character",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "ACharacter* {{output.character}} = UGameplayStatics::GetPlayerCharacter(GetWorld(), {{input.player-index}});",
+          "includes": ["\"Kismet/GameplayStatics.h\"", "\"GameFramework/Character.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetPlayerCameraManager",
+      "label": "Get Player Camera Manager",
+      "labelRu": "Получить камеру игрока",
+      "category": "function",
+      "description": "Get the camera manager for the given player index",
+      "descriptionRu": "Получить менеджер камеры игрока по индексу",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "player-index",
+          "name": "Player Index",
+          "nameRu": "Индекс игрока",
+          "dataType": "int32",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "camera-manager",
+          "name": "Camera Manager",
+          "nameRu": "Камера",
+          "dataType": "pointer",
+          "typeName": "APlayerCameraManager*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "APlayerCameraManager* {{output.camera-manager}} = UGameplayStatics::GetPlayerCameraManager(GetWorld(), {{input.player-index}});",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+
+    {
+      "type": "GetComponentByClass",
+      "label": "Get Component By Class",
+      "labelRu": "Получить компонент по классу",
+      "category": "function",
+      "description": "Get the first component of the specified class on an actor",
+      "descriptionRu": "Получить первый компонент указанного класса у actor",
+      "headerColor": "#00897B",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "component-class",
+          "name": "Component Class",
+          "nameRu": "Класс компонента",
+          "dataType": "class",
+          "typeName": "UClass*",
+          "typeId": "UE.Object"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "component",
+          "name": "Component",
+          "nameRu": "Компонент",
+          "dataType": "pointer",
+          "typeName": "UActorComponent*",
+          "typeId": "UE.Component",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "UActorComponent* {{output.component}} = {{input.target}}->FindComponentByClass({{input.component-class}});"
+        }
+      }
+    },
+
+    {
+      "type": "IsValid",
+      "label": "Is Valid",
+      "labelRu": "Является валидным",
+      "category": "function",
+      "description": "Check if an object pointer is valid (not null and not pending kill)",
+      "descriptionRu": "Проверить, является ли указатель на объект валидным",
+      "headerColor": "#F57C00",
+      "inputs": [
+        {
+          "id": "object",
+          "name": "Object",
+          "nameRu": "Объект",
+          "dataType": "pointer",
+          "typeName": "UObject*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "is-valid",
+          "name": "Is Valid",
+          "nameRu": "Валиден",
+          "dataType": "bool"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "IsValid({{input.object}})"
+        }
+      }
+    },
+    {
+      "type": "CastTo",
+      "label": "Cast To",
+      "labelRu": "Привести к типу",
+      "category": "function",
+      "description": "Cast an object to the specified class",
+      "descriptionRu": "Привести объект к указанному классу",
+      "headerColor": "#6A1B9A",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "object",
+          "name": "Object",
+          "nameRu": "Объект",
+          "dataType": "pointer",
+          "typeName": "UObject*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "success",
+          "name": "Success",
+          "nameRu": "Успех",
+          "dataType": "execution"
+        },
+        {
+          "id": "fail",
+          "name": "Fail",
+          "nameRu": "Неудача",
+          "dataType": "execution"
+        },
+        {
+          "id": "result",
+          "name": "As Object",
+          "nameRu": "Как объект",
+          "dataType": "pointer",
+          "typeName": "UObject*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "properties": [
+        {
+          "id": "targetClass",
+          "name": "Target Class",
+          "nameRu": "Целевой класс",
+          "type": "string",
+          "default": "AActor"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{prop.targetClass}}* {{output.result}} = Cast<{{prop.targetClass}}>({{input.object}});\nif ({{output.result}}) {\n    {{output.success}}\n} else {\n    {{output.fail}}\n}"
+        }
+      }
+    },
+
+    {
+      "type": "PrintStringUE",
+      "label": "Print String",
+      "labelRu": "Вывод на экран",
+      "category": "io",
+      "description": "Print a string to screen and/or log",
+      "descriptionRu": "Вывести строку на экран и/или в лог",
+      "headerColor": "#00BCD4",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "string",
+          "name": "String",
+          "nameRu": "Строка",
+          "dataType": "string",
+          "defaultValue": "Hello"
+        },
+        {
+          "id": "color",
+          "name": "Text Color",
+          "nameRu": "Цвет текста",
+          "dataType": "class",
+          "typeName": "FLinearColor",
+          "typeId": "UE.FLinearColor"
+        },
+        {
+          "id": "duration",
+          "name": "Duration",
+          "nameRu": "Длительность",
+          "dataType": "float",
+          "defaultValue": 2.0
+        },
+        {
+          "id": "print-to-log",
+          "name": "Print to Log",
+          "nameRu": "В лог",
+          "dataType": "bool",
+          "defaultValue": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "if (GEngine) {\n    GEngine->AddOnScreenDebugMessage(-1, {{input.duration}}, FColor::White, {{input.string}});\n}\nif ({{input.print-to-log}}) {\n    UE_LOG(LogTemp, Log, TEXT(\"%s\"), *{{input.string}});\n}"
+        }
+      }
+    },
+    {
+      "type": "UELog",
+      "label": "UE Log",
+      "labelRu": "Запись в лог",
+      "category": "io",
+      "description": "Write a message to the UE log with a specified verbosity",
+      "descriptionRu": "Записать сообщение в лог UE с указанным уровнем",
+      "headerColor": "#00BCD4",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "message",
+          "name": "Message",
+          "nameRu": "Сообщение",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "properties": [
+        {
+          "id": "verbosity",
+          "name": "Verbosity",
+          "nameRu": "Уровень",
+          "type": "enum",
+          "default": "Log",
+          "enum": [
+            { "value": "Log", "label": "Log", "labelRu": "Log" },
+            { "value": "Warning", "label": "Warning", "labelRu": "Warning" },
+            { "value": "Error", "label": "Error", "labelRu": "Error" }
+          ]
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "UE_LOG(LogTemp, {{prop.verbosity}}, TEXT(\"%s\"), *{{input.message}});"
+        }
+      }
+    },
+
+    {
+      "type": "Delay",
+      "label": "Delay",
+      "labelRu": "Задержка",
+      "category": "flow",
+      "description": "Latent action — wait for a specified duration",
+      "descriptionRu": "Латентное действие — ожидание указанное время",
+      "headerColor": "#7C4DFF",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "duration",
+          "name": "Duration",
+          "nameRu": "Длительность",
+          "dataType": "float",
+          "defaultValue": 1.0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "completed",
+          "name": "Completed",
+          "nameRu": "Завершено",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FTimerHandle TimerHandle;\nGetWorldTimerManager().SetTimer(TimerHandle, [this]() {\n    {{output.completed}}\n}, {{input.duration}}, false);"
+        }
+      }
+    },
+    {
+      "type": "SetTimer",
+      "label": "Set Timer by Event",
+      "labelRu": "Установить таймер",
+      "category": "flow",
+      "description": "Set a recurring or one-shot timer",
+      "descriptionRu": "Установить повторяющийся или одноразовый таймер",
+      "headerColor": "#7C4DFF",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "time",
+          "name": "Time",
+          "nameRu": "Время",
+          "dataType": "float",
+          "defaultValue": 1.0
+        },
+        {
+          "id": "looping",
+          "name": "Looping",
+          "nameRu": "Повторять",
+          "dataType": "bool",
+          "defaultValue": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "on-timer",
+          "name": "On Timer",
+          "nameRu": "По таймеру",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FTimerHandle TimerHandle;\nGetWorldTimerManager().SetTimer(TimerHandle, [this]() {\n    {{output.on-timer}}\n}, {{input.time}}, {{input.looping}});"
+        }
+      }
+    },
+
+    {
+      "type": "GetWorld",
+      "label": "Get World",
+      "labelRu": "Получить мир",
+      "category": "function",
+      "description": "Get a reference to the current UWorld",
+      "descriptionRu": "Получить ссылку на текущий UWorld",
+      "headerColor": "#1565C0",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "world",
+          "name": "World",
+          "nameRu": "Мир",
+          "dataType": "pointer",
+          "typeName": "UWorld*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "UWorld* {{output.world}} = GetWorld();"
+        }
+      }
+    },
+    {
+      "type": "GetGameMode",
+      "label": "Get Game Mode",
+      "labelRu": "Получить режим игры",
+      "category": "function",
+      "description": "Get the current game mode",
+      "descriptionRu": "Получить текущий режим игры",
+      "headerColor": "#1565C0",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "game-mode",
+          "name": "Game Mode",
+          "nameRu": "Режим игры",
+          "dataType": "pointer",
+          "typeName": "AGameModeBase*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "AGameModeBase* {{output.game-mode}} = UGameplayStatics::GetGameMode(GetWorld());",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetGameInstance",
+      "label": "Get Game Instance",
+      "labelRu": "Получить экземпляр игры",
+      "category": "function",
+      "description": "Get the game instance",
+      "descriptionRu": "Получить экземпляр игры",
+      "headerColor": "#1565C0",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "game-instance",
+          "name": "Game Instance",
+          "nameRu": "Экземпляр игры",
+          "dataType": "pointer",
+          "typeName": "UGameInstance*",
+          "typeId": "UE.Object",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "UGameInstance* {{output.game-instance}} = UGameplayStatics::GetGameInstance(GetWorld());",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetActorOfClass",
+      "label": "Get Actor Of Class",
+      "labelRu": "Найти Actor по классу",
+      "category": "function",
+      "description": "Find the first actor of the specified class in the world",
+      "descriptionRu": "Найти первый actor указанного класса в мире",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "actor-class",
+          "name": "Actor Class",
+          "nameRu": "Класс Actor",
+          "dataType": "class",
+          "typeName": "UClass*",
+          "typeId": "UE.Object"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "actor",
+          "name": "Actor",
+          "nameRu": "Actor",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "AActor* {{output.actor}} = UGameplayStatics::GetActorOfClass(GetWorld(), {{input.actor-class}});",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+    {
+      "type": "GetAllActorsOfClass",
+      "label": "Get All Actors Of Class",
+      "labelRu": "Найти все Actor по классу",
+      "category": "function",
+      "description": "Find all actors of the specified class in the world",
+      "descriptionRu": "Найти все actor указанного класса в мире",
+      "headerColor": "#1565C0",
+      "inputs": [
+        {
+          "id": "actor-class",
+          "name": "Actor Class",
+          "nameRu": "Класс Actor",
+          "dataType": "class",
+          "typeName": "UClass*",
+          "typeId": "UE.Object"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "actors",
+          "name": "Actors",
+          "nameRu": "Акторы",
+          "dataType": "array",
+          "typeName": "TArray<AActor*>"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "TArray<AActor*> {{output.actors}};\nUGameplayStatics::GetAllActorsOfClass(GetWorld(), {{input.actor-class}}, {{output.actors}});",
+          "includes": ["\"Kismet/GameplayStatics.h\""]
+        }
+      }
+    },
+
+    {
+      "type": "MakeVector",
+      "label": "Make Vector",
+      "labelRu": "Создать FVector",
+      "category": "math",
+      "description": "Construct an FVector from X, Y, Z components",
+      "descriptionRu": "Создать FVector из компонентов X, Y, Z",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "x",
+          "name": "X",
+          "dataType": "double",
+          "defaultValue": 0
+        },
+        {
+          "id": "y",
+          "name": "Y",
+          "dataType": "double",
+          "defaultValue": 0
+        },
+        {
+          "id": "z",
+          "name": "Z",
+          "dataType": "double",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "vector",
+          "name": "Vector",
+          "nameRu": "Вектор",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector {{output.vector}}({{input.x}}, {{input.y}}, {{input.z}});"
+        }
+      }
+    },
+    {
+      "type": "BreakVector",
+      "label": "Break Vector",
+      "labelRu": "Разбить FVector",
+      "category": "math",
+      "description": "Break an FVector into X, Y, Z components",
+      "descriptionRu": "Разбить FVector на компоненты X, Y, Z",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "vector",
+          "name": "Vector",
+          "nameRu": "Вектор",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "x",
+          "name": "X",
+          "dataType": "double"
+        },
+        {
+          "id": "y",
+          "name": "Y",
+          "dataType": "double"
+        },
+        {
+          "id": "z",
+          "name": "Z",
+          "dataType": "double"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "double {{output.x}} = {{input.vector}}.X;\ndouble {{output.y}} = {{input.vector}}.Y;\ndouble {{output.z}} = {{input.vector}}.Z;"
+        }
+      }
+    },
+    {
+      "type": "MakeRotator",
+      "label": "Make Rotator",
+      "labelRu": "Создать FRotator",
+      "category": "math",
+      "description": "Construct an FRotator from Pitch, Yaw, Roll",
+      "descriptionRu": "Создать FRotator из Pitch, Yaw, Roll",
+      "headerColor": "#AB47BC",
+      "inputs": [
+        {
+          "id": "pitch",
+          "name": "Pitch",
+          "nameRu": "Тангаж",
+          "dataType": "double",
+          "defaultValue": 0
+        },
+        {
+          "id": "yaw",
+          "name": "Yaw",
+          "nameRu": "Рыскание",
+          "dataType": "double",
+          "defaultValue": 0
+        },
+        {
+          "id": "roll",
+          "name": "Roll",
+          "nameRu": "Крен",
+          "dataType": "double",
+          "defaultValue": 0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rotator",
+          "name": "Rotator",
+          "nameRu": "Ротатор",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FRotator {{output.rotator}}({{input.pitch}}, {{input.yaw}}, {{input.roll}});"
+        }
+      }
+    },
+    {
+      "type": "BreakRotator",
+      "label": "Break Rotator",
+      "labelRu": "Разбить FRotator",
+      "category": "math",
+      "description": "Break an FRotator into Pitch, Yaw, Roll",
+      "descriptionRu": "Разбить FRotator на Pitch, Yaw, Roll",
+      "headerColor": "#AB47BC",
+      "inputs": [
+        {
+          "id": "rotator",
+          "name": "Rotator",
+          "nameRu": "Ротатор",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "pitch",
+          "name": "Pitch",
+          "nameRu": "Тангаж",
+          "dataType": "double"
+        },
+        {
+          "id": "yaw",
+          "name": "Yaw",
+          "nameRu": "Рыскание",
+          "dataType": "double"
+        },
+        {
+          "id": "roll",
+          "name": "Roll",
+          "nameRu": "Крен",
+          "dataType": "double"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "double {{output.pitch}} = {{input.rotator}}.Pitch;\ndouble {{output.yaw}} = {{input.rotator}}.Yaw;\ndouble {{output.roll}} = {{input.rotator}}.Roll;"
+        }
+      }
+    },
+    {
+      "type": "MakeTransform",
+      "label": "Make Transform",
+      "labelRu": "Создать FTransform",
+      "category": "math",
+      "description": "Construct an FTransform from location, rotation, and scale",
+      "descriptionRu": "Создать FTransform из позиции, поворота и масштаба",
+      "headerColor": "#FF7043",
+      "inputs": [
+        {
+          "id": "location",
+          "name": "Location",
+          "nameRu": "Позиция",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "rotation",
+          "name": "Rotation",
+          "nameRu": "Поворот",
+          "dataType": "class",
+          "typeName": "FRotator",
+          "typeId": "UE.FRotator"
+        },
+        {
+          "id": "scale",
+          "name": "Scale",
+          "nameRu": "Масштаб",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "transform",
+          "name": "Transform",
+          "nameRu": "Трансформ",
+          "dataType": "class",
+          "typeName": "FTransform",
+          "typeId": "UE.FTransform"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FTransform {{output.transform}}({{input.rotation}}, {{input.location}}, {{input.scale}});"
+        }
+      }
+    },
+    {
+      "type": "VectorLength",
+      "label": "Vector Length",
+      "labelRu": "Длина вектора",
+      "category": "math",
+      "description": "Get the length of an FVector",
+      "descriptionRu": "Получить длину FVector",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "vector",
+          "name": "Vector",
+          "nameRu": "Вектор",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "length",
+          "name": "Length",
+          "nameRu": "Длина",
+          "dataType": "double"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "double {{output.length}} = {{input.vector}}.Size();"
+        }
+      }
+    },
+    {
+      "type": "NormalizeVector",
+      "label": "Normalize Vector",
+      "labelRu": "Нормализовать вектор",
+      "category": "math",
+      "description": "Get a normalized copy of the vector",
+      "descriptionRu": "Получить нормализованную копию вектора",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "vector",
+          "name": "Vector",
+          "nameRu": "Вектор",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector {{output.result}} = {{input.vector}}.GetSafeNormal();"
+        }
+      }
+    },
+    {
+      "type": "VectorAdd",
+      "label": "Vector + Vector",
+      "labelRu": "Вектор + Вектор",
+      "category": "math",
+      "description": "Add two FVectors",
+      "descriptionRu": "Сложить два FVector",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.a}} + {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "VectorMultiplyScalar",
+      "label": "Vector * Float",
+      "labelRu": "Вектор * Скаляр",
+      "category": "math",
+      "description": "Multiply an FVector by a scalar",
+      "descriptionRu": "Умножить FVector на скаляр",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "vector",
+          "name": "Vector",
+          "nameRu": "Вектор",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "scalar",
+          "name": "Scalar",
+          "nameRu": "Скаляр",
+          "dataType": "double",
+          "defaultValue": 1.0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "({{input.vector}} * {{input.scalar}})"
+        }
+      }
+    },
+    {
+      "type": "DotProduct",
+      "label": "Dot Product",
+      "labelRu": "Скалярное произведение",
+      "category": "math",
+      "description": "Compute the dot product of two vectors",
+      "descriptionRu": "Вычислить скалярное произведение двух векторов",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "double"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector::DotProduct({{input.a}}, {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "CrossProduct",
+      "label": "Cross Product",
+      "labelRu": "Векторное произведение",
+      "category": "math",
+      "description": "Compute the cross product of two vectors",
+      "descriptionRu": "Вычислить векторное произведение двух векторов",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FVector::CrossProduct({{input.a}}, {{input.b}})"
+        }
+      }
+    },
+    {
+      "type": "Lerp",
+      "label": "Lerp",
+      "labelRu": "Линейная интерполяция",
+      "category": "math",
+      "description": "Linearly interpolate between A and B based on Alpha",
+      "descriptionRu": "Линейная интерполяция между A и B по Alpha",
+      "headerColor": "#FDD835",
+      "inputs": [
+        {
+          "id": "a",
+          "name": "A",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "b",
+          "name": "B",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "alpha",
+          "name": "Alpha",
+          "nameRu": "Альфа",
+          "dataType": "float",
+          "defaultValue": 0.5
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FMath::Lerp({{input.a}}, {{input.b}}, {{input.alpha}})"
+        }
+      }
+    },
+    {
+      "type": "Clamp",
+      "label": "Clamp",
+      "labelRu": "Ограничить",
+      "category": "math",
+      "description": "Clamp a value between min and max",
+      "descriptionRu": "Ограничить значение между минимумом и максимумом",
+      "headerColor": "#4CAF50",
+      "inputs": [
+        {
+          "id": "value",
+          "name": "Value",
+          "nameRu": "Значение",
+          "dataType": "float"
+        },
+        {
+          "id": "min",
+          "name": "Min",
+          "nameRu": "Минимум",
+          "dataType": "float",
+          "defaultValue": 0.0
+        },
+        {
+          "id": "max",
+          "name": "Max",
+          "nameRu": "Максимум",
+          "dataType": "float",
+          "defaultValue": 1.0
+        }
+      ],
+      "outputs": [
+        {
+          "id": "result",
+          "name": "Result",
+          "nameRu": "Результат",
+          "dataType": "float"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FMath::Clamp({{input.value}}, {{input.min}}, {{input.max}})"
+        }
+      }
+    },
+    {
+      "type": "GetDistanceTo",
+      "label": "Get Distance To",
+      "labelRu": "Расстояние до Actor",
+      "category": "function",
+      "description": "Get distance between two actors",
+      "descriptionRu": "Получить расстояние между двумя actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "actor-a",
+          "name": "Actor A",
+          "nameRu": "Actor A",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "actor-b",
+          "name": "Actor B",
+          "nameRu": "Actor B",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "distance",
+          "name": "Distance",
+          "nameRu": "Расстояние",
+          "dataType": "float"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "float {{output.distance}} = {{input.actor-a}}->GetDistanceTo({{input.actor-b}});"
+        }
+      }
+    },
+
+    {
+      "type": "LineTraceByChannel",
+      "label": "Line Trace By Channel",
+      "labelRu": "Трассировка линией",
+      "category": "function",
+      "description": "Perform a line trace (raycast) against the world",
+      "descriptionRu": "Выполнить трассировку линией в мире",
+      "headerColor": "#E65100",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "start",
+          "name": "Start",
+          "nameRu": "Начало",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "end",
+          "name": "End",
+          "nameRu": "Конец",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "hit",
+          "name": "Hit",
+          "nameRu": "Попадание",
+          "dataType": "bool"
+        },
+        {
+          "id": "hit-actor",
+          "name": "Hit Actor",
+          "nameRu": "Actor попадания",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "hit-location",
+          "name": "Hit Location",
+          "nameRu": "Точка попадания",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        },
+        {
+          "id": "hit-normal",
+          "name": "Hit Normal",
+          "nameRu": "Нормаль попадания",
+          "dataType": "class",
+          "typeName": "FVector",
+          "typeId": "UE.FVector"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "FHitResult HitResult;\nbool {{output.hit}} = GetWorld()->LineTraceSingleByChannel(HitResult, {{input.start}}, {{input.end}}, ECC_Visibility);\nAActor* {{output.hit-actor}} = HitResult.GetActor();\nFVector {{output.hit-location}} = HitResult.ImpactPoint;\nFVector {{output.hit-normal}} = HitResult.ImpactNormal;"
+        }
+      }
+    },
+
+    {
+      "type": "SetActorEnableCollision",
+      "label": "Set Enable Collision",
+      "labelRu": "Включить/выключить коллизию",
+      "category": "function",
+      "description": "Enable or disable collision for an actor",
+      "descriptionRu": "Включить или выключить коллизию actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "enabled",
+          "name": "Enabled",
+          "nameRu": "Включено",
+          "dataType": "bool",
+          "defaultValue": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->SetActorEnableCollision({{input.enabled}});"
+        }
+      }
+    },
+    {
+      "type": "SetActorHiddenInGame",
+      "label": "Set Actor Hidden",
+      "labelRu": "Скрыть/показать Actor",
+      "category": "function",
+      "description": "Set whether the actor is hidden in game",
+      "descriptionRu": "Скрыть или показать actor в игре",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "exec-in",
+          "name": "",
+          "dataType": "execution"
+        },
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "hidden",
+          "name": "Hidden",
+          "nameRu": "Скрыт",
+          "dataType": "bool",
+          "defaultValue": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "exec-out",
+          "name": "",
+          "dataType": "execution"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->SetActorHiddenInGame({{input.hidden}});"
+        }
+      }
+    },
+    {
+      "type": "GetActorTags",
+      "label": "Get Actor Tags",
+      "labelRu": "Получить теги Actor",
+      "category": "function",
+      "description": "Get the tags assigned to the actor",
+      "descriptionRu": "Получить теги, назначенные actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "tags",
+          "name": "Tags",
+          "nameRu": "Теги",
+          "dataType": "array",
+          "typeName": "TArray<FName>"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "TArray<FName> {{output.tags}} = {{input.target}}->Tags;"
+        }
+      }
+    },
+    {
+      "type": "ActorHasTag",
+      "label": "Actor Has Tag",
+      "labelRu": "Actor имеет тег",
+      "category": "function",
+      "description": "Check if actor has a specific tag",
+      "descriptionRu": "Проверить наличие тега у actor",
+      "headerColor": "#3949AB",
+      "inputs": [
+        {
+          "id": "target",
+          "name": "Target",
+          "nameRu": "Цель",
+          "dataType": "pointer",
+          "typeName": "AActor*",
+          "typeId": "UE.Actor",
+          "compatibilityPolicyVersion": "2.0.0"
+        },
+        {
+          "id": "tag",
+          "name": "Tag",
+          "nameRu": "Тег",
+          "dataType": "string",
+          "defaultValue": ""
+        }
+      ],
+      "outputs": [
+        {
+          "id": "has-tag",
+          "name": "Has Tag",
+          "nameRu": "Есть тег",
+          "dataType": "bool"
+        }
+      ],
+      "codegen": {
+        "cpp": {
+          "template": "{{input.target}}->ActorHasTag(FName({{input.tag}}))"
+        }
+      }
     }
   ],
   "contributes": {
     "typeCompatibilityPolicy": {
-      "version": "2.1.0",
+      "version": "2.2.0",
       "hierarchy": [
         {
           "typeId": "UE.Object",
@@ -104,28 +2078,54 @@
         },
         {
           "typeId": "UE.Actor",
-          "parents": [
-            "UE.Object"
-          ]
+          "parents": ["UE.Object"]
         },
         {
           "typeId": "UE.Pawn",
-          "parents": [
-            "UE.Actor"
-          ]
+          "parents": ["UE.Actor"]
         },
         {
           "typeId": "UE.Character",
-          "parents": [
-            "UE.Pawn"
-          ]
+          "parents": ["UE.Pawn"]
+        },
+        {
+          "typeId": "UE.Controller",
+          "parents": ["UE.Object"]
+        },
+        {
+          "typeId": "UE.PlayerController",
+          "parents": ["UE.Controller"]
+        },
+        {
+          "typeId": "UE.Component",
+          "parents": ["UE.Object"]
+        },
+        {
+          "typeId": "UE.SceneComponent",
+          "parents": ["UE.Component"]
+        },
+        {
+          "typeId": "UE.FVector",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FRotator",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FTransform",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FLinearColor",
+          "parents": []
         }
       ]
     }
   },
   "metadata": {
     "ue": {
-      "typeHierarchyVersion": "2.1.0",
+      "typeHierarchyVersion": "2.2.0",
       "typeHierarchy": [
         {
           "typeId": "UE.Object",
@@ -133,21 +2133,47 @@
         },
         {
           "typeId": "UE.Actor",
-          "parents": [
-            "UE.Object"
-          ]
+          "parents": ["UE.Object"]
         },
         {
           "typeId": "UE.Pawn",
-          "parents": [
-            "UE.Actor"
-          ]
+          "parents": ["UE.Actor"]
         },
         {
           "typeId": "UE.Character",
-          "parents": [
-            "UE.Pawn"
-          ]
+          "parents": ["UE.Pawn"]
+        },
+        {
+          "typeId": "UE.Controller",
+          "parents": ["UE.Object"]
+        },
+        {
+          "typeId": "UE.PlayerController",
+          "parents": ["UE.Controller"]
+        },
+        {
+          "typeId": "UE.Component",
+          "parents": ["UE.Object"]
+        },
+        {
+          "typeId": "UE.SceneComponent",
+          "parents": ["UE.Component"]
+        },
+        {
+          "typeId": "UE.FVector",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FRotator",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FTransform",
+          "parents": []
+        },
+        {
+          "typeId": "UE.FLinearColor",
+          "parents": []
         }
       ]
     }

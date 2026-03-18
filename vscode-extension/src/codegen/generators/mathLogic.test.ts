@@ -7,6 +7,11 @@ import {
   GreaterNodeGenerator,
   ParseIntNodeGenerator,
   ParseFloatNodeGenerator,
+  RandomIntNodeGenerator,
+  ToIntNodeGenerator,
+  ToFloatNodeGenerator,
+  ToBoolNodeGenerator,
+  ToStringNodeGenerator,
 } from './mathLogic';
 
 const createMockHelpers = (overrides: Partial<GeneratorHelpers> = {}): GeneratorHelpers => ({
@@ -147,5 +152,128 @@ describe('mathLogic parse generators', () => {
       'PARSE_FLOAT_SAFE_FALLBACK',
       'ParseFloat использует безопасный fallback при ошибке разбора'
     );
+  });
+});
+
+describe('mathLogic conversion generators', () => {
+  it('serializes arbitrary input for ToString', () => {
+    const generator = new ToStringNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('score_value'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'to-string-1',
+      type: 'ToString',
+      label: 'To String',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'string', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('std::stringstream multicode_stream');
+    expect(expression).toContain('std::boolalpha << score_value');
+    expect(expression).toContain('return multicode_stream.str()');
+  });
+
+  it('builds safe ToInt expression with fallback', () => {
+    const generator = new ToIntNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'to-int-1',
+      type: 'ToInt',
+      label: 'To Int',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'int32', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('multicode_write_stream << rawValue');
+    expect(expression).toContain('int multicode_result = 0;');
+    expect(expression).toContain('return multicode_ok ? multicode_result : 0;');
+  });
+
+  it('builds safe ToFloat expression with fallback', () => {
+    const generator = new ToFloatNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'to-float-1',
+      type: 'ToFloat',
+      label: 'To Float',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'float', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('double multicode_result = 0.0;');
+    expect(expression).toContain('return multicode_ok ? multicode_result : 0.0;');
+  });
+
+  it('tries boolalpha and numeric fallback in ToBool', () => {
+    const generator = new ToBoolNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn().mockReturnValue('rawValue'),
+    });
+
+    const node: BlueprintNode = {
+      id: 'to-bool-1',
+      type: 'ToBool',
+      label: 'To Bool',
+      position: { x: 0, y: 0 },
+      inputs: [{ id: 'value', name: 'Value', dataType: 'any', direction: 'input', index: 0 }],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'bool', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('std::boolalpha << rawValue');
+    expect(expression).toContain('std::boolalpha >> multicode_result');
+    expect(expression).toContain('return multicode_numeric_ok ? multicode_numeric != 0.0 : false;');
+  });
+
+  it('builds RandomInt expression with normalized bounds and mt19937', () => {
+    const generator = new RandomIntNodeGenerator();
+    const helpers = createMockHelpers({
+      getInputExpression: vi.fn((_: BlueprintNode, portId: string) => {
+        if (portId === 'min') {
+          return 'maxValue';
+        }
+        if (portId === 'max') {
+          return 'minValue';
+        }
+        return null;
+      }),
+    });
+
+    const node: BlueprintNode = {
+      id: 'random-int-1',
+      type: 'RandomInt',
+      label: 'Random Int',
+      position: { x: 0, y: 0 },
+      inputs: [
+        { id: 'min', name: 'Min', dataType: 'int32', direction: 'input', index: 0 },
+        { id: 'max', name: 'Max', dataType: 'int32', direction: 'input', index: 1 },
+      ],
+      outputs: [{ id: 'result', name: 'Result', dataType: 'int32', direction: 'output', index: 0 }],
+    };
+
+    const expression = generator.getOutputExpression(node, 'result', createMockContext(), helpers);
+
+    expect(expression).toContain('int multicode_min = static_cast<int>(maxValue);');
+    expect(expression).toContain('if (multicode_min > multicode_max)');
+    expect(expression).toContain('std::mt19937 multicode_rng(std::random_device{}())');
+    expect(expression).toContain('std::uniform_int_distribution<int> multicode_dist(multicode_min, multicode_max);');
   });
 });

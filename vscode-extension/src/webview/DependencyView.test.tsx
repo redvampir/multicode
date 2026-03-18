@@ -122,7 +122,7 @@ describe('DependencyView v2', () => {
     fireEvent.click(screen.getByText('Напечатать статус'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('dependency-inspector-namespace')).toHaveTextContent('Namespace');
+      expect(screen.getByTestId('dependency-inspector-namespace')).toHaveTextContent('Пространство имён');
       expect(screen.getByTestId('dependency-inspector-namespace')).toHaveTextContent('depcheck');
       expect(screen.getByTestId('dependency-inspector-namespace-breadcrumb')).toHaveTextContent('depcheck');
       expect(screen.getByTestId('dependency-inspector-qualified-name')).toHaveTextContent('depcheck::print_status');
@@ -199,10 +199,10 @@ describe('DependencyView v2', () => {
     );
 
     const statusCounters = screen.getByTestId('dependency-status-counters');
-    expect(statusCounters).toHaveTextContent('all: 4');
-    expect(statusCounters).toHaveTextContent('disabled: 1');
+    expect(statusCounters).toHaveTextContent('все: 4');
+    expect(statusCounters).toHaveTextContent('выкл: 1');
 
-    fireEvent.click(screen.getByRole('button', { name: 'disabled: 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'выкл: 1' }));
     await waitFor(() => {
       const rows = screen.getAllByTestId('dependency-symbol-row');
       expect(rows).toHaveLength(1);

@@ -232,6 +232,84 @@ describe('CppCodeGenerator', () => {
       expect(result.code).not.toContain('// Начало');
       expect(result.code).not.toContain('// Вывод строки');
     });
+
+    it('should generate string utility chain and add sstream include for ToString', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const trimNode = createNode('Trim', { x: 120, y: 0 }, 'trim');
+      const concatNode = createNode('StringConcat', { x: 260, y: 0 }, 'concat');
+      const lengthNode = createNode('StringLength', { x: 420, y: 0 }, 'length');
+      const toStringNode = createNode('ToString', { x: 560, y: 0 }, 'to-string');
+      const printNode = createNode('Print', { x: 720, y: 0 }, 'print');
+
+      trimNode.inputs[0].value = '  wheel  ';
+      const concatB = concatNode.inputs.find((port) => port.id.endsWith('-b'));
+      if (concatB) {
+        concatB.value = '!';
+      }
+
+      const graph = createTestGraph(
+        [startNode, trimNode, concatNode, lengthNode, toStringNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('trim', trimNode.outputs[0]?.id ?? 'trim-result', 'concat', concatNode.inputs.find((port) => port.id.endsWith('-a'))?.id ?? 'concat-a', 'string'),
+          createEdge('concat', concatNode.outputs[0]?.id ?? 'concat-result', 'length', lengthNode.inputs[0]?.id ?? 'length-value', 'string'),
+          createEdge('length', lengthNode.outputs[0]?.id ?? 'length-length', 'to-string', toStringNode.inputs[0]?.id ?? 'to-string-value', 'int32'),
+          createEdge('to-string', toStringNode.outputs[0]?.id ?? 'to-string-result', 'print', printNode.inputs.find((port) => port.id.endsWith('-string'))?.id ?? 'print-string', 'string'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('#include <sstream>');
+      expect(result.code).toContain('find_first_not_of(" \\t\\n\\r\\f\\v")');
+      expect(result.code).toContain('multicode_left + multicode_right');
+      expect(result.code).toContain('static_cast<int>(multicode_value.size())');
+      expect(result.code).toContain('std::stringstream multicode_stream');
+    });
+
+    it('should generate MakeArray and ArraySize through pure-node composition', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const makeArrayNode = createNode('MakeArray', { x: 120, y: 0 }, 'make-array');
+      const arraySizeNode = createNode('ArraySize', { x: 300, y: 0 }, 'array-size');
+      const toStringNode = createNode('ToString', { x: 460, y: 0 }, 'to-string');
+      const printNode = createNode('Print', { x: 620, y: 0 }, 'print');
+
+      if (makeArrayNode.inputs[0]) {
+        makeArrayNode.inputs[0].value = 10;
+      }
+      if (makeArrayNode.inputs[1]) {
+        makeArrayNode.inputs[1].value = 20;
+      }
+      makeArrayNode.inputs.push({
+        id: 'make-array-item-2',
+        name: 'Item 2',
+        nameRu: 'Элемент 2',
+        dataType: 'any',
+        direction: 'input',
+        index: 2,
+        value: 30,
+      });
+
+      const graph = createTestGraph(
+        [startNode, makeArrayNode, arraySizeNode, toStringNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('make-array', makeArrayNode.outputs[0]?.id ?? 'make-array-array', 'array-size', arraySizeNode.inputs[0]?.id ?? 'array-size-array', 'array'),
+          createEdge('array-size', arraySizeNode.outputs[0]?.id ?? 'array-size-size', 'to-string', toStringNode.inputs[0]?.id ?? 'to-string-value', 'int32'),
+          createEdge('to-string', toStringNode.outputs[0]?.id ?? 'to-string-result', 'print', printNode.inputs.find((port) => port.id.endsWith('-string'))?.id ?? 'print-string', 'string'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('std::vector{10, 20, 30}');
+      expect(result.code).toContain('static_cast<int>(multicode_array.size())');
+      expect(result.code).toContain('#include <sstream>');
+    });
   });
 
   describe('generate - Class declarations and class nodes', () => {
@@ -1546,6 +1624,76 @@ describe('CppCodeGenerator', () => {
 
       expect(result.success).toBe(true);
       expect(result.code).toContain('sum = (1 + 2 + 3);');
+    });
+
+    it('should generate RandomInt expression and include <random>', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const randomIntNode = createNode('RandomInt', { x: 200, y: 0 }, 'random-int');
+      const printNode = createNode('Print', { x: 400, y: 0 }, 'print');
+
+      if (randomIntNode.inputs[0]) {
+        randomIntNode.inputs[0].value = 5;
+      }
+      if (randomIntNode.inputs[1]) {
+        randomIntNode.inputs[1].value = 9;
+      }
+
+      const graph = createTestGraph(
+        [startNode, randomIntNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('random-int', 'random-int-result', 'print', 'print-string', 'int32'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('#include <random>');
+      expect(result.code).toContain('std::uniform_int_distribution<int>');
+      expect(result.code).toContain('std::random_device{}()');
+    });
+
+    it('should generate RandomFromArray expression and include <random>', () => {
+      const startNode = createNode('Start', { x: 0, y: 0 }, 'start');
+      const makeArrayNode = createNode('MakeArray', { x: 200, y: 0 }, 'make-array');
+      const randomFromArrayNode = createNode('RandomFromArray', { x: 380, y: 0 }, 'random-from-array');
+      const printNode = createNode('Print', { x: 560, y: 0 }, 'print');
+
+      if (makeArrayNode.inputs[0]) {
+        makeArrayNode.inputs[0].value = 'alpha';
+      }
+      if (makeArrayNode.inputs[1]) {
+        makeArrayNode.inputs[1].value = 'beta';
+      }
+      makeArrayNode.inputs.push({
+        id: 'make-array-item-2',
+        name: 'Item 2',
+        nameRu: 'Элемент 2',
+        dataType: 'any',
+        direction: 'input',
+        index: 2,
+        value: 'gamma',
+      });
+
+      const graph = createTestGraph(
+        [startNode, makeArrayNode, randomFromArrayNode, printNode],
+        [
+          createEdge('start', 'start-exec-out', 'print', 'print-exec-in'),
+          createEdge('make-array', 'make-array-array', 'random-from-array', 'random-from-array-array', 'array'),
+          createEdge('random-from-array', 'random-from-array-value', 'print', 'print-string', 'string'),
+        ]
+      );
+
+      const result = generator.generate(graph);
+
+      expect(result.success).toBe(true);
+      expect(result.errors.some((error) => error.code === 'UNKNOWN_NODE_TYPE')).toBe(false);
+      expect(result.code).toContain('#include <random>');
+      expect(result.code).toContain('#include <type_traits>');
+      expect(result.code).toContain('if constexpr (std::is_convertible_v<MulticodeValue, const char*>) { return ""; }');
+      expect(result.code).toContain('std::uniform_int_distribution<int> multicode_dist(0, static_cast<int>(multicode_array.size()) - 1);');
     });
   });
   

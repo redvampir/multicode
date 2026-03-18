@@ -451,8 +451,8 @@ describe('main.tsx integration', () => {
       },
     });
 
-    expect(await screen.findByTestId('class-storage-badge')).toHaveTextContent('Class Storage: SIDECAR');
+    expect(await screen.findByTestId('class-storage-badge')).toHaveTextContent('Хранение классов: внешние файлы');
     expect(screen.getAllByText(/(Class Storage|Хранение классов)/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/miss 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/нет 1/i)).toBeInTheDocument();
   });
 });

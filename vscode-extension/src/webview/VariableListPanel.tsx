@@ -1216,9 +1216,9 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
           <button
             className="btn-add-variable btn-import-eventgraph"
             onClick={onImportFromEventGraph}
-            title={isRu ? "Импортировать переменные EventGraph" : "Import EventGraph variables"}
+            title={isRu ? "Импортировать переменные из графа событий" : "Import EventGraph variables"}
           >
-            ⇅ {isRu ? "Из EventGraph" : "From EventGraph"}
+            ⇅ {isRu ? "Из графа событий" : "From EventGraph"}
           </button>
         )}
       </div>

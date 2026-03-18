@@ -32,7 +32,7 @@ describe('VariableListPanel', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: /Из EventGraph/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Из графа событий/i })).not.toBeInTheDocument();
 
     rerender(
       <VariableListPanel
@@ -48,7 +48,7 @@ describe('VariableListPanel', () => {
       />,
     );
 
-    const importButton = screen.getByRole('button', { name: /Из EventGraph/i });
+    const importButton = screen.getByRole('button', { name: /Из графа событий/i });
     fireEvent.click(importButton);
 
     expect(onImportFromEventGraph).toHaveBeenCalledTimes(1);

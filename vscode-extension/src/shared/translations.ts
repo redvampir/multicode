@@ -166,6 +166,29 @@ export type TranslationKey =
   | 'panel.classes.method.name'
   | 'panel.classes.method.returnType'
   | 'panel.classes.method.delete'
+  | 'panel.ueMacros.title'
+  | 'panel.ueMacros.create'
+  | 'panel.ueMacros.empty'
+  | 'panel.ueMacros.emptyHint'
+  | 'panel.ueMacros.type'
+  | 'panel.ueMacros.specifiers'
+  | 'panel.ueMacros.category'
+  | 'panel.ueMacros.attach'
+  | 'panel.ueMacros.detach'
+  | 'panel.ueMacros.attachBanner'
+  | 'panel.ueMacros.attachCancel'
+  | 'panel.ueMacros.delete'
+  | 'panel.ueMacros.noTarget'
+  | 'panel.ueMacros.targetClass'
+  | 'panel.ueMacros.targetFunction'
+  | 'panel.ueMacros.targetVariable'
+  | 'panel.ueMacros.targetMethod'
+  | 'panel.ueMacros.targetMember'
+  | 'panel.ueMacros.preview'
+  | 'panel.ueMacros.meta'
+  | 'panel.ueMacros.metaKey'
+  | 'panel.ueMacros.metaValue'
+  | 'panel.ueMacros.ueOnly'
   | 'toolbar.noFile'
   | 'warnings.graphBindingDuplicateId'
   | 'warnings.graphBindingIdMismatch'
@@ -351,6 +374,29 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.classes.method.name': 'Имя метода',
     'panel.classes.method.returnType': 'Возвращаемый тип',
     'panel.classes.method.delete': 'Удалить метод',
+    'panel.ueMacros.title': 'UE Макросы',
+    'panel.ueMacros.create': '+ Макрос',
+    'panel.ueMacros.empty': 'Нет UE-макросов',
+    'panel.ueMacros.emptyHint': 'Создайте макрос и привяжите к классу, функции или переменной, чтобы он стал Blueprint-доступным в Unreal Engine',
+    'panel.ueMacros.type': 'Тип макроса',
+    'panel.ueMacros.specifiers': 'Спецификаторы',
+    'panel.ueMacros.category': 'Категория',
+    'panel.ueMacros.attach': 'Привязать',
+    'panel.ueMacros.detach': 'Отвязать',
+    'panel.ueMacros.attachBanner': 'Кликните на класс, функцию или переменную для привязки макроса...',
+    'panel.ueMacros.attachCancel': 'Отмена',
+    'panel.ueMacros.delete': 'Удалить макрос',
+    'panel.ueMacros.noTarget': 'Не привязан',
+    'panel.ueMacros.targetClass': 'Класс',
+    'panel.ueMacros.targetFunction': 'Функция',
+    'panel.ueMacros.targetVariable': 'Переменная',
+    'panel.ueMacros.targetMethod': 'Метод',
+    'panel.ueMacros.targetMember': 'Поле',
+    'panel.ueMacros.preview': 'Превью',
+    'panel.ueMacros.meta': 'Мета-аргументы',
+    'panel.ueMacros.metaKey': 'Ключ',
+    'panel.ueMacros.metaValue': 'Значение',
+    'panel.ueMacros.ueOnly': 'Доступно только для UE target',
     'warnings.graphBindingDuplicateId': 'Обнаружен дубликат ID графа "{id}" в файлах: {files}',
     'warnings.graphBindingIdMismatch':
       'Несоответствие графа: в коде id={codeId}, в файле ({file}) id={fileId}. Используется id из кода.',
@@ -539,6 +585,29 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.classes.method.name': 'Method name',
     'panel.classes.method.returnType': 'Return type',
     'panel.classes.method.delete': 'Delete method',
+    'panel.ueMacros.title': 'UE Macros',
+    'panel.ueMacros.create': '+ Macro',
+    'panel.ueMacros.empty': 'No UE macros',
+    'panel.ueMacros.emptyHint': 'Create a macro and attach it to a class, function, or variable to make it Blueprint-accessible in Unreal Engine',
+    'panel.ueMacros.type': 'Macro type',
+    'panel.ueMacros.specifiers': 'Specifiers',
+    'panel.ueMacros.category': 'Category',
+    'panel.ueMacros.attach': 'Attach',
+    'panel.ueMacros.detach': 'Detach',
+    'panel.ueMacros.attachBanner': 'Click a class, function, or variable to attach the macro...',
+    'panel.ueMacros.attachCancel': 'Cancel',
+    'panel.ueMacros.delete': 'Delete macro',
+    'panel.ueMacros.noTarget': 'Not attached',
+    'panel.ueMacros.targetClass': 'Class',
+    'panel.ueMacros.targetFunction': 'Function',
+    'panel.ueMacros.targetVariable': 'Variable',
+    'panel.ueMacros.targetMethod': 'Method',
+    'panel.ueMacros.targetMember': 'Field',
+    'panel.ueMacros.preview': 'Preview',
+    'panel.ueMacros.meta': 'Meta arguments',
+    'panel.ueMacros.metaKey': 'Key',
+    'panel.ueMacros.metaValue': 'Value',
+    'panel.ueMacros.ueOnly': 'Available for UE target only',
     'warnings.graphBindingDuplicateId': 'Duplicate graph ID "{id}" detected in files: {files}',
     'warnings.graphBindingIdMismatch':
       'Graph mismatch: source id={codeId}, file ({file}) id={fileId}. Using source id.',

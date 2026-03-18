@@ -131,13 +131,17 @@ npm run compile
 # F5 в VS Code для запуска Extension Development Host
 ```
 
-### Установка готового расширения
+### Сборка и установка готового расширения
 
 ```bash
 cd vscode-extension
-npm run package
+npm install
+npm run package        # production-бандлы: dist/extension.js и dist/webview.js
+npm run vsix:no-deps   # installable .vsix
 # Установить: Extensions > ... > Install from VSIX
 ```
+
+`npm run package` сам по себе не создаёт `.vsix` и не устанавливается через VS Code. Для установки нужен `npm run vsix` или `npm run vsix:no-deps`.
 
 ---
 

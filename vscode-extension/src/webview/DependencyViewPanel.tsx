@@ -92,7 +92,7 @@ export const DependencyViewPanel: React.FC<DependencyViewPanelProps> = ({
 
   return (
     <div className="panel" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div className="panel-title">{displayLanguage === 'ru' ? 'Dependency View' : 'Dependency View'}</div>
+      <div className="panel-title">{displayLanguage === 'ru' ? 'Зависимости' : 'Dependency View'}</div>
       <div style={{ flex: '1 1 auto', minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden' }}>
         {content}
       </div>

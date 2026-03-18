@@ -7,7 +7,9 @@ import type {
   BlueprintClassMethodParameter,
   BlueprintGraphState,
   BlueprintVariableDefaultValue,
+  UeMacroBinding,
 } from '../../shared/blueprintTypes';
+import { renderUeMacroString } from '../../shared/blueprintTypes';
 import type { PortDataType } from '../../shared/portTypes';
 
 export type CodegenTarget = 'cpp' | 'ue';
@@ -126,34 +128,47 @@ const mapClass = (blueprintClass: BlueprintClass): ClassModel => ({
   methods: blueprintClass.methods.map(mapMethod),
 });
 
-const withUeExtension = (classModel: ClassModel): ClassModel => ({
-  ...classModel,
-  fields: classModel.fields.map((field) => ({
-    ...field,
+const withUeExtension = (classModel: ClassModel, macros: UeMacroBinding[]): ClassModel => {
+  const classBinding = macros.find(m => m.targetId === classModel.id && m.macroType === 'UCLASS');
+  const classMacro = classBinding ? renderUeMacroString(classBinding) : 'UCLASS(BlueprintType)';
+
+  return {
+    ...classModel,
+    fields: classModel.fields.map((field) => {
+      const fieldBinding = macros.find(m => m.targetId === field.id && m.macroType === 'UPROPERTY');
+      const propertyMacro = fieldBinding
+        ? renderUeMacroString(fieldBinding)
+        : 'UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiCode")';
+      return {
+        ...field,
+        extensions: {
+          ...field.extensions,
+          ue: { propertyMacro },
+        },
+      };
+    }),
+    methods: classModel.methods.map((method) => {
+      const methodBinding = macros.find(m => m.targetId === method.id && m.macroType === 'UFUNCTION');
+      const functionMacro = methodBinding
+        ? renderUeMacroString(methodBinding)
+        : 'UFUNCTION(BlueprintCallable, Category = "MultiCode")';
+      return {
+        ...method,
+        extensions: {
+          ...method.extensions,
+          ue: { functionMacro },
+        },
+      };
+    }),
     extensions: {
-      ...field.extensions,
+      ...classModel.extensions,
       ue: {
-        propertyMacro: 'UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MultiCode")',
+        classMacro,
+        generatedBodyMacro: 'GENERATED_BODY()',
       },
     },
-  })),
-  methods: classModel.methods.map((method) => ({
-    ...method,
-    extensions: {
-      ...method.extensions,
-      ue: {
-        functionMacro: 'UFUNCTION(BlueprintCallable, Category = "MultiCode")',
-      },
-    },
-  })),
-  extensions: {
-    ...classModel.extensions,
-    ue: {
-      classMacro: 'UCLASS(BlueprintType)',
-      generatedBodyMacro: 'GENERATED_BODY()',
-    },
-  },
-});
+  };
+};
 
 export const buildClassModelFromGraph = (
   graph: BlueprintGraphState,
@@ -166,5 +181,6 @@ export const buildClassModelFromGraph = (
     return baseModels;
   }
 
-  return baseModels.map(withUeExtension);
+  const macros: UeMacroBinding[] = Array.isArray(graph.ueMacros) ? graph.ueMacros : [];
+  return baseModels.map((model) => withUeExtension(model, macros));
 };

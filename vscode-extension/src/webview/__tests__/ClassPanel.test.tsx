@@ -95,7 +95,7 @@ describe('ClassPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '+Ctor' }));
+    fireEvent.click(screen.getByRole('button', { name: '+Констр' }));
     expect(onInsertClassNode).toHaveBeenCalledWith({ kind: 'constructor', classId: 'class-1' });
   });
 
@@ -122,7 +122,7 @@ describe('ClassPanel', () => {
       />,
     );
 
-    const ruInputs = screen.getAllByPlaceholderText('RU имя');
+    const ruInputs = screen.getAllByPlaceholderText('Отображаемое имя');
     fireEvent.change(ruInputs[0], { target: { value: 'Персонаж' } });
 
     expect(onClassesChange).toHaveBeenCalled();
@@ -146,12 +146,12 @@ describe('ClassPanel', () => {
       />,
     );
 
-    expect(screen.getByTestId('class-storage-chip-class-1')).toHaveTextContent('ok');
+    expect(screen.getByTestId('class-storage-chip-class-1')).toHaveTextContent('готово');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sidecar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Файл' }));
     expect(onOpenClassSidecar).toHaveBeenCalledWith('class-1');
 
-    const graphButtons = screen.getAllByRole('button', { name: 'Graph' });
+    const graphButtons = screen.getAllByRole('button', { name: 'Граф' });
     fireEvent.click(graphButtons[0]);
     expect(onOpenGraphMulticode).toHaveBeenCalledTimes(1);
   });
@@ -258,7 +258,7 @@ describe('ClassPanel', () => {
       />,
     );
 
-    expect(screen.getByText('ADVANCED')).toBeInTheDocument();
+    expect(screen.getByText('РАСШИР.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '+Delete' }));
     expect(onInsertClassNode).toHaveBeenCalledWith({ kind: 'delete-object', classId: 'class-1' });
     fireEvent.click(screen.getByRole('button', { name: '+Addr' }));

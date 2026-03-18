@@ -4098,9 +4098,12 @@ export class GraphPanel {
         background: var(--mc-body-bg);
         color: var(--mc-body-text);
         min-height: 100vh;
+        overflow: hidden;
       }
       #root {
         height: 100vh;
+        min-height: 0;
+        overflow: hidden;
       }
       .app-shell {
         display: flex;
@@ -4108,6 +4111,26 @@ export class GraphPanel {
         height: 100%;
         background: var(--mc-body-bg);
         color: var(--mc-body-text);
+        min-height: 0;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--mc-panel-title) rgba(17, 17, 27, 0.65);
+      }
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      *::-webkit-scrollbar-track {
+        background: rgba(17, 17, 27, 0.68);
+      }
+      *::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(137, 180, 250, 0.75), rgba(108, 112, 134, 0.92));
+        border-radius: 999px;
+        border: 2px solid rgba(17, 17, 27, 0.68);
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, rgba(180, 190, 254, 0.85), rgba(137, 180, 250, 0.95));
       }
       .toolbar {
         display: flex;
@@ -4124,22 +4147,28 @@ export class GraphPanel {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        min-width: 120px;
+        min-width: 180px;
         flex: 1;
       }
       .toolbar-title {
         font-size: 14px;
         font-weight: 600;
-        white-space: nowrap;
+        white-space: normal;
+        line-height: 1.25;
       }
       .toolbar-subtitle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
         font-size: 11px;
         color: var(--mc-muted);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow: visible;
       }
       .toolbar-bound-file {
+        display: inline-flex;
+        align-items: center;
         font-size: 11px;
         color: var(--mc-accent);
         cursor: default;
@@ -4352,16 +4381,20 @@ export class GraphPanel {
         display: flex;
         flex: 1;
         overflow: hidden;
+        min-width: 0;
+        min-height: 0;
       }
       .workspace.with-sidebar {
         display: grid;
-        grid-template-columns: 1fr 320px;
+        grid-template-columns: minmax(0, 1fr) clamp(340px, 28vw, 420px);
       }
       .canvas-wrapper {
         background: var(--mc-surface-strong);
         flex: 1;
         position: relative;
         overflow: hidden;
+        min-width: 0;
+        min-height: 0;
       }
       .graph-canvas {
         width: 100%;
@@ -4371,12 +4404,16 @@ export class GraphPanel {
       .side-panel {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        padding: 8px;
-        background: var(--mc-body-bg);
+        gap: 10px;
+        padding: 10px;
+        background: linear-gradient(180deg, rgba(10, 22, 52, 0.96) 0%, rgba(8, 18, 42, 0.98) 100%);
         border-left: 1px solid var(--mc-surface-border);
         overflow-y: auto;
+        overflow-x: hidden;
         max-height: 100%;
+        min-width: 0;
+        min-height: 0;
+        scrollbar-gutter: stable;
       }
       .panel {
         background: var(--mc-surface);
@@ -4384,11 +4421,17 @@ export class GraphPanel {
         border-radius: 12px;
         padding: 12px;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--mc-shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
+        overflow: hidden;
       }
       .panel-title {
         font-weight: 700;
         margin-bottom: 10px;
         color: var(--mc-panel-title);
+        line-height: 1.25;
       }
       .panel-grid {
         display: grid;
@@ -4428,6 +4471,8 @@ export class GraphPanel {
       .panel-value {
         font-weight: 700;
         font-size: 14px;
+        line-height: 1.35;
+        word-break: break-word;
       }
       .badge {
         display: inline-flex;

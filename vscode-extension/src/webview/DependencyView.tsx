@@ -67,18 +67,58 @@ const kindLabel: Record<SymbolKind, { ru: string; en: string }> = {
 
 const kindOptions: Array<{ value: DependencyKindFilter; ru: string; en: string }> = [
   { value: 'all', ru: 'Тип: все', en: 'Kind: all' },
-  { value: 'function', ru: 'Тип: function', en: 'Kind: function' },
-  { value: 'method', ru: 'Тип: method', en: 'Kind: method' },
-  { value: 'class', ru: 'Тип: class', en: 'Kind: class' },
-  { value: 'struct', ru: 'Тип: struct', en: 'Kind: struct' },
-  { value: 'enum', ru: 'Тип: enum', en: 'Kind: enum' },
-  { value: 'variable', ru: 'Тип: variable', en: 'Kind: variable' },
+  { value: 'function', ru: 'Тип: функция', en: 'Kind: function' },
+  { value: 'method', ru: 'Тип: метод', en: 'Kind: method' },
+  { value: 'class', ru: 'Тип: класс', en: 'Kind: class' },
+  { value: 'struct', ru: 'Тип: структура', en: 'Kind: struct' },
+  { value: 'enum', ru: 'Тип: перечисление', en: 'Kind: enum' },
+  { value: 'variable', ru: 'Тип: переменная', en: 'Kind: variable' },
 ];
 const statusOptionLabel = (status: StatusFilter, language: 'ru' | 'en'): string => {
   if (status === 'all') {
-    return language === 'ru' ? 'all' : 'all';
+    return language === 'ru' ? 'все' : 'all';
+  }
+  if (language === 'ru') {
+    switch (status) {
+      case 'ok':
+        return 'норма';
+      case 'stale':
+        return 'устарело';
+      case 'broken':
+        return 'ошибка';
+      case 'disabled':
+        return 'выкл';
+      default:
+        return status;
+    }
   }
   return status;
+};
+
+const integrationModeLabel = (mode: SourceIntegration['mode'], language: 'ru' | 'en'): string => {
+  if (language === 'ru') {
+    return mode === 'explicit' ? 'вручную' : 'авто';
+  }
+  return mode;
+};
+
+const integrationKindLabel = (kind: SourceIntegration['kind'], language: 'ru' | 'en'): string => {
+  if (!kind) {
+    return language === 'ru' ? 'не указан' : 'unspecified';
+  }
+  if (language === 'ru') {
+    switch (kind) {
+      case 'file':
+        return 'файл';
+      case 'library':
+        return 'библиотека';
+      case 'framework':
+        return 'фреймворк';
+      default:
+        return kind;
+    }
+  }
+  return kind;
 };
 
 const normalizePath = (value: string): string => value.replace(/\\/g, '/').toLowerCase();
@@ -313,9 +353,9 @@ const Inspector = React.memo((props: InspectorProps) => {
       {reason && <div style={{ color: '#f9e2af', fontSize: 12 }}>{reason}</div>}
       <div style={{ fontSize: 12, color: '#bac2de', display: 'grid', gap: 6 }}>
         <div>{displayLanguage === 'ru' ? 'Оригинал' : 'Original'}: <code>{row.symbol.name}</code></div>
-        <div data-testid="dependency-inspector-namespace">Namespace: {row.namespaceText || '—'}</div>
+        <div data-testid="dependency-inspector-namespace">{displayLanguage === 'ru' ? 'Пространство имён' : 'Namespace'}: {row.namespaceText || '—'}</div>
         <div data-testid="dependency-inspector-namespace-breadcrumb">
-          {displayLanguage === 'ru' ? 'Цепочка namespace' : 'Namespace breadcrumb'}: {formatNamespaceBreadcrumb(row.symbol.namespacePath)}
+          {displayLanguage === 'ru' ? 'Цепочка пространств имён' : 'Namespace breadcrumb'}: {formatNamespaceBreadcrumb(row.symbol.namespacePath)}
         </div>
       </div>
       <div style={{ display: 'grid', gap: 4 }}>
@@ -335,7 +375,7 @@ const Inspector = React.memo((props: InspectorProps) => {
         </div>
       </div>
       <div style={{ fontSize: 11, color: '#7f849c', display: 'grid', gap: 4 }}>
-        <div>integration id: {row.symbol.integrationId}</div>
+        <div>{displayLanguage === 'ru' ? 'ID интеграции' : 'integration id'}: {row.symbol.integrationId}</div>
         <div>{displayLanguage === 'ru' ? 'Источник' : 'Source'}: {row.integration?.location?.value ?? row.integration?.displayName ?? row.symbol.integrationId}</div>
         {activeFilePath && (
           <div style={{ display: 'flex', gap: 6, minWidth: 0 }}>
@@ -443,8 +483,13 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
     const items: TreeItem[] = [{ kind: 'root', key: 'root', label: tree.rootFilePath ?? (displayLanguage === 'ru' ? 'не выбран' : 'not selected') }];
     for (const integration of tree.integrations) {
       const symbolCount = integrationSymbolCount.get(integration.integrationId) ?? 0;
-      const symbolMeta = displayLanguage === 'ru' ? `${symbolCount} symbols` : `${symbolCount} symbols`;
-      items.push({ kind: 'integration', key: `integration:${integration.integrationId}`, label: integration.displayName, meta: `${integration.mode} · ${integration.kind} · ${symbolMeta}` });
+      const symbolMeta = displayLanguage === 'ru' ? `${symbolCount} символов` : `${symbolCount} symbols`;
+      items.push({
+        kind: 'integration',
+        key: `integration:${integration.integrationId}`,
+        label: integration.displayName,
+        meta: `${integrationModeLabel(integration.mode, displayLanguage)} · ${integrationKindLabel(integration.kind, displayLanguage)} · ${symbolMeta}`,
+      });
       for (const filePath of integration.attachedFiles) {
         items.push({ kind: 'file', key: `file:${integration.integrationId}:${filePath}`, label: filePath });
       }
@@ -537,7 +582,7 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
           {implicitInScopeCount > 0 && (
             <div style={{ fontSize: 11, color: '#7f849c' }}>
               {displayLanguage === 'ru'
-                ? `Авто-зависимости из #include (implicit): ${implicitInScopeCount} (отображаются в дереве и фильтрах)`
+                ? `Авто-зависимости из #include: ${implicitInScopeCount} (показаны в дереве и фильтрах)`
                 : `Auto dependencies from #include (implicit): ${implicitInScopeCount} (shown in tree and filters)`}
             </div>
           )}
@@ -564,16 +609,16 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
           <div style={{ padding: 10, borderBottom: '1px solid #313244' }}><input value={queryInput} onChange={(event) => setQueryInput(event.currentTarget.value)} placeholder={displayLanguage === 'ru' ? 'Поиск внешнего символа' : 'Search external symbol'} style={{ width: '100%', background: '#11111b', border: '1px solid #313244', color: '#cdd6f4', borderRadius: 6, padding: '8px 10px' }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, padding: '0 10px 10px 10px', borderBottom: '1px solid #313244' }}>
             <select style={{ minWidth: 0 }} value={scopeFilter} onChange={(event) => setScopeFilter(event.currentTarget.value as DependencyScopeFilter)}>
-              <option value="all">{displayLanguage === 'ru' ? 'Скоуп: все' : 'Scope: all'}</option>
-              <option value="explicit">{displayLanguage === 'ru' ? 'Скоуп: explicit' : 'Scope: explicit'}</option>
-              <option value="implicit">{displayLanguage === 'ru' ? 'Скоуп: implicit' : 'Scope: implicit'}</option>
+              <option value="all">{displayLanguage === 'ru' ? 'Охват: все' : 'Scope: all'}</option>
+              <option value="explicit">{displayLanguage === 'ru' ? 'Охват: вручную' : 'Scope: explicit'}</option>
+              <option value="implicit">{displayLanguage === 'ru' ? 'Охват: авто' : 'Scope: implicit'}</option>
             </select>
             <select style={{ minWidth: 0 }} value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as StatusFilter)}>
               <option value="all">{displayLanguage === 'ru' ? 'Статус: все' : 'Status: all'}</option>
-              <option value="ok">ok</option>
-              <option value="stale">stale</option>
-              <option value="broken">broken</option>
-              <option value="disabled">disabled</option>
+              <option value="ok">{displayLanguage === 'ru' ? 'норма' : 'ok'}</option>
+              <option value="stale">{displayLanguage === 'ru' ? 'устарело' : 'stale'}</option>
+              <option value="broken">{displayLanguage === 'ru' ? 'ошибка' : 'broken'}</option>
+              <option value="disabled">{displayLanguage === 'ru' ? 'выключено' : 'disabled'}</option>
             </select>
             <select style={{ minWidth: 0 }} value={kindFilter} onChange={(event) => setKindFilter(event.currentTarget.value as DependencyKindFilter)}>
               {kindOptions.map((option) => <option key={option.value} value={option.value}>{displayLanguage === 'ru' ? option.ru : option.en}</option>)}
@@ -631,7 +676,10 @@ export const DependencyView: React.FC<DependencyViewProps> = ({
             </button>
           </div>
           <div style={{ borderBottom: '1px solid #313244', padding: '7px 10px', display: 'flex', gap: 10, flexWrap: 'wrap', color: '#7f849c', fontSize: 11 }}>
-            {(Object.keys(kindLabel) as SymbolKind[]).map((kind) => <span key={`count:${kind}`}>{kind}: {counters.get(kind) ?? 0}</span>)}
+            {(Object.keys(kindLabel) as SymbolKind[]).map((kind) => {
+              const label = kindLabel[kind];
+              return <span key={`count:${kind}`}>{displayLanguage === 'ru' ? label.ru : label.en}: {counters.get(kind) ?? 0}</span>;
+            })}
           </div>
           <div ref={symbolHostRef} style={{ minHeight: 240, height: '100%' }}>
             {symbolItems.length === 0 ? (

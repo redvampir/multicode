@@ -1,18 +1,24 @@
 {
   "schemaVersion": 1,
   "version": 1,
-  "savedAt": "2026-03-03T11:40:04.728Z",
+  "savedAt": "2026-03-18T04:34:58.363Z",
   "data": {
     "id": "class-test_3-mmaidj6o",
     "name": "test_3",
     "nameRu": "test_3",
+    "classType": "class",
     "namespace": "Test_class_1",
+    "baseClasses": [],
+    "headerIncludes": [],
+    "sourceIncludes": [],
+    "forwardDecls": [],
     "members": [
       {
         "id": "member-61d63c94-2cf1-4516-9106-d96548e8eae7",
         "name": "field_1",
         "nameRu": "Поле 1",
         "dataType": "int32",
+        "isStatic": false,
         "access": "private"
       }
     ],
@@ -21,11 +27,44 @@
         "id": "method-08a25bac-c9e7-4f25-8901-6ee524d7487e",
         "name": "method_1",
         "nameRu": "Метод 1",
+        "methodKind": "method",
         "returnType": "int32",
         "params": [],
         "access": "public",
         "isConst": false,
         "isStatic": false,
+        "isNoexcept": false,
+        "isPureVirtual": false,
+        "isVirtual": false,
+        "isOverride": false
+      },
+      {
+        "id": "method-2667490a-6862-43d2-980c-4efb5e56fb7f",
+        "name": "method_2",
+        "nameRu": "Метод 2",
+        "methodKind": "method",
+        "returnType": "any",
+        "params": [],
+        "access": "public",
+        "isConst": false,
+        "isStatic": false,
+        "isNoexcept": false,
+        "isPureVirtual": false,
+        "isVirtual": false,
+        "isOverride": false
+      },
+      {
+        "id": "method-b0caa21b-b244-414a-b8c2-9e966df09261",
+        "name": "method_3",
+        "nameRu": "Метод 3",
+        "methodKind": "method",
+        "returnType": "any",
+        "params": [],
+        "access": "public",
+        "isConst": false,
+        "isStatic": false,
+        "isNoexcept": false,
+        "isPureVirtual": false,
         "isVirtual": false,
         "isOverride": false
       }

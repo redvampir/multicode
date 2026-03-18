@@ -163,16 +163,22 @@ vscode-extension/
 ### Сборка
 
 ```bash
-npm run watch              # Инкрементальная сборка
-npm run compile            # Однократная сборка
-npm run vscode:prepublish  # Подготовка релиза
-npm run vsix               # Собрать .vsix (с зависимостями)
-npm run vsix:no-deps       # Собрать .vsix без пересчёта зависимостей
+npm run watch              # Инкрементальная dev-сборка в dist/
+npm run compile            # Однократная dev-сборка extension.js + webview.js в dist/
+npm run package            # Production-сборка webpack в dist/ (hidden-source-map)
+npm run vscode:prepublish  # Подготовка релизной сборки; сейчас вызывает npm run package
+npm run vsix               # Собрать installable .vsix (с зависимостями)
+npm run vsix:no-deps       # Собрать installable .vsix без пересчёта зависимостей
 ```
+
+Важно:
+
+- `npm run package` не создаёт `.vsix`; он только собирает production-бандлы в `dist/`.
+- Для установки расширения через VS Code нужен `npm run vsix` или `npm run vsix:no-deps`.
 
 ### Быстрая проверка и сборка через скрипт
 
-В корне репозитория доступен скрипт `scripts/vscode-test-i-sborka.sh`, который устанавливает зависимости (если их ещё нет), прогоняет lint, собирает вебвью и запускает VS Code тесты.
+В корне репозитория доступен скрипт `scripts/vscode-test-i-sborka.sh`, который устанавливает зависимости (если их ещё нет), прогоняет lint, выполняет `npm run compile`, затем `npm run compile-tests` и запускает VS Code тесты.
 
 ```bash
 cd ..                      # перейти в корень репозитория, если читаете README из vscode-extension/
@@ -184,7 +190,12 @@ scripts/vscode-test-i-sborka.sh
 - `--skip-lint` — пропустить проверку ESLint;
 - `--skip-tests` — пропустить запуск VS Code тестов, оставив только сборку.
 
-Выходные артефакты после успешного прогона скрипта: бандлы webview складываются в `vscode-extension/dist/`, а собранное расширение и транспилированные тесты лежат в `vscode-extension/out/`.
+Выходные артефакты после успешного прогона скрипта:
+
+- `vscode-extension/dist/` — webpack-бандлы `extension.js` и `webview.js`;
+- `vscode-extension/out/` — транспилированные тесты.
+
+Скрипт не вызывает `npm run package` и не создаёт `.vsix`.
 
 ### Отладка
 
@@ -249,7 +260,7 @@ scripts/vscode-test-i-sborka.sh
 ```bash
 cd vscode-extension
 npm install
-npm run compile && npm run package
+npm run package
 npm run vsix:no-deps
 ```
 

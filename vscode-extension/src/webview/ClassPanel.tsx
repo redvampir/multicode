@@ -15,6 +15,7 @@ import {
   serializeClassNodeDragPayload,
   type ClassNodeInsertRequest,
 } from './classNodeFactory';
+import { UeMacroBadgeList } from './UeMacroBadgeList';
 
 interface ClassPanelProps {
   graphState: BlueprintGraphState;
@@ -74,6 +75,7 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
   );
 
   const classes = useMemo(() => graphState.classes ?? [], [graphState.classes]);
+  const ueMacros = useMemo(() => graphState.ueMacros ?? [], [graphState.ueMacros]);
   const classStorageItemsById = useMemo(() => {
     const map = new Map<string, ClassStorageStatusItem>();
     for (const item of classStorageStatus?.classItems ?? []) {
@@ -357,6 +359,13 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                   <div className="class-row-fields class-row-fields-header">
                     <input className="class-input" aria-label={translate('panel.classes.name', 'Имя класса')} value={item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, name: normalizeCodeName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'Кодовое имя' : 'Code name'} />
                     <input className="class-input class-input-secondary" aria-label={isRu ? 'Отображаемое имя класса' : 'Class RU name'} value={item.nameRu ?? item.name} onChange={(event) => updateClass(item.id, (target) => ({ ...target, nameRu: normalizeDisplayName(event.currentTarget.value, target.name) }))} placeholder={isRu ? 'Отображаемое имя' : 'RU name'} />
+                    <UeMacroBadgeList
+                      macros={ueMacros}
+                      targetId={item.id}
+                      targetKind="class"
+                      displayLanguage={displayLanguage}
+                      className="ue-inline-macro-list--compact"
+                    />
                   </div>
                   <div className="class-storage-row">
                     <span className={`class-storage-chip class-storage-chip--${storageItem?.status ?? 'unbound'}`} title={storageReason || (isRu ? 'Статус хранения класса' : 'Class storage status')} data-testid={`class-storage-chip-${item.id}`}>{storageLabel}</span>
@@ -406,6 +415,13 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                           <select className="class-select" aria-label={translate('panel.classes.field.type', 'Тип поля')} value={member.dataType} onChange={(event) => handleUpdateMember(item.id, member.id, { dataType: event.currentTarget.value as PortDataType })}>
                             {dataTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                           </select>
+                          <UeMacroBadgeList
+                            macros={ueMacros}
+                            targetId={member.id}
+                            targetKind="member"
+                            displayLanguage={displayLanguage}
+                            className="ue-inline-macro-list--compact"
+                          />
                         </div>
                         <div className="class-row-actions">
                           <button type="button" className="btn-add-class-subitem" onClick={() => onInsertClassNode?.({ kind: 'get-member', classId: item.id, memberId: member.id })} disabled={!onInsertClassNode}>+Get</button>
@@ -435,6 +451,13 @@ export const ClassPanel: React.FC<ClassPanelProps> = ({
                           <select className="class-select" aria-label={translate('panel.classes.method.returnType', 'Возвращаемый тип')} value={method.returnType} onChange={(event) => handleUpdateMethod(item.id, method.id, { returnType: event.currentTarget.value as PortDataType })}>
                             {dataTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                           </select>
+                          <UeMacroBadgeList
+                            macros={ueMacros}
+                            targetId={method.id}
+                            targetKind="method"
+                            displayLanguage={displayLanguage}
+                            className="ue-inline-macro-list--compact"
+                          />
                         </div>
                         <div className="class-row-actions">
                           <label className="class-flag-toggle">

@@ -470,6 +470,117 @@ function createGraphWithClassPanelFixture(): BlueprintGraphState {
   };
 }
 
+function createGraphWithUeMacroFixture(): BlueprintGraphState {
+  const tickFunction = createUserFunction('Tick', 'Тик');
+  tickFunction.id = 'func-1';
+
+  return {
+    id: 'test-graph-ue-macros',
+    name: 'UE Macro Graph',
+    language: 'ue',
+    displayLanguage: 'ru',
+    nodes: [],
+    edges: [],
+    functions: [tickFunction],
+    variables: [
+      {
+        id: 'var-1',
+        name: 'health',
+        nameRu: 'Здоровье',
+        dataType: 'int32',
+        defaultValue: 100,
+        category: 'default',
+      },
+    ],
+    classes: [
+      {
+        id: 'class-1',
+        name: 'PlayerPawn',
+        nameRu: 'Игрок',
+        members: [
+          {
+            id: 'member-1',
+            name: 'score',
+            nameRu: 'Счёт',
+            dataType: 'int32',
+            access: 'public',
+          },
+        ],
+        methods: [
+          {
+            id: 'method-1',
+            name: 'Jump',
+            nameRu: 'Прыжок',
+            methodKind: 'method',
+            returnType: 'bool',
+            params: [],
+            access: 'public',
+            isStatic: false,
+            isConst: false,
+            isNoexcept: false,
+            isPureVirtual: false,
+            isVirtual: false,
+            isOverride: false,
+          },
+        ],
+      },
+    ],
+    ueMacros: [
+      {
+        id: 'macro-class-1',
+        name: 'UE Class',
+        nameRu: 'Класс UE',
+        macroType: 'UCLASS',
+        specifiers: ['BlueprintType'],
+        category: 'MultiCode',
+        targetId: 'class-1',
+        targetKind: 'class',
+      },
+      {
+        id: 'macro-function-1',
+        name: 'UE Function',
+        nameRu: 'Функция UE',
+        macroType: 'UFUNCTION',
+        specifiers: ['BlueprintCallable'],
+        category: 'MultiCode',
+        targetId: 'func-1',
+        targetKind: 'function',
+      },
+      {
+        id: 'macro-variable-1',
+        name: 'UE Property',
+        nameRu: 'Свойство UE',
+        macroType: 'UPROPERTY',
+        specifiers: ['EditAnywhere', 'BlueprintReadWrite'],
+        category: 'MultiCode',
+        targetId: 'var-1',
+        targetKind: 'variable',
+      },
+      {
+        id: 'macro-member-1',
+        name: 'UE Property',
+        nameRu: 'Свойство UE',
+        macroType: 'UPROPERTY',
+        specifiers: ['VisibleAnywhere', 'BlueprintReadOnly'],
+        category: 'MultiCode',
+        targetId: 'member-1',
+        targetKind: 'member',
+      },
+      {
+        id: 'macro-method-1',
+        name: 'UE Function',
+        nameRu: 'Функция UE',
+        macroType: 'UFUNCTION',
+        specifiers: ['BlueprintCallable'],
+        category: 'MultiCode',
+        targetId: 'method-1',
+        targetKind: 'method',
+      },
+    ],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function toFlowNode(node: BlueprintNode): BlueprintFlowNode {
   return {
     id: node.id,
@@ -715,6 +826,73 @@ describe('BlueprintEditor', () => {
         expect(container.querySelector('.pointer-list')).toBeNull();
         expect(screen.getByRole('heading', { name: 'Указатели и ссылки' })).toBeTruthy();
         expect(screen.getByTitle('Создать указатель/ссылку')).toBeTruthy();
+      });
+    });
+
+    it('should render UE macros inside the shared sidebar and inline entity lists', async () => {
+      const graph = createGraphWithUeMacroFixture();
+      const onGraphChange = vi.fn();
+
+      const { container } = render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
+      });
+
+      expect(screen.getByRole('button', { name: /UE Макросы/ })).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badges-function-func-1')).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badges-variable-var-1')).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badges-class-class-1')).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badges-member-member-1')).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badges-method-method-1')).toBeInTheDocument();
+      expect(screen.getByTestId('ue-macro-badge-function-func-1-macro-function-1')).toHaveTextContent('UFUNCTION');
+      expect(screen.getByTestId('ue-macro-badge-variable-var-1-macro-variable-1')).toHaveTextContent('UPROPERTY');
+    });
+
+    it('should toggle UE macros panel from toolbar and collapse its section independently', async () => {
+      const graph = createGraphWithUeMacroFixture();
+      const onGraphChange = vi.fn();
+
+      const { container } = render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={graph}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      const toolbarToggle = screen.getByRole('button', { name: /UE Макросы/ });
+
+      await waitFor(() => {
+        expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
+      });
+
+      fireEvent.click(toolbarToggle);
+
+      await waitFor(() => {
+        expect(container.querySelector('.bp-ue-macro-panel')).toBeNull();
+      });
+
+      fireEvent.click(toolbarToggle);
+
+      await waitFor(() => {
+        expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
+      });
+
+      fireEvent.click(screen.getByTestId('ue-macros-section-toggle'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.bp-ue-macro-list')).toBeNull();
       });
     });
   });

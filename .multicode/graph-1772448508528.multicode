@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "savedAt": "2026-03-03T08:03:11.890Z",
+  "savedAt": "2026-03-20T02:23:29.286Z",
   "data": {
     "id": "graph-1772448508528",
     "name": "Untitled Graph",
@@ -222,7 +222,7 @@
         }
       }
     ],
-    "updatedAt": "2026-03-03T08:03:11.433Z",
+    "updatedAt": "2026-03-20T02:23:28.830Z",
     "dirty": false,
     "variables": [
       {
@@ -346,6 +346,7 @@
         "signatureHash": "57d71efa7735bffe03aa3d0b5ab345a9332727a0",
         "localizedNameRu": ""
       }
-    }
+    },
+    "classBindings": []
   }
 }

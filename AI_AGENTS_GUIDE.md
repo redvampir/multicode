@@ -1,10 +1,10 @@
 # AI Agents Guide — Руководство для ИИ-агентов
 
-> **Версия:** 2.1  
-> **Дата:** 2026-02-07  
+> **Версия:** 2.2  
+> **Дата:** 2026-03-20  
 > **Проект:** MultiCode — Визуальное программирование для VS Code
 
-> **Релизная версия расширения:** `0.4.0` (источник истины — `vscode-extension/package.json`)
+> **Релизная версия расширения:** `0.4.1` (источник истины — `vscode-extension/package.json`)
 
 ---
 
@@ -51,6 +51,7 @@
 | C++ ядро | `include/visprog/core/`, `src/core/` | C++20, nlohmann-json | Работает |
 | VS Code расширение | `vscode-extension/src/` | TypeScript, React 18 | Работает |
 | Blueprint редактор | `vscode-extension/src/webview/` | React Flow, Zustand | Работает |
+| Кодогенерация | `vscode-extension/src/codegen/` | TypeScript, target-based generators | Работает |
 | Тесты C++ | `tests/` | Catch2 | Работает |
 | Тесты TS | `vscode-extension/src/test/` | Vitest | Работает |
 
@@ -69,22 +70,30 @@ MultiCode/
 │   ├── Graph.hpp             # Контейнер узлов и связей
 │   ├── NodeFactory.hpp       # Фабрика создания узлов
 │   └── GraphSerializer.hpp   # JSON сериализация
+├── include/visprog/generators/ # C++ генераторы
 ├── src/core/                 # C++ реализации
+├── src/generators/           # C++ кодогенераторы
 ├── tests/                    # Catch2 тесты
 ├── vscode-extension/
 │   ├── src/
 │   │   ├── extension.ts      # Точка входа расширения
+│   │   ├── commands/         # VS Code команды и интеграции
+│   │   ├── compilation/      # Компиляция/запуск C++ и toolchains
+│   │   ├── codegen/          # TS кодогенераторы (cpp/ue)
 │   │   ├── panel/            # GraphPanel, IPC с webview
 │   │   ├── webview/          # React компоненты
-│   │   │   ├── main.tsx      # Главный App с переключателем редакторов
+│   │   │   ├── main.tsx      # Главный App и orchestration webview
 │   │   │   ├── BlueprintEditor.tsx    # Новый React Flow редактор
 │   │   │   ├── GraphEditor.tsx        # Старый Cytoscape редактор
+│   │   │   ├── DependencyView.tsx     # Окно зависимостей и symbols UX
+│   │   │   ├── ClassPanel.tsx         # Class System v2
 │   │   │   └── nodes/BlueprintNode.tsx # Кастомные узлы
-│   │   └── shared/           # Общие типы и утилиты
-│   │       ├── blueprintTypes.ts      # Типы Blueprint графа
-│   │       ├── portTypes.ts           # Типы портов и цвета
-│   │       ├── graphState.ts          # Старые типы графа
-│   │       └── messages.ts            # IPC сообщения (zod)
+│   │   ├── shared/           # Общие типы, схемы и утилиты
+│   │   │   ├── blueprintTypes.ts      # Типы Blueprint графа
+│   │   │   ├── portTypeContract.ts    # Источник истины для dataType/category
+│   │   │   ├── serializer.ts          # .multicode сериализация graph state
+│   │   │   └── messages.ts            # IPC сообщения (zod)
+│   │   └── test/             # Integration / extension tests
 │   └── dist/                 # Скомпилированные файлы
 ├── Документы/                # Документация на русском
 └── schemas/                  # JSON schemas
@@ -94,17 +103,20 @@ MultiCode/
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Layer 4: VS Code Extension (TypeScript)                │
-│   extension.ts → GraphPanel → Webview (React Flow)     │
+│ Layer 5: Webview UI (React / React Flow / Cytoscape)   │
+│   main.tsx → BlueprintEditor / GraphEditor / panels    │
 ├────────────────────────────────────────────────────────┤
-│ Layer 3: Serialization (C++)                           │
-│   GraphSerializer: JSON ↔ Graph                        │
+│ Layer 4: Extension Backend (TypeScript)                │
+│   extension.ts → commands → GraphPanel → file I/O      │
 ├────────────────────────────────────────────────────────┤
-│ Layer 2: Tests (C++ Catch2)                            │
-│   test_graph.cpp, test_node.cpp, test_port.cpp         │
+│ Layer 3: Shared Contracts + Codegen (TypeScript)       │
+│   messages / serializer / CppCodeGenerator / UeCodeGenerator │
 ├────────────────────────────────────────────────────────┤
-│ Layer 1: Core (C++20)                                  │
-│   Types → Port → Node → Graph → NodeFactory            │
+│ Layer 2: Core + Serialization (C++20)                  │
+│   Types → Port → Node → Graph → NodeFactory → GraphSerializer │
+├────────────────────────────────────────────────────────┤
+│ Layer 1: Tests and Fixtures                            │
+│   Catch2 / Vitest / golden tests / graph fixtures      │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -179,6 +191,10 @@ function Component(props: any) {  // Избегай any
 ---
 
 ## Типы узлов и портов
+
+Ниже приведён сокращённый обзор. Источник истины для типов портов и узлов:
+- `vscode-extension/src/shared/portTypeContract.ts`
+- `vscode-extension/src/shared/blueprintTypes.ts`
 
 ### Типы портов (PortDataType)
 
@@ -365,10 +381,10 @@ MyNewNode: {
 
 ### Текущие приоритеты
 
-1. Стабилизация Blueprint редактора
-2. Кодогенерация C++ из графа
-3. Undo/Redo функциональность
-4. Inline редактирование узлов
+1. Стабилизация `v0.6`-функциональности: функции, class sidecars, dependency UX
+2. Консистентность сериализации, документации и публичных контрактов
+3. Рост покрытия тестами для codegen, webview и extension-side
+4. Подготовка к `v1.0` и публикации в VS Code Marketplace
 
 ---
 

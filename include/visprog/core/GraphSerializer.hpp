@@ -12,9 +12,9 @@ namespace visprog::core {
 /// \brief Сериализация и десериализация графа в JSON-формат.
 class GraphSerializer {
 public:
-    inline static constexpr std::string_view kSchemaVersion = "1.0.0";
-    inline static constexpr std::string_view kSchemaCoreMin = "0.1.0-alpha";
-    inline static constexpr std::string_view kSchemaCoreMax = "0.1.x";
+    inline static constexpr std::string_view kSchemaVersion = "1.1.0";
+    inline static constexpr std::string_view kSchemaCoreMin = "1.1.0";
+    inline static constexpr std::string_view kSchemaCoreMax = "1.1.x";
 
     GraphSerializer() = delete;
 

@@ -1682,6 +1682,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [variablePanelVisible, setVariablePanelVisible] = useState(true); // Панель переменных видна по умолчанию
   const [pointerPanelVisible, setPointerPanelVisible] = useState(true); // Панель указателей/ссылок видна по умолчанию
   const [classPanelVisible, setClassPanelVisible] = useState(!isFunctionModal); // Панель классов
+  const [ueMacrosPanelVisible, setUeMacrosPanelVisible] = useState(graph.language === 'ue');
   const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
   const [isPointersSectionCollapsed, setIsPointersSectionCollapsed] = useState(false);
@@ -1701,6 +1702,15 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  useEffect(() => {
+    if (graph.language === 'ue') {
+      setUeMacrosPanelVisible(true);
+      return;
+    }
+
+    setUeMacrosPanelVisible(false);
+  }, [graph.language]);
 
   useEffect(() => {
     if (!normalizationToast) {
@@ -3940,12 +3950,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     edges: Array.isArray(graph.edges) ? graph.edges : [],
   }), [graph]);
 
-  const hasLeftSidebar = functionPanelVisible || variablePanelVisible || pointerPanelVisible || classPanelVisible;
+  const hasLeftSidebar = functionPanelVisible || variablePanelVisible || pointerPanelVisible || classPanelVisible || (graph.language === 'ue' && ueMacrosPanelVisible);
   const expandedSidebarSections =
     (functionPanelVisible && !isFunctionsSectionCollapsed ? 1 : 0) +
     (variablePanelVisible && !isVariablesSectionCollapsed ? 1 : 0) +
     (pointerPanelVisible && !isPointersSectionCollapsed ? 1 : 0) +
-    (classPanelVisible && !isClassesSectionCollapsed ? 1 : 0);
+    (classPanelVisible && !isClassesSectionCollapsed ? 1 : 0) +
+    (graph.language === 'ue' && ueMacrosPanelVisible && !isUeMacrosSectionCollapsed ? 1 : 0);
   const shouldBalanceExpandedSections = expandedSidebarSections > 1;
 
   useEffect(() => {
@@ -3959,10 +3970,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         variablePanelVisible,
         pointerPanelVisible,
         classPanelVisible,
+        ueMacrosPanelVisible,
         isFunctionsSectionCollapsed,
         isVariablesSectionCollapsed,
         isPointersSectionCollapsed,
         isClassesSectionCollapsed,
+        isUeMacrosSectionCollapsed,
         variablesCount: scopedVariables.length,
       },
     };
@@ -3975,9 +3988,11 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     isPointersSectionCollapsed,
     isVariablesSectionCollapsed,
     isClassesSectionCollapsed,
+    isUeMacrosSectionCollapsed,
     classPanelVisible,
     pointerPanelVisible,
     scopedVariables,
+    ueMacrosPanelVisible,
     variablePanelVisible,
   ]);
   
@@ -4002,7 +4017,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
-          {functionPanelVisible && (variablePanelVisible || pointerPanelVisible || classPanelVisible) && (
+          {functionPanelVisible && (variablePanelVisible || pointerPanelVisible || classPanelVisible || (graph.language === 'ue' && ueMacrosPanelVisible)) && (
             <div className="left-sidebar-divider" />
           )}
 
@@ -4025,7 +4040,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
-          {variablePanelVisible && (pointerPanelVisible || classPanelVisible) && (
+          {variablePanelVisible && (pointerPanelVisible || classPanelVisible || (graph.language === 'ue' && ueMacrosPanelVisible)) && (
             <div className="left-sidebar-divider" />
           )}
 
@@ -4047,7 +4062,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
-          {pointerPanelVisible && classPanelVisible && (
+          {pointerPanelVisible && (classPanelVisible || (graph.language === 'ue' && ueMacrosPanelVisible)) && (
             <div className="left-sidebar-divider" />
           )}
 
@@ -4083,8 +4098,12 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
             </div>
           )}
 
+          {classPanelVisible && graph.language === 'ue' && ueMacrosPanelVisible && (
+            <div className="left-sidebar-divider" />
+          )}
+
           {/* ── UE Macros Section ── */}
-          {graph.language === 'ue' && (
+          {graph.language === 'ue' && ueMacrosPanelVisible && (
             <div
               className={`left-sidebar-section ${isUeMacrosSectionCollapsed ? 'collapsed' : ''} ${shouldBalanceExpandedSections && !isUeMacrosSectionCollapsed ? 'balanced' : ''}`}
             >
@@ -4322,6 +4341,16 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
                 >
                   <span>🏛️</span>
                   <span>{t.classes}</span>
+                </button>
+              )}
+
+              {graph.language === 'ue' && (
+                <button
+                  onClick={() => setUeMacrosPanelVisible(v => !v)}
+                  className={`panel-btn ${ueMacrosPanelVisible ? 'active' : ''}`}
+                >
+                  <span>Ⓤ</span>
+                  <span>{displayLanguage === 'ru' ? 'UE Макросы' : 'UE Macros'}</span>
                 </button>
               )}
               

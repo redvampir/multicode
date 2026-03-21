@@ -390,7 +390,9 @@ namespace visprog::core {
 
 auto GraphSerializer::to_json(const Graph& graph) -> nlohmann::json {
     nlohmann::json doc;
-    doc["schema"] = {{"version", "1.1.0"}, {"coreMin", "1.1.0"}, {"coreMax", "1.1.x"}};
+    doc["schema"] = {{"version", kSchemaVersion},
+                     {"coreMin", kSchemaCoreMin},
+                     {"coreMax", kSchemaCoreMax}};
     doc["graph"] = {{"id", graph.get_id().value}, {"name", graph.get_name()}};
 
     nlohmann::json nodes_json = nlohmann::json::array();

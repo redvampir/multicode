@@ -12,7 +12,6 @@ import {
   UE_MACRO_LABELS,
   UE_MACRO_COLORS,
   UE_MACRO_SPECIFIERS,
-  UE_MACRO_ALLOWED_TARGETS,
 } from '../shared/blueprintTypes';
 import { getTranslation } from '../shared/translations';
 
@@ -246,6 +245,7 @@ export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
       <div
         className="bp-panel-header"
         onClick={onToggleCollapsed}
+        data-testid="ue-macros-section-toggle"
         style={{ cursor: 'pointer', userSelect: 'none' }}
       >
         <span className="bp-panel-collapse-icon">{collapsed ? '▶' : '▼'}</span>

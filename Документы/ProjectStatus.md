@@ -1,6 +1,6 @@
 # Project Status
 
-> **Обновлено:** 2026-02-07
+> **Обновлено:** 2026-03-20
 
 ## Сводка
 
@@ -8,17 +8,18 @@
 |------------|--------|-------------|
 | C++ Core | ✅ Стабильно | Базовые API и сериализация реализованы |
 | VS Code Extension | ✅ Стабильно | Blueprint + Classic режимы в рабочем состоянии |
-| Кодогенерация C++ | ✅ Работает | Поддержка основных узлов, пакетов и функций |
+| Кодогенерация `cpp`/`ue` | ✅ Работает | Поддержка основных узлов, пакетов, функций и UE-target |
 | Пакеты узлов | ✅ Работает | Loader/Registry/UI есть, покрыты тестами |
 | Пользовательские функции | ✅ Работает | От UI до генерации кода |
+| Dependency View / Class System v2 | 🟡 Стабилизация | Функциональность есть, продолжается UX-полировка |
 | CI/CD | ✅ Работает | C++, extension, форматирование и coverage workflows присутствуют |
-| Документация | 🟡 Перестройка | Идёт синхронизация активных и архивных документов |
+| Документация | 🟡 Частично синхронизирована | Активные документы актуализированы под `0.4.1`, архив хранит историю |
 
 ## Версия и этап
 
-- **Релизная версия расширения:** `0.4.0` (по `vscode-extension/package.json`)
-- **Внутренний этап разработки:** реализованы вехи roadmap до `v0.6`
-- **Текущий фокус:** подготовка к `v1.0` (стабилизация, качество, публикация)
+- **Релизная версия расширения:** `0.4.1` (по `vscode-extension/package.json`)
+- **Внутренний этап разработки:** вехи roadmap до `v0.6` реализованы; идёт стабилизация UX и контрактов
+- **Текущий фокус:** подготовка к `v1.0` (стабилизация API, качество, документация, публикация)
 
 ## Что подтверждено по репозиторию
 
@@ -30,13 +31,16 @@
 ### Webview/Extension
 - Основной редактор: `vscode-extension/src/webview/BlueprintEditor.tsx`
 - Legacy-редактор: `vscode-extension/src/webview/GraphEditor.tsx`
+- Кодогенераторы: `vscode-extension/src/codegen/CppCodeGenerator.ts`, `vscode-extension/src/codegen/UeCodeGenerator.ts`
 - IPC с Zod: `vscode-extension/src/shared/messages.ts`
 - Локализация RU/EN: `vscode-extension/src/shared/translations.ts`
+- Сериализация `.multicode`: `vscode-extension/src/shared/serializer.ts`
 
 ### Инфраструктура качества
 - C++ CI: `.github/workflows/cpp-build.yml`
 - Extension CI: `.github/workflows/vscode-extension-ci.yml`
 - Проверка форматирования C++: `.github/workflows/code-format.yml`
+- Golden/unit тесты кодогенерации: `vscode-extension/src/codegen/**/*.test.ts`, `tests/generators/`
 
 ## Цели до v1.0
 

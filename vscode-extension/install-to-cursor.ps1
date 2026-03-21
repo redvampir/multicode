@@ -5,13 +5,17 @@ param(
     [string]$CursorPath = ""
 )
 
-$vsixPath = Join-Path $PSScriptRoot "multicode-visual-programming-0.4.0.vsix"
+$vsix = Get-ChildItem -Path $PSScriptRoot -Filter "multicode-visual-programming-*.vsix" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
 
-if (-not (Test-Path $vsixPath)) {
-    Write-Host "ERROR: VSIX file not found: $vsixPath" -ForegroundColor Red
-    Write-Host "First build the extension: npm run compile && npx vsce package --no-dependencies" -ForegroundColor Yellow
+if ($null -eq $vsix) {
+    Write-Host "ERROR: VSIX file not found in $PSScriptRoot" -ForegroundColor Red
+    Write-Host "First build the extension: npm run vsix:no-deps" -ForegroundColor Yellow
     exit 1
 }
+
+$vsixPath = $vsix.FullName
 
 # Search for Cursor
 if ([string]::IsNullOrEmpty($CursorPath)) {

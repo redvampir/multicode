@@ -14,6 +14,7 @@ import type {
 } from '../shared/blueprintTypes';
 import { createUserFunction, removeFunctionParameter } from '../shared/blueprintTypes';
 import { FunctionEditor } from './FunctionEditor';
+import { UeMacroBadgeList } from './UeMacroBadgeList';
 
 interface FunctionListPanelProps {
   /** Текущее состояние графа */
@@ -49,6 +50,7 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
   
   // Обернём functions в useMemo для оптимизации
   const functions = useMemo(() => graphState.functions || [], [graphState.functions]);
+  const ueMacros = useMemo(() => graphState.ueMacros ?? [], [graphState.ueMacros]);
   const [expandedFunctions, setExpandedFunctions] = useState<Set<string>>(new Set());
   
   // === Обработчики для функций ===
@@ -184,9 +186,18 @@ export const FunctionListPanel: React.FC<FunctionListPanelProps> = ({
                   {isExpanded ? '▼' : '▶'}
                 </span>
                 <span className="function-icon">ƒ</span>
-                <span className="function-name">
-                  {isRu ? func.nameRu : func.name}
-                </span>
+                <div className="function-title-stack">
+                  <span className="function-name">
+                    {isRu ? func.nameRu : func.name}
+                  </span>
+                  <UeMacroBadgeList
+                    macros={ueMacros}
+                    targetId={func.id}
+                    targetKind="function"
+                    displayLanguage={displayLanguage}
+                    className="ue-inline-macro-list--compact"
+                  />
+                </div>
                 <div className="function-actions">
                   {onCreateFunctionCallNode && (
                     <button

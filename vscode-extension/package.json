@@ -43,7 +43,10 @@
     "onCommand:multicode.generateCode",
     "onCommand:multicode.translateGraph",
     "onCommand:multicode.generateCodeBinding",
-    "onCommand:multicode.createClassFilesAndBind"
+    "onCommand:multicode.createClassFilesAndBind",
+    "onCommand:multicode.memory.reindex",
+    "onCommand:multicode.memory.search",
+    "onCommand:multicode.memory.saveSessionSummary"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -87,6 +90,18 @@
         "command": "multicode.createClassFilesAndBind",
         "title": "МультиКод: Создать файлы класса и привязать к редактору",
         "icon": "$(symbol-class)"
+      },
+      {
+        "command": "multicode.memory.reindex",
+        "title": "МультиКод: Переиндексировать память проекта"
+      },
+      {
+        "command": "multicode.memory.search",
+        "title": "МультиКод: Поиск по памяти проекта"
+      },
+      {
+        "command": "multicode.memory.saveSessionSummary",
+        "title": "МультиКод: Сохранить summary сессии"
       }
     ],
     "keybindings": [

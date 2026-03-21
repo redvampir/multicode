@@ -8,14 +8,17 @@ Write-Host ""
 
 # Тест 1: Проверка VSIX файла
 Write-Host "[Тест 1] Проверка VSIX файла..." -ForegroundColor Yellow
-$vsixPath = Join-Path $PSScriptRoot "multicode-visual-programming-0.4.0.vsix"
+$vsix = Get-ChildItem -Path $PSScriptRoot -Filter "multicode-visual-programming-*.vsix" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
 
-if (-not (Test-Path $vsixPath)) {
-    Write-Host "  ❌ VSIX файл не найден: $vsixPath" -ForegroundColor Red
+if ($null -eq $vsix) {
+    Write-Host "  ❌ VSIX файл не найден в $PSScriptRoot" -ForegroundColor Red
     exit 1
 }
 
-$vsixInfo = Get-Item $vsixPath
+$vsixPath = $vsix.FullName
+$vsixInfo = $vsix
 Write-Host "  ✅ VSIX файл найден" -ForegroundColor Green
 Write-Host "     Размер: $([math]::Round($vsixInfo.Length / 1MB, 2)) MB" -ForegroundColor Gray
 Write-Host "     Дата: $($vsixInfo.LastWriteTime)" -ForegroundColor Gray

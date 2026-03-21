@@ -628,12 +628,19 @@
 }
 
 .function-name {
-  flex: 1;
   font-size: 13px;
   color: #cdd6f4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.function-title-stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .function-actions {
@@ -1429,6 +1436,34 @@
   justify-content: flex-start;
 }
 
+.ue-inline-macro-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ue-inline-macro-list--compact {
+  gap: 4px;
+}
+
+.ue-inline-macro-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ue-macro-accent, #89b4fa);
+  background: rgba(17, 17, 27, 0.82);
+  color: var(--ue-macro-accent, #89b4fa);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .class-input,
 .class-select {
   background-color: #11111b;
@@ -1690,6 +1725,21 @@
   margin-bottom: 6px;
 }
 
+.variable-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.variable-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .variable-color {
   width: 10px;
   height: 10px;
@@ -1702,6 +1752,7 @@
   font-size: 13px;
   font-weight: 600;
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

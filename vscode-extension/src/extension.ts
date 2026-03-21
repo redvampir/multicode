@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { GraphPanel } from './panel/GraphPanel';
 import { registerCreateClassFilesAndBindCommand } from './commands/createClassFilesAndBind';
+import { ProjectMemoryService, registerMemoryCommands } from './memory';
 
 export function activate(context: vscode.ExtensionContext): void {
   const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
@@ -14,6 +15,7 @@ export function activate(context: vscode.ExtensionContext): void {
   outputChannel.appendLine('[MultiCode] Extension activated!');
   outputChannel.appendLine(`[MultiCode] Version: ${extensionVersion}`);
   outputChannel.appendLine(`[MultiCode] Timestamp: ${new Date().toISOString()}`);
+  const memoryService = new ProjectMemoryService(context, outputChannel);
 
   const ensurePanel = (): GraphPanel => GraphPanel.createOrShow(context, outputChannel);
 
@@ -70,6 +72,9 @@ export function activate(context: vscode.ExtensionContext): void {
   console.log('[MultiCode] Registering command: multicode.createClassFilesAndBind');
   const createClassFilesAndBind = registerCreateClassFilesAndBindCommand();
 
+  console.log('[MultiCode] Registering memory commands');
+  const memoryCommands = registerMemoryCommands(vscode, memoryService, outputChannel);
+
   context.subscriptions.push(
     openEditor,
     newGraph,
@@ -80,6 +85,8 @@ export function activate(context: vscode.ExtensionContext): void {
     translateGraph,
     compileAndRun,
     createClassFilesAndBind,
+    memoryService,
+    ...memoryCommands,
     outputChannel
   );
   
@@ -92,7 +99,10 @@ export function activate(context: vscode.ExtensionContext): void {
     'multicode.generateCode',
     'multicode.translateGraph',
     'multicode.compileAndRun',
-    'multicode.createClassFilesAndBind'
+    'multicode.createClassFilesAndBind',
+    'multicode.memory.reindex',
+    'multicode.memory.search',
+    'multicode.memory.saveSessionSummary',
   ]);
   outputChannel.appendLine('[MultiCode] Extension activation complete!');
 }

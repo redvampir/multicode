@@ -34,6 +34,7 @@ import {
   parseVectorInput,
   supportsArrayDataType,
 } from "../shared/vectorValue";
+import { UeMacroBadgeList } from "./UeMacroBadgeList";
 
 interface VariableListPanelProps {
   /** Текущее состояние графа */
@@ -378,6 +379,7 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
 
     return normalizedVariables;
   }, [rawVariables]);
+  const ueMacros = useMemo(() => graphState.ueMacros ?? [], [graphState.ueMacros]);
   const [dialog, setDialog] = useState<EditDialogState>(initialDialogState);
   const [nameValidationError, setNameValidationError] = useState<string | null>(null);
   const [vectorDefaultDraft, setVectorDefaultDraft] = useState<string>("[]");
@@ -1272,16 +1274,27 @@ export const VariableListPanel: React.FC<VariableListPanelProps> = ({
                                 VARIABLE_TYPE_COLORS[variable.dataType],
                             }}
                           />
-                          <span className="variable-name">
-                            {isRu ? variable.nameRu : variable.name}
-                            {variableArraySuffix}
-                          </span>
-                          <span
-                            className="variable-type"
-                            data-type={variable.dataType}
-                          >
-                            {getVariableTypeDisplay(variable)}
-                          </span>
+                          <div className="variable-main">
+                            <div className="variable-title-row">
+                              <span className="variable-name">
+                                {isRu ? variable.nameRu : variable.name}
+                                {variableArraySuffix}
+                              </span>
+                              <span
+                                className="variable-type"
+                                data-type={variable.dataType}
+                              >
+                                {getVariableTypeDisplay(variable)}
+                              </span>
+                            </div>
+                            <UeMacroBadgeList
+                              macros={ueMacros}
+                              targetId={variable.id}
+                              targetKind="variable"
+                              displayLanguage={displayLanguage}
+                              className="ue-inline-macro-list--compact"
+                            />
+                          </div>
                         </div>
 
                         <div className="variable-value">

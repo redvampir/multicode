@@ -22,17 +22,17 @@
 | npm-зависимости | ✅ | TypeScript, Webpack, React, React Flow |
 | Исходный код | ✅ | Панели, команды, IPC-сообщения |
 | Webview UI | ✅ | Blueprint-редактор на React Flow + Classic на Cytoscape |
-| Генерация кода | ✅ | CppCodeGenerator — генерация C++ из графа |
+| Генерация кода | ✅ | Рабочие target-ы `cpp` и `ue`, warnings и preview |
 | Локализация | ✅ | Полная поддержка RU/EN с мгновенным переключением |
 | Linux поддержка | ✅ | Ubuntu 22.04+, Debian 12+ |
-| Внутренние вехи v0.5/v0.6 | 🚧 | v0.5 (пакеты) завершён; v0.6 (пользовательские функции) в работе: UI/модель есть, генерация C++ функций пока не готова |
+| Внутренние вехи v0.5/v0.6 | ✅ | Пакеты, пользовательские функции, dependency view и class workflows реализованы; текущий фокус — стабилизация |
 
 ## Ключевые возможности
 
 - **Blueprint-редактор** — визуальный канвас на React Flow с узлами в стиле Unreal Engine
 - **Classic-редактор** — альтернативный режим на Cytoscape для простых графов
-- **Генерация C++ кода** — преобразование графа в исполняемый код с русскими комментариями
-- **Сохранение/загрузка** — работа с файлами `*.multicode.json`
+- **Генерация кода** — target-ы `cpp` и `ue` с русскими комментариями и preview
+- **Сохранение/загрузка** — работа с файлами `.multicode`
 - **Undo/Redo** — отмена и повтор действий (`Ctrl+Z` / `Ctrl+Y`)
 - **Copy/Paste** — копирование узлов с сохранением связей
 
@@ -42,10 +42,11 @@
 |------------|----------|-----------------|------------|
 | `multicode.openEditor` | MultiCode: Open Visual Editor | `Ctrl+Shift+V` | Открыть графический редактор |
 | `multicode.newGraph` | MultiCode: New Graph | — | Создать новый граф |
-| `multicode.saveGraph` | MultiCode: Save Graph | — | Сохранить граф в JSON |
-| `multicode.loadGraph` | MultiCode: Load Graph | — | Загрузить граф из JSON |
+| `multicode.saveGraph` | MultiCode: Save Graph | — | Сохранить граф в `.multicode` |
+| `multicode.loadGraph` | MultiCode: Load Graph | — | Загрузить граф из `.multicode` |
 | `multicode.translateGraph` | MultiCode: Translate Graph (Marian) | — | Запустить офлайн-перевод подписей графа |
 | `multicode.generateCode` | MultiCode: Generate Code | `Ctrl+Shift+G` | Генерация кода из графа |
+| `multicode.generateCodeBinding` | MultiCode: Вставить код в существующий файл | — | Записать сгенерированный код в связанный исходник |
 | `multicode.createClassFilesAndBind` | MultiCode: Создать файлы класса и привязать к редактору | — | Создать `ClassName.hpp/.cpp`, маркеры `@multicode:*` и сразу открыть MultiCode |
 
 ### Быстрое создание class-файлов из Explorer
@@ -62,7 +63,7 @@
 
 ### Настройки
 
-- `multicode.language` — язык по умолчанию (`cpp`, `rust`, `asm`)
+- `multicode.language` — язык по умолчанию (`cpp`, `ue`, `rust`, `asm`)
 - `multicode.displayLanguage` — язык интерфейса (`ru`, `en`)
 - `multicode.theme` — тема редактора (`dark`, `light`, `auto`)
 - `multicode.translation.engine` — движок перевода (`none`, `marian`)
@@ -107,31 +108,33 @@
 
 ### Формат файлов графа
 
-Файлы `*.multicode.json` будут содержать описание графа в формате GraphSerializer. Минимальный пример:
+Основной пользовательский формат сейчас хранится в `.multicode` и сериализуется через `src/shared/serializer.ts`, а не напрямую через C++ `GraphSerializer`.
+
+Минимальный пример современного документа:
 
 ```json
 {
-  "schema": {
+  "schemaVersion": 3,
+  "version": 3,
+  "savedAt": "2026-03-20T12:00:00.000Z",
+  "data": {
     "version": "1.0.0",
-    "coreMin": "0.1.0-alpha",
-    "coreMax": "0.1.x"
-  },
-  "graph": {
-    "id": 1,
-    "name": "Example Graph",
-    "metadata": {}
-  },
-  "nodes": [
-    {
-      "id": 1,
-      "type": "Start",
-      "name": "Start",
-      "ports": []
-    }
-  ],
-  "connections": []
+    "graphVersion": 3,
+    "language": "cpp",
+    "displayLanguage": "ru",
+    "nodes": [],
+    "edges": [],
+    "variables": [],
+    "functions": [],
+    "classes": [],
+    "classBindings": [],
+    "integrationBindings": [],
+    "symbolLocalization": {}
+  }
 }
 ```
+
+Если нужен именно core JSON для C++ runtime и snapshot-тестов, см. `include/visprog/core/GraphSerializer.hpp` и `src/core/GraphSerializer.cpp`.
 
 ## Разработка
 

@@ -62,6 +62,7 @@ const UI_SCALE_KEY = 'multicode.uiScale';
 type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
 type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
 type CodegenEntrypointMode = 'auto' | 'executable' | 'library';
+type ToolbarTargetPlatform = Extract<GraphState['language'], 'cpp' | 'ue'>;
 
 const getInitialEditorMode = (): EditorMode => {
   try {
@@ -144,6 +145,9 @@ const isEditorMode = (value: string): value is EditorMode =>
 
 const isGraphDisplayLanguage = (value: unknown): value is GraphDisplayLanguage =>
   value === 'ru' || value === 'en';
+
+const isToolbarTargetPlatform = (value: unknown): value is ToolbarTargetPlatform =>
+  value === 'cpp' || value === 'ue';
 
 const isTranslationDirection = (value: string): value is TranslationDirection =>
   value === 'ru-en' || value === 'en-ru';
@@ -452,6 +456,7 @@ const Toolbar: React.FC<{
   onCopyGraphId: () => void;
   editorMode: EditorMode;
   onEditorModeChange: (mode: EditorMode) => void;
+  onTargetPlatformChange: (language: ToolbarTargetPlatform) => void;
   showCodePreview: boolean;
   onShowCodePreviewChange: (show: boolean) => void;
   onShowHotkeys: () => void;
@@ -486,6 +491,7 @@ const Toolbar: React.FC<{
   onCopyGraphId,
   editorMode,
   onEditorModeChange,
+  onTargetPlatformChange,
   showCodePreview,
   onShowCodePreviewChange,
   onShowHotkeys,
@@ -727,6 +733,21 @@ const Toolbar: React.FC<{
             <option value="blueprint">{locale === 'ru' ? '🎨 Визуальный' : '🎨 Visual'}</option>
             <option value="cytoscape">{locale === 'ru' ? '📊 Классический' : '📊 Classic'}</option>
             <option value="dependency">{locale === 'ru' ? '🧩 Зависимости' : '🧩 Dependency'}</option>
+          </select>
+          <select
+            value={isToolbarTargetPlatform(graph.language) ? graph.language : 'cpp'}
+            onChange={(event) => {
+              const nextLanguage = event.currentTarget.value;
+              if (isToolbarTargetPlatform(nextLanguage)) {
+                onTargetPlatformChange(nextLanguage);
+              }
+            }}
+            title={translate('toolbar.targetPlatform', 'Целевая платформа')}
+            className="toolbar-select"
+            data-testid="toolbar-target-platform"
+          >
+            <option value="cpp">CPP</option>
+            <option value="ue">UE</option>
           </select>
           <select
             value={locale}
@@ -1915,6 +1936,21 @@ const App: React.FC = () => {
     vscode.setState({ graph: currentGraph, locale: nextLocale, layout: useGraphStore.getState().layout });
   };
 
+  const handleTargetPlatformChange = (nextLanguage: ToolbarTargetPlatform): void => {
+    const currentGraph = useGraphStore.getState().graph;
+    if (currentGraph.language === nextLanguage) {
+      return;
+    }
+
+    setGraph(
+      {
+        ...currentGraph,
+        language: nextLanguage,
+      },
+      { origin: 'local' }
+    );
+  };
+
   // Обработчик смены режима редактора
   const handleEditorModeChange = (mode: EditorMode): void => {
     setEditorMode(mode);
@@ -2852,6 +2888,7 @@ const App: React.FC = () => {
         onCopyGraphId={handleCopyGraphId}
         editorMode={editorMode}
         onEditorModeChange={handleEditorModeChange}
+        onTargetPlatformChange={handleTargetPlatformChange}
         showCodePreview={showCodePreview}
         onShowCodePreviewChange={setShowCodePreview}
         onShowHotkeys={() => setShowHotkeys(true)}

@@ -39,6 +39,7 @@ import {
   CodeGenContext,
   CodeGenOptions,
   CodeGenError,
+  CodeGenWarning,
   CodeGenErrorCode,
   CodeGenWarningCode,
   DEFAULT_CODEGEN_OPTIONS,
@@ -72,6 +73,27 @@ import {
   type ClassModelField,
   type ClassModelMethod,
 } from './model/classModel';
+
+export interface GraphVariableStorageDescriptor {
+  variableId: string;
+  identifier: string;
+  originalName: string;
+  cppType: string;
+  initializer: string;
+  dataType: PortDataType;
+  arrayRank: number;
+  vectorElementType?: VectorElementType;
+}
+
+export interface GeneratedUserFunctionSource {
+  functionId: string;
+  comments: string[];
+  resultTypeDeclaration?: string;
+  signature: string;
+  bodyLines: string[];
+  errors: CodeGenError[];
+  warnings: CodeGenWarning[];
+}
 
 const VECTOR_ELEMENT_TYPES: VectorElementType[] = [
   'int32',
@@ -361,6 +383,28 @@ export class CppCodeGenerator implements ICodeGenerator {
   getSupportedNodeTypes(): BlueprintNodeType[] {
     return this.registry.getSupportedTypes();
   }
+
+  private createBaseContext(graph: BlueprintGraphState, options: CodeGenOptions): CodeGenContext {
+    return {
+      graph,
+      options,
+      indentLevel: 0,
+      declaredVariables: new Map(),
+      declaredVariableInitializers: new Map(),
+      processedNodes: new Set(),
+      processedExecutionEntries: new Set(),
+      pendingExecutionEntryPorts: new Map(),
+      currentExecutionEntryPort: undefined,
+      errors: [],
+      warnings: [],
+      sourceMap: [],
+      currentLine: 1,
+      functions: graph.functions ?? [],
+      variableWriteCounts: new Map(),
+      requiredHelpers: new Set<TypeConversionHelperId>(),
+      supportedNodeTypes: this.getSupportedNodeTypes(),
+    };
+  }
   
   /**
    * Добавить кастомный генератор
@@ -423,25 +467,7 @@ export class CppCodeGenerator implements ICodeGenerator {
     }
     
     // Создать контекст
-    const context: CodeGenContext = {
-      graph,
-      options: opts,
-      indentLevel: 0,
-      declaredVariables: new Map(),
-      declaredVariableInitializers: new Map(),
-      processedNodes: new Set(),
-      processedExecutionEntries: new Set(),
-      pendingExecutionEntryPorts: new Map(),
-      currentExecutionEntryPort: undefined,
-      errors: [],
-      warnings: [],
-      sourceMap: [],
-      currentLine: 1,
-      functions: graph.functions ?? [],
-      variableWriteCounts: new Map(),
-      requiredHelpers: new Set<TypeConversionHelperId>(),
-      supportedNodeTypes: this.getSupportedNodeTypes(),
-    };
+    const context: CodeGenContext = this.createBaseContext(graph, opts);
     
     // Создать helpers для генераторов
     const helpers = this.createHelpers(context);
@@ -473,7 +499,7 @@ export class CppCodeGenerator implements ICodeGenerator {
 
     if (emitGraphBody) {
       // Генерируем пользовательские функции перед main()
-      if (graph.functions && graph.functions.length > 0) {
+      if (opts.emitUserFunctionDefinitions !== false && graph.functions && graph.functions.length > 0) {
         for (const func of graph.functions) {
           const funcLines = this.generateUserFunction(func, context, helpers);
           bodyLines.push(...funcLines);
@@ -489,7 +515,12 @@ export class CppCodeGenerator implements ICodeGenerator {
 
       // Предобъявления переменных графа (Blueprint variables),
       // чтобы GetVariable всегда имел валидный идентификатор в коде.
-      bodyLines.push(...this.generateGraphVariableDeclarations(context));
+      bodyLines.push(
+        ...this.generateGraphVariableDeclarations(
+          context,
+          opts.graphVariableDeclarationMode ?? 'emit',
+        ),
+      );
       
       // Найти Start узел и начать обход
       if (startNode) {
@@ -1781,6 +1812,62 @@ export class CppCodeGenerator implements ICodeGenerator {
     
     return lines;
   }
+
+  public generateUserFunctionSource(
+    func: BlueprintFunction,
+    graph: BlueprintGraphState,
+    options?: Partial<CodeGenOptions>
+  ): GeneratedUserFunctionSource {
+    const resolvedOptions: CodeGenOptions = {
+      ...DEFAULT_CODEGEN_OPTIONS,
+      includeHeaders: false,
+      generateMainWrapper: false,
+      generateClassDeclarations: false,
+      ...options,
+    };
+    const context = this.createBaseContext(graph, resolvedOptions);
+    const helpers = this.createHelpers(context);
+    const lines = this.generateUserFunction(func, context, helpers);
+
+    const signatureIndex = lines.findIndex((line) => {
+      const trimmed = line.trim();
+      return trimmed.endsWith('{') && !trimmed.startsWith('//') && !trimmed.startsWith('using ');
+    });
+
+    if (signatureIndex < 0) {
+      return {
+        functionId: func.id,
+        comments: [],
+        signature: FunctionEntryNodeGenerator.generateFunctionSignature(func),
+        bodyLines: [],
+        errors: context.errors,
+        warnings: context.warnings,
+      };
+    }
+
+    const signatureLine = lines[signatureIndex] ?? '';
+    const signature = signatureLine.replace(/\s*\{$/, '').trimEnd();
+    const closingIndex = [...lines]
+      .map((line, index) => ({ line: line.trim(), index }))
+      .reverse()
+      .find((item) => item.line === '}')
+      ?.index ?? lines.length;
+
+    const preambleLines = lines.slice(0, signatureIndex);
+    const comments = preambleLines.filter((line) => line.trimStart().startsWith('//'));
+    const resultTypeDeclaration = preambleLines.find((line) => line.trimStart().startsWith('using '));
+    const bodyLines = lines.slice(signatureIndex + 1, closingIndex);
+
+    return {
+      functionId: func.id,
+      comments,
+      resultTypeDeclaration,
+      signature,
+      bodyLines,
+      errors: context.errors,
+      warnings: context.warnings,
+    };
+  }
   
   /**
    * Получить значение по умолчанию для типа данных
@@ -2185,7 +2272,9 @@ export class CppCodeGenerator implements ICodeGenerator {
     return pointerMetaByVariableId;
   }
 
-  private generateGraphVariableDeclarations(context: CodeGenContext): string[] {
+  private collectGraphVariableStorageDescriptors(
+    context: CodeGenContext
+  ): GraphVariableStorageDescriptor[] {
     const variables = context.graph.variables ?? [];
     if (variables.length === 0) {
       return [];
@@ -2225,9 +2314,8 @@ export class CppCodeGenerator implements ICodeGenerator {
       (left, right) => declarationOrderWeight(left) - declarationOrderWeight(right)
     );
 
-    const lines: string[] = [];
+    const descriptors: GraphVariableStorageDescriptor[] = [];
     const usedIdentifiers = new Set<string>();
-    const ind = indent(context.indentLevel, context.options.indentSize);
 
     const reserveIdentifier = (base: string): string => {
       let candidate = base;
@@ -2295,8 +2383,6 @@ export class CppCodeGenerator implements ICodeGenerator {
           ? resolvePointerInitializer(variable, variablesWithRecoveredPointers, context.declaredVariables)
           : this.formatVariableLiteral(variable.defaultValue, dataType, vectorElementType, arrayRank);
 
-      lines.push(`${ind}${cppType} ${identifier} = ${defaultExpr};`);
-
       const aliases = new Set<string>([
         variableId,
         typeof variable.name === 'string' ? variable.name : '',
@@ -2326,12 +2412,45 @@ export class CppCodeGenerator implements ICodeGenerator {
           nodeId: variableId,
         });
       }
+
+      descriptors.push({
+        variableId,
+        identifier,
+        originalName: displayName,
+        cppType,
+        initializer: defaultExpr,
+        dataType: dataType as PortDataType,
+        arrayRank,
+        vectorElementType,
+      });
     }
 
-    if (lines.length > 0) {
-      lines.push('');
+    return descriptors;
+  }
+
+  public describeGraphVariableStorage(
+    graph: BlueprintGraphState,
+    options?: Partial<CodeGenOptions>
+  ): GraphVariableStorageDescriptor[] {
+    const resolvedOptions: CodeGenOptions = { ...DEFAULT_CODEGEN_OPTIONS, ...options };
+    const context = this.createBaseContext(graph, resolvedOptions);
+    return this.collectGraphVariableStorageDescriptors(context);
+  }
+
+  private generateGraphVariableDeclarations(
+    context: CodeGenContext,
+    mode: CodeGenOptions['graphVariableDeclarationMode'] = 'emit'
+  ): string[] {
+    const descriptors = this.collectGraphVariableStorageDescriptors(context);
+    if (mode === 'register-only' || descriptors.length === 0) {
+      return [];
     }
 
+    const lines = descriptors.map(({ cppType, identifier, initializer }) => {
+      const ind = indent(context.indentLevel, context.options.indentSize);
+      return `${ind}${cppType} ${identifier} = ${initializer};`;
+    });
+    lines.push('');
     return lines;
   }
   

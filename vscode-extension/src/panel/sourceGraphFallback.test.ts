@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createBoundSourceSeedGraphState,
   createDetachedSourceGraphCacheKey,
   createDetachedSourceGraphId,
   createDetachedSourceGraphState,
@@ -31,5 +32,18 @@ describe('sourceGraphFallback', () => {
     expect(graph.language).toBe('cpp');
     expect(graph.displayLanguage).toBe('ru');
     expect(graph.id).toMatch(/^graph-file-player_controller-[a-f0-9]{8}$/);
+  });
+
+  it('создает seed для bound source с явным graphId и сохраняет текущий target', () => {
+    const graph = createBoundSourceSeedGraphState('F:/Workspace/game/player_controller.cpp', {
+      graphId: 'graph-bound-player',
+      language: 'ue',
+      displayLanguage: 'ru',
+    });
+
+    expect(graph.id).toBe('graph-bound-player');
+    expect(graph.name).toBe('player_controller');
+    expect(graph.language).toBe('ue');
+    expect(graph.displayLanguage).toBe('ru');
   });
 });

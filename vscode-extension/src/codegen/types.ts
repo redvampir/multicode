@@ -122,12 +122,16 @@ export interface CodeGenOptions {
   includeHeaders: boolean;
   /** Генерировать main() обёртку */
   generateMainWrapper: boolean;
+  /** Генерировать свободные определения пользовательских функций до основного тела */
+  emitUserFunctionDefinitions?: boolean;
   /** Генерировать объявления/определения классов из IR */
   generateClassDeclarations?: boolean;
   /** Режим вывода class-блоков */
   classEmissionMode?: 'combined' | 'declarations-only' | 'definitions-only' | 'none';
   /** Выводить ли body графа (узлы/функции/main). Для header-режима может быть отключено */
   emitGraphBody?: boolean;
+  /** Как обращаться с верхнеуровневыми переменными графа */
+  graphVariableDeclarationMode?: 'emit' | 'register-only';
   /** Принудительные include (например, #include "MyClass.hpp"), вставляются в начало include-блока */
   forcedIncludes?: string[];
 }
@@ -139,9 +143,11 @@ export const DEFAULT_CODEGEN_OPTIONS: CodeGenOptions = {
   indentSize: 4,
   includeHeaders: true,
   generateMainWrapper: true,
+  emitUserFunctionDefinitions: true,
   generateClassDeclarations: true,
   classEmissionMode: 'combined',
   emitGraphBody: true,
+  graphVariableDeclarationMode: 'emit',
   forcedIncludes: [],
 };
 

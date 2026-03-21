@@ -5,17 +5,17 @@
 
 // Сгенерировано MultiCode
 // Граф: Untitled Graph
-// Дата: 03.03.2026, 11:03:11
+// Дата: 21.03.2026, 08:46:03
 // @multicode:graph id=graph-1772448508528 file=.multicode/graph-1772448508528.multicode
 
 void newFunction1() {
     return;
 }
 
-int main() {
-    std::string test = "Тест";
+std::string test = "Тест";
+int test_1 = 0;
 
-    ContosoData::print_status(test);
-    return 0;
-}
+newFunction1();
+ContosoData::print_status(test);
+return 0;
 

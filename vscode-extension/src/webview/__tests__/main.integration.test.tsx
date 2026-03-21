@@ -214,6 +214,43 @@ describe('main.tsx integration', () => {
     );
   });
 
+  it('переключает целевую платформу графа через toolbar', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+    vi.useFakeTimers();
+
+    dispatchSetState({
+      ...createDefaultGraphState(),
+      id: 'graph-target-switch',
+      name: 'Target switch graph',
+      displayLanguage: 'ru',
+      language: 'cpp',
+    });
+
+    try {
+      const targetSelect = screen.getByTestId('toolbar-target-platform') as HTMLSelectElement;
+      expect(targetSelect.value).toBe('cpp');
+
+      fireEvent.change(targetSelect, { target: { value: 'ue' } });
+      expect((screen.getByTestId('toolbar-target-platform') as HTMLSelectElement).value).toBe('ue');
+      expect(screen.getByText(/Целевая платформа: UE/i)).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(220);
+      });
+
+      const graphChangedCalls = postMessageMock.mock.calls
+        .map((entry) => entry[0])
+        .filter((message) => message?.type === 'graphChanged');
+      expect(graphChangedCalls.length).toBeGreaterThan(0);
+
+      const payload = graphChangedCalls[graphChangedCalls.length - 1]?.payload as Record<string, unknown>;
+      expect(payload.language).toBe('ue');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('отправляет graphId вместе с graphChanged', async () => {
     setEditorMode('blueprint');
     postMessageMock.mockClear();

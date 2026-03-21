@@ -99,6 +99,7 @@ import {
 import { SymbolIndexerRegistry } from './symbol-indexer';
 import { buildCodeWithUnifiedIncludes } from './includeBlock';
 import {
+  createBoundSourceSeedGraphState,
   createDetachedSourceGraphCacheKey,
   createDetachedSourceGraphState,
 } from './sourceGraphFallback';
@@ -3539,11 +3540,11 @@ export class GraphPanel {
 
       const seed = overrideMismatchedGraph
         ? ({ ...overrideMismatchedGraph, id: binding.graphId } as GraphState)
-        : ({
-            ...createDefaultGraphState(),
-            id: binding.graphId,
+        : createBoundSourceSeedGraphState(codeUri.fsPath, {
+            graphId: binding.graphId,
+            language: this.graphState.language,
             displayLanguage: this.locale,
-          } as GraphState);
+          });
 
       this.graphState = this.normalizeState(seed);
       await this.hydrateClassesFromSidecarIfNeeded(sourceText, rootFsPath);

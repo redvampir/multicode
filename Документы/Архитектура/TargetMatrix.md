@@ -25,3 +25,4 @@
 - UE-специфика добавляется через композицию extension-полей (`extensions.ue`) поверх той же модели, без отдельной UE-копии DTO.
 - Пайплайн `graph -> class model -> render` используется общий; target-стратегия меняет только валидацию/обёртку и макросы (`UCLASS`, `UFUNCTION`, `GENERATED_BODY`).
 - Это устраняет второй контур маппинга и снижает риск рассинхронизации C++/UE генераторов при эволюции `BlueprintClass`.
+- Верхнеуровневые `graph.functions` в `ue` target рендерятся как member-методы generated UObject-класса, а `graph.variables` — как reflected `UPROPERTY` members, чтобы EventGraph и пользовательские функции работали с одним и тем же состоянием без локальных дублей.

@@ -62,21 +62,55 @@ export class UeCodeGenerator implements ICodeGenerator {
       };
     }
 
-    const cppResult = this.cppGenerator.generate(graph, {
+    const eventGraphResult = this.cppGenerator.generate(graph, {
       ...options,
       includeHeaders: false,
       generateMainWrapper: false,
       generateClassDeclarations: false,
+      emitUserFunctionDefinitions: false,
+      graphVariableDeclarationMode: 'register-only',
     });
 
-    if (!cppResult.success) {
-      return cppResult;
+    if (!eventGraphResult.success) {
+      return eventGraphResult;
     }
 
-    const transformedCode = this.strategy.render(graph, cppResult.code);
+    const topLevelVariables = this.cppGenerator.describeGraphVariableStorage(graph, {
+      ...options,
+      graphVariableDeclarationMode: 'register-only',
+    });
+    const topLevelFunctions = (graph.functions ?? []).map((func) => ({
+      func,
+      source: this.cppGenerator.generateUserFunctionSource(func, graph, options),
+    }));
+
+    const topLevelFunctionErrors = topLevelFunctions.flatMap(({ source }) => source.errors);
+    if (topLevelFunctionErrors.length > 0) {
+      return {
+        ...eventGraphResult,
+        success: false,
+        code: '',
+        errors: [...eventGraphResult.errors, ...topLevelFunctionErrors],
+      };
+    }
+
+    const transformedCode = this.strategy.render(
+      graph,
+      eventGraphResult.code,
+      topLevelVariables,
+      topLevelFunctions,
+    );
     return {
-      ...cppResult,
+      ...eventGraphResult,
       code: transformedCode,
+      warnings: [
+        ...eventGraphResult.warnings,
+        ...topLevelFunctions.flatMap(({ source }) => source.warnings),
+      ],
+      stats: {
+        ...eventGraphResult.stats,
+        linesOfCode: transformedCode.split('\n').length,
+      },
     };
   }
 }

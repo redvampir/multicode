@@ -54,3 +54,22 @@ export const createDetachedSourceGraphState = (
     dirty: false,
   };
 };
+
+export const createBoundSourceSeedGraphState = (
+  sourcePath: string,
+  options: {
+    graphId: string;
+    language: GraphLanguage;
+    displayLanguage: GraphDisplayLanguage;
+  }
+): GraphState => {
+  const detached = createDetachedSourceGraphState(sourcePath, {
+    language: options.language,
+    displayLanguage: options.displayLanguage,
+  });
+
+  return {
+    ...detached,
+    id: options.graphId,
+  };
+};

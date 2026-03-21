@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "savedAt": "2026-03-20T02:23:29.286Z",
+  "savedAt": "2026-03-21T05:46:04.115Z",
   "data": {
     "id": "graph-1772448508528",
     "name": "Untitled Graph",
     "graphVersion": 3,
-    "language": "cpp",
+    "language": "ue",
     "displayLanguage": "ru",
     "nodes": [
       {
@@ -13,16 +13,16 @@
         "label": "Start",
         "type": "Start",
         "position": {
-          "x": 80,
-          "y": 80
+          "x": -256,
+          "y": 64
         },
         "blueprintNode": {
           "id": "node-start",
           "label": "Start",
           "type": "Start",
           "position": {
-            "x": 80,
-            "y": 80
+            "x": -256,
+            "y": 64
           },
           "inputs": [],
           "outputs": [
@@ -172,24 +172,51 @@
             "symbolKind": "function"
           }
         }
+      },
+      {
+        "id": "call-1774071838351-p288y8s5e",
+        "label": "Новая функция 1",
+        "type": "Function",
+        "position": {
+          "x": 80,
+          "y": 64
+        },
+        "blueprintNode": {
+          "id": "call-1774071838351-p288y8s5e",
+          "label": "Новая функция 1",
+          "type": "CallUserFunction",
+          "position": {
+            "x": 80,
+            "y": 64
+          },
+          "inputs": [
+            {
+              "id": "call-1774071838351-p288y8s5e-exec-in",
+              "name": "",
+              "dataType": "execution",
+              "direction": "input",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "outputs": [
+            {
+              "id": "call-1774071838351-p288y8s5e-exec-out",
+              "name": "",
+              "dataType": "execution",
+              "direction": "output",
+              "index": 0,
+              "connected": false
+            }
+          ],
+          "properties": {
+            "functionId": "func-1772453043025-40f45zk2g",
+            "functionName": "newFunction1"
+          }
+        }
       }
     ],
     "edges": [
-      {
-        "id": "edge-1772499045149-qbjohbd",
-        "source": "node-start",
-        "target": "call-1772499041821-do2dr4t2t",
-        "label": "flow",
-        "kind": "execution",
-        "blueprintEdge": {
-          "id": "edge-1772499045149-qbjohbd",
-          "sourceNode": "node-start",
-          "sourcePort": "exec-out",
-          "targetNode": "call-1772499041821-do2dr4t2t",
-          "targetPort": "call-1772499041821-do2dr4t2t-exec-in",
-          "kind": "execution"
-        }
-      },
       {
         "id": "edge-1772499046645-e99ezy7",
         "source": "call-1772499041821-do2dr4t2t",
@@ -220,9 +247,39 @@
           "kind": "data",
           "dataType": "string"
         }
+      },
+      {
+        "id": "edge-1774071915680-06xssgk",
+        "source": "call-1774071838351-p288y8s5e",
+        "target": "call-1772499041821-do2dr4t2t",
+        "label": "flow",
+        "kind": "execution",
+        "blueprintEdge": {
+          "id": "edge-1774071915680-06xssgk",
+          "sourceNode": "call-1774071838351-p288y8s5e",
+          "sourcePort": "call-1774071838351-p288y8s5e-exec-out",
+          "targetNode": "call-1772499041821-do2dr4t2t",
+          "targetPort": "call-1772499041821-do2dr4t2t-exec-in",
+          "kind": "execution"
+        }
+      },
+      {
+        "id": "edge-1774071918381-1t7wgwe",
+        "source": "node-start",
+        "target": "call-1774071838351-p288y8s5e",
+        "label": "flow",
+        "kind": "execution",
+        "blueprintEdge": {
+          "id": "edge-1774071918381-1t7wgwe",
+          "sourceNode": "node-start",
+          "sourcePort": "exec-out",
+          "targetNode": "call-1774071838351-p288y8s5e",
+          "targetPort": "call-1774071838351-p288y8s5e-exec-in",
+          "kind": "execution"
+        }
       }
     ],
-    "updatedAt": "2026-03-20T02:23:28.830Z",
+    "updatedAt": "2026-03-21T05:46:03.663Z",
     "dirty": false,
     "variables": [
       {
@@ -239,6 +296,21 @@
         "isPrivate": false,
         "color": "#E91E63",
         "createdAt": "2026-03-02T10:50:11.935Z"
+      },
+      {
+        "id": "var_1774070367076_u7zlijrqi",
+        "name": "test_1",
+        "nameRu": "Тест",
+        "codeName": "test_1",
+        "dataType": "int32",
+        "defaultValue": 0,
+        "category": "default",
+        "description": "",
+        "isArray": false,
+        "arrayRank": 0,
+        "isPrivate": false,
+        "color": "#00BCD4",
+        "createdAt": "2026-03-21T05:19:27.076Z"
       }
     ],
     "functions": [
@@ -315,6 +387,7 @@
       }
     ],
     "classes": [],
+    "classBindings": [],
     "integrationBindings": [
       {
         "integrationId": "file_dep_check_text_a1eac043",
@@ -346,7 +419,6 @@
         "signatureHash": "57d71efa7735bffe03aa3d0b5ab345a9332727a0",
         "localizedNameRu": ""
       }
-    },
-    "classBindings": []
+    }
   }
 }

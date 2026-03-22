@@ -85,8 +85,18 @@ vi.mock('../DependencyViewPanel', () => ({
   },
 }));
 
-const setEditorMode = (mode: 'blueprint' | 'cytoscape' | 'dependency'): void => {
-  const editorModeSelect = screen.getAllByRole('combobox')[0];
+const openToolbarMenu = async (triggerTestId: string, popupTestId: string): Promise<void> => {
+  const trigger = screen.getByTestId(triggerTestId);
+  fireEvent.click(trigger);
+  if (!screen.queryByTestId(popupTestId)) {
+    fireEvent.click(trigger);
+  }
+  await screen.findByTestId(popupTestId);
+};
+
+const setEditorMode = async (mode: 'blueprint' | 'cytoscape' | 'dependency'): Promise<void> => {
+  await openToolbarMenu('toolbar-mode-menu-trigger', 'toolbar-mode-menu-popup');
+  const editorModeSelect = screen.getByTestId('toolbar-editor-mode-select');
   fireEvent.change(editorModeSelect, { target: { value: mode } });
 };
 
@@ -134,14 +144,8 @@ const dispatchExternalIpcResponse = (data: unknown): void => {
   });
 };
 
-const openWorkingFilesMenu = async (): Promise<void> => {
-  const trigger = screen.getByTestId('toolbar-working-files-menu-trigger');
-  fireEvent.click(trigger);
-  if (!screen.queryByTestId('toolbar-working-file-menu-popup')) {
-    fireEvent.click(trigger);
-  }
-  await screen.findByTestId('toolbar-working-file-menu-popup');
-};
+const openWorkingFilesMenu = async (): Promise<void> =>
+  openToolbarMenu('toolbar-files-menu-trigger', 'toolbar-files-menu-popup');
 
 describe('main.tsx integration', () => {
   beforeAll(async () => {
@@ -173,7 +177,7 @@ describe('main.tsx integration', () => {
   });
 
   it('показывает общие правые панели в режиме Blueprint', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     dispatchValidationResult();
 
     expect(await screen.findByText('Перевод графа')).toBeInTheDocument();
@@ -185,7 +189,7 @@ describe('main.tsx integration', () => {
   });
 
   it('в режиме Classic сохраняет общие панели и показывает NodeActions', async () => {
-    setEditorMode('cytoscape');
+    await setEditorMode('cytoscape');
     dispatchValidationResult();
 
     await waitFor(() => expect(screen.getByTestId('graph-editor-mock')).toBeInTheDocument());
@@ -198,11 +202,10 @@ describe('main.tsx integration', () => {
   });
 
   it('кнопка перевода в toolbar отправляет requestTranslate', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
 
-    const toolbar = document.querySelector('.toolbar');
-    expect(toolbar).toBeTruthy();
-    const translateButton = within(toolbar as HTMLElement).getByRole('button', { name: /Перевести/i });
+    await openToolbarMenu('toolbar-view-menu-trigger', 'toolbar-view-menu-popup');
+    const translateButton = within(screen.getByTestId('toolbar-view-menu-popup')).getByRole('button', { name: /Перевести/i });
 
     fireEvent.click(translateButton);
 
@@ -215,7 +218,7 @@ describe('main.tsx integration', () => {
   });
 
   it('переключает целевую платформу графа через toolbar', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
     vi.useFakeTimers();
 
@@ -233,7 +236,7 @@ describe('main.tsx integration', () => {
 
       fireEvent.change(targetSelect, { target: { value: 'ue' } });
       expect((screen.getByTestId('toolbar-target-platform') as HTMLSelectElement).value).toBe('ue');
-      expect(screen.getByText(/Целевая платформа: UE/i)).toBeInTheDocument();
+      expect(screen.getByText(/Кодоген: UE/i)).toBeInTheDocument();
 
       await act(async () => {
         vi.advanceTimersByTime(220);
@@ -252,7 +255,7 @@ describe('main.tsx integration', () => {
   });
 
   it('отправляет graphId вместе с graphChanged', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
     vi.useFakeTimers();
 
@@ -283,7 +286,7 @@ describe('main.tsx integration', () => {
   });
 
   it('graphChanged включает symbolLocalization после локального изменения', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
     vi.useFakeTimers();
 
@@ -329,7 +332,7 @@ describe('main.tsx integration', () => {
   });
 
   it('graphChanged сохраняет ueMacros после локального изменения', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
     vi.useFakeTimers();
 
@@ -385,7 +388,7 @@ describe('main.tsx integration', () => {
   });
 
   it('в режиме Dependency добавляет внешний symbol в graph state по клику', async () => {
-    setEditorMode('dependency');
+    await setEditorMode('dependency');
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Insert External Symbol' })).toBeInTheDocument();
     });
@@ -414,9 +417,10 @@ describe('main.tsx integration', () => {
   });
 
   it('кнопки выбора файлов отправляют file/pick с нужной целью', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
 
+    await openWorkingFilesMenu();
     fireEvent.click(screen.getByTestId('toolbar-bind-file-pick'));
     expect(postMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -433,6 +437,7 @@ describe('main.tsx integration', () => {
       },
     });
 
+    await openWorkingFilesMenu();
     fireEvent.click(screen.getByTestId('toolbar-dependency-file-pick'));
     expect(postMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -451,7 +456,7 @@ describe('main.tsx integration', () => {
   });
 
   it('меню рабочего файла позволяет открыть файл и блокирует удаление активного', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
 
     dispatchExternalIpcResponse({
@@ -467,7 +472,7 @@ describe('main.tsx integration', () => {
     });
 
     await openWorkingFilesMenu();
-    expect(screen.getByTestId('toolbar-working-file-menu-popup')).toBeInTheDocument();
+    expect(screen.getByTestId('toolbar-files-menu-popup')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'alpha.cpp' }));
     expect(postMessageMock).toHaveBeenCalledWith(
@@ -485,7 +490,7 @@ describe('main.tsx integration', () => {
   });
 
   it('поиск в меню рабочих файлов фильтрует список по имени', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
     postMessageMock.mockClear();
 
     dispatchExternalIpcResponse({
@@ -505,7 +510,7 @@ describe('main.tsx integration', () => {
     });
 
     await openWorkingFilesMenu();
-    expect(screen.getByTestId('toolbar-working-file-menu-popup')).toBeInTheDocument();
+    expect(screen.getByTestId('toolbar-files-menu-popup')).toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('toolbar-working-file-search'), { target: { value: 'beta' } });
 
@@ -522,7 +527,7 @@ describe('main.tsx integration', () => {
   });
 
   it('показывает статус class storage в header и сводке графа', async () => {
-    setEditorMode('blueprint');
+    await setEditorMode('blueprint');
 
     dispatchExternalIpcResponse({
       type: 'classStorageStatusChanged',

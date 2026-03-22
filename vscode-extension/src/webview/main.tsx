@@ -52,6 +52,11 @@ import {
 import HelpPanel from './HelpPanel';
 import { globalRegistry } from '../shared/packageLoader';
 import type { BundledPackageSettings } from '../shared/bundledPackages';
+import {
+  buildValidationIssues,
+  filterValidationIssuesBySelection,
+  resolveGraphNodeDisplayName,
+} from './inspectorUtils';
 
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape' | 'dependency';
@@ -447,6 +452,8 @@ const reportWebviewError = (message: string): void => {
   sendToExtension({ type: 'reportWebviewError', payload: { message } });
 };
 
+type ToolbarMenuKind = 'files' | 'mode' | 'codegen' | 'view';
+
 const Toolbar: React.FC<{
   locale: GraphDisplayLanguage;
   onLocaleChange: (locale: GraphDisplayLanguage) => void;
@@ -482,6 +489,7 @@ const Toolbar: React.FC<{
   onCodegenProfileChange: (profile: CodegenOutputProfile) => void;
   codegenEntrypointMode: CodegenEntrypointMode;
   onCodegenEntrypointModeChange: (mode: CodegenEntrypointMode) => void;
+  validation?: ValidationResult;
 }> = ({
   locale,
   onLocaleChange,
@@ -517,10 +525,12 @@ const Toolbar: React.FC<{
   onCodegenProfileChange,
   codegenEntrypointMode,
   onCodegenEntrypointModeChange,
+  validation,
 }) => {
   const graph = useGraphStore((state) => state.graph);
   const [pending, setPending] = useState(false);
-  const [workingFilesMenu, setWorkingFilesMenu] = useState<{
+  const [activeMenu, setActiveMenu] = useState<{
+    kind: ToolbarMenuKind;
     x: number;
     y: number;
   } | null>(null);
@@ -586,9 +596,48 @@ const Toolbar: React.FC<{
 
   const boundFileKey = boundFilePath ? normalizeFilePathForMatch(boundFilePath) : '';
   const dependencySourceKey = dependencySourceFilePath ? normalizeFilePathForMatch(dependencySourceFilePath) : '';
+  const problemCounts = useMemo(() => ({
+    errors: validation?.errors.length ?? 0,
+    warnings: validation?.warnings.length ?? 0,
+  }), [validation]);
+  const documentTitle = boundFileName ?? graph.name;
+  const documentStatusLabel = graph.dirty
+    ? translate('toolbar.unsaved', 'Не сохранено')
+    : translate('overview.synced', 'Сохранено');
+  const modeLabel = editorMode === 'blueprint'
+    ? (locale === 'ru' ? 'Визуальный' : 'Visual')
+    : editorMode === 'cytoscape'
+      ? (locale === 'ru' ? 'Классический' : 'Classic')
+      : (locale === 'ru' ? 'Зависимости' : 'Dependency');
+  const codegenChipLabel = `${graph.language.toUpperCase()} · ${codegenProfile}`;
+  const problemsLabel = locale === 'ru'
+    ? `Проблемы: ${problemCounts.errors}/${problemCounts.warnings}`
+    : `Problems: ${problemCounts.errors}/${problemCounts.warnings}`;
+  const problemsChipClass = problemCounts.errors > 0
+    ? 'toolbar-context-chip toolbar-context-chip--error'
+    : problemCounts.warnings > 0
+      ? 'toolbar-context-chip toolbar-context-chip--warn'
+      : 'toolbar-context-chip toolbar-context-chip--ok';
+
+  const toggleMenu = useCallback((kind: ToolbarMenuKind, event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setActiveMenu((prev) => {
+      if (prev?.kind === kind) {
+        return null;
+      }
+      return {
+        kind,
+        x: rect.left,
+        y: rect.bottom + 8,
+      };
+    });
+    if (kind === 'files') {
+      setWorkingFilesFilter('');
+    }
+  }, []);
 
   useLayoutEffect(() => {
-    if (!workingFilesMenu || !menuRef.current) {
+    if (!activeMenu || !menuRef.current) {
       return;
     }
 
@@ -598,16 +647,16 @@ const Toolbar: React.FC<{
     const padding = 8;
 
     const nextX = Math.min(
-      Math.max(workingFilesMenu.x, padding),
+      Math.max(activeMenu.x, padding),
       Math.max(padding, viewportWidth - rect.width - padding),
     );
     const nextY = Math.min(
-      Math.max(workingFilesMenu.y, padding),
+      Math.max(activeMenu.y, padding),
       Math.max(padding, viewportHeight - rect.height - padding),
     );
 
-    if (nextX !== workingFilesMenu.x || nextY !== workingFilesMenu.y) {
-      setWorkingFilesMenu((prev) => (prev
+    if (nextX !== activeMenu.x || nextY !== activeMenu.y) {
+      setActiveMenu((prev) => (prev
         ? {
             ...prev,
             x: nextX,
@@ -615,27 +664,27 @@ const Toolbar: React.FC<{
           }
         : prev));
     }
-  }, [workingFilesMenu]);
+  }, [activeMenu]);
 
   useEffect(() => {
-    if (!workingFilesMenu) {
+    if (!activeMenu) {
       return;
     }
 
     const closeMenuOnOutside = (event: MouseEvent): void => {
       const target = event.target;
       if (!(target instanceof Node)) {
-        setWorkingFilesMenu(null);
+        setActiveMenu(null);
         return;
       }
       if (!menuRef.current?.contains(target)) {
-        setWorkingFilesMenu(null);
+        setActiveMenu(null);
       }
     };
-    const closeMenu = (): void => setWorkingFilesMenu(null);
+    const closeMenu = (): void => setActiveMenu(null);
     const closeMenuOnEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setWorkingFilesMenu(null);
+        setActiveMenu(null);
       }
     };
     window.addEventListener('mousedown', closeMenuOnOutside);
@@ -648,153 +697,49 @@ const Toolbar: React.FC<{
       window.removeEventListener('scroll', closeMenu, true);
       window.removeEventListener('keydown', closeMenuOnEscape);
     };
-  }, [workingFilesMenu]);
+  }, [activeMenu]);
 
   useEffect(() => {
-    if (!workingFilesMenu) {
+    if (activeMenu?.kind !== 'files') {
       return;
     }
     const frame = window.requestAnimationFrame(() => {
       workingFilesSearchRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [workingFilesMenu]);
+  }, [activeMenu]);
 
-  return (
-    <div className="toolbar">
-      {/* Информация о графе */}
-      <div className="toolbar-info">
-        <div className="toolbar-title">{graph.name}</div>
-        <div className="toolbar-subtitle">
-          {translate('toolbar.targetPlatform', '{language}', { language: graph.language.toUpperCase() })}
-          <span
-            className={hasStorageIssues ? 'toolbar-storage-badge toolbar-storage-badge--warn' : 'toolbar-storage-badge toolbar-storage-badge--ok'}
-            title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
-            data-testid="class-storage-badge"
-          >
-            {' · '}{storageBadgeLabel}
-          </span>
-          <span
-            className={`toolbar-storage-badge ${classNodesAdvancedEnabled ? 'toolbar-storage-badge--feature' : ''}`}
-            title={classNodesAdvancedEnabled
-              ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
-              : 'Доступен базовый пакет class-узлов'}
-          >
-            {' · '}{classNodesBadgeLabel}
-          </span>
-          {boundFileName && (
-            <span className="toolbar-bound-file" title={boundFilePath ?? ''}>
-              {' · '}📄 {boundFileName}
-            </span>
-          )}
-          {!boundFileName && (
-            <span className="toolbar-bound-file toolbar-bound-file--none">
-              {' · '}{translate('toolbar.noFile', 'файл не привязан')}
-            </span>
-          )}
-        </div>
-        <div className="toolbar-working-files">
+  const renderFilesMenu = (): React.ReactNode => (
+    <>
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Документ' : 'Document'}</div>
+        <div className="toolbar-menu-button-row">
           <button
             type="button"
-            className="toolbar-working-files-trigger"
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              if (workingFilesMenu) {
-                setWorkingFilesMenu(null);
-                return;
-              }
-              setWorkingFilesFilter('');
-              setWorkingFilesMenu({
-                x: rect.left,
-                y: rect.bottom + 4,
-              });
+            onClick={() => {
+              send('requestNewGraph');
+              setActiveMenu(null);
             }}
-            title={translate('toolbar.workingFiles.menu' as TranslationKey, 'Рабочие файлы')}
-            data-testid="toolbar-working-files-menu-trigger"
+            disabled={pending}
           >
-            📚 {translate('toolbar.workingFiles.menu' as TranslationKey, 'Файлы')} ({workingFiles.length})
+            📄 {translate('toolbar.newGraph', 'Новый')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              send('requestLoad');
+              setActiveMenu(null);
+            }}
+            disabled={pending}
+          >
+            📂 {translate('toolbar.loadGraph', 'Открыть')}
           </button>
         </div>
       </div>
-      
-      <div className="toolbar-actions">
-        {/* Группа: Настройки */}
-        <div className="toolbar-group">
-          <select
-            value={editorMode}
-            onChange={(event) => {
-              const nextMode = event.currentTarget.value;
-              if (isEditorMode(nextMode)) {
-                onEditorModeChange(nextMode);
-              }
-            }}
-            title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}
-            className="toolbar-select"
-          >
-            <option value="blueprint">{locale === 'ru' ? '🎨 Визуальный' : '🎨 Visual'}</option>
-            <option value="cytoscape">{locale === 'ru' ? '📊 Классический' : '📊 Classic'}</option>
-            <option value="dependency">{locale === 'ru' ? '🧩 Зависимости' : '🧩 Dependency'}</option>
-          </select>
-          <select
-            value={isToolbarTargetPlatform(graph.language) ? graph.language : 'cpp'}
-            onChange={(event) => {
-              const nextLanguage = event.currentTarget.value;
-              if (isToolbarTargetPlatform(nextLanguage)) {
-                onTargetPlatformChange(nextLanguage);
-              }
-            }}
-            title={translate('toolbar.targetPlatform', 'Целевая платформа')}
-            className="toolbar-select"
-            data-testid="toolbar-target-platform"
-          >
-            <option value="cpp">CPP</option>
-            <option value="ue">UE</option>
-          </select>
-          <select
-            value={locale}
-            onChange={(event) => {
-              const nextLocale = event.currentTarget.value;
-              if (isGraphDisplayLanguage(nextLocale)) {
-                onLocaleChange(nextLocale);
-              }
-            }}
-            title={translate('toolbar.languageSwitch', 'Язык интерфейса')}
-            className="toolbar-select"
-          >
-            <option value="ru">🇷🇺 RU</option>
-            <option value="en">🇺🇸 EN</option>
-          </select>
-          <select
-            value={String(uiScale)}
-            onChange={(event) => {
-              const nextScale = Number(event.currentTarget.value);
-              if (!Number.isFinite(nextScale)) {
-                return;
-              }
-              onUiScaleChange(nextScale);
-            }}
-            title={translate('toolbar.uiScale' as TranslationKey, 'Масштаб интерфейса')}
-            className="toolbar-select"
-            data-testid="toolbar-ui-scale"
-          >
-            <option value="0.8">80%</option>
-            <option value="0.9">90%</option>
-            <option value="1">100%</option>
-            <option value="1.1">110%</option>
-          </select>
-        </div>
-        
-        {/* Группа: Файл */}
-        <div className="toolbar-group">
-          <button onClick={() => send('requestNewGraph')} disabled={pending} title={translate('tooltip.newGraph', 'Новый граф')}>
-            📄 {translate('toolbar.newGraph', 'Новый')}
-          </button>
-          <button onClick={() => send('requestLoad')} disabled={pending} title={translate('tooltip.loadGraph', 'Загрузить')}>
-            📂 {translate('toolbar.loadGraph', 'Открыть')}
-          </button>
-          <button onClick={() => send('requestSave')} disabled={pending} title={translate('tooltip.saveGraph', 'Сохранить')}>
-            💾 {translate('toolbar.saveGraph', 'Сохранить')}
-          </button>
+
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Активный файл' : 'Active file'}</div>
+        <div className="toolbar-menu-field-row">
           <select
             value={boundFileKey}
             onChange={(event) => {
@@ -830,6 +775,17 @@ const Toolbar: React.FC<{
           >
             📁
           </button>
+        </div>
+        <div className="toolbar-menu-note">
+          {boundFileName
+            ? `${locale === 'ru' ? 'Привязан:' : 'Bound:'} ${boundFileName}`
+            : translate('toolbar.noFile', 'файл не привязан')}
+        </div>
+      </div>
+
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Зависимости файла' : 'File dependency'}</div>
+        <div className="toolbar-menu-field-row">
           <select
             value={dependencySourceKey}
             onChange={(event) => {
@@ -864,191 +820,432 @@ const Toolbar: React.FC<{
           >
             📁
           </button>
-          <button
-            onClick={onAddCurrentFileDependency}
-            disabled={pending || !boundFilePath || !dependencySourceFilePath}
-            title={translate('toolbar.addDependencyFromFile' as TranslationKey, 'Прикрепить файл зависимости к активному файлу')}
-          >
-            🧩 {translate('toolbar.addDependencyShort' as TranslationKey, 'Прикрепить')}
-          </button>
         </div>
-        
-        {/* Группа: Действия */}
-        <div className="toolbar-group">
-          <button onClick={() => send('requestValidate')} disabled={pending} title={translate('tooltip.validateGraph', 'Проверить')}>
-            ✅ {translate('toolbar.validateGraph', 'Проверить')}
-          </button>
+        <button
+          type="button"
+          onClick={() => {
+            void Promise.resolve(onAddCurrentFileDependency());
+          }}
+          disabled={pending || !boundFilePath || !dependencySourceFilePath}
+          title={translate('toolbar.addDependencyFromFile' as TranslationKey, 'Прикрепить файл зависимости к активному файлу')}
+        >
+          🧩 {translate('toolbar.addDependencyShort' as TranslationKey, 'Прикрепить')}
+        </button>
+      </div>
+
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{translate('toolbar.workingFiles.menu' as TranslationKey, 'Рабочие файлы')}</div>
+        <button
+          type="button"
+          onClick={() => {
+            onAddWorkingFile();
+            setActiveMenu(null);
+          }}
+          data-testid="toolbar-working-file-menu-add"
+        >
+          ＋ {translate('toolbar.workingFiles.add' as TranslationKey, 'Добавить файл в рабочий список')}
+        </button>
+        <div className="toolbar-working-file-menu-search">
+          <input
+            ref={workingFilesSearchRef}
+            type="text"
+            className="toolbar-working-file-menu-search-input"
+            placeholder={translate('toolbar.workingFiles.search' as TranslationKey, 'Поиск файла...')}
+            value={workingFilesFilter}
+            onChange={(event) => setWorkingFilesFilter(event.currentTarget.value)}
+            data-testid="toolbar-working-file-search"
+          />
+          {workingFilesFilter.trim() && (
+            <button
+              type="button"
+              className="toolbar-working-file-menu-search-clear"
+              onClick={() => setWorkingFilesFilter('')}
+              title={translate('search.clear', 'Очистить')}
+              data-testid="toolbar-working-file-search-clear"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="toolbar-working-file-menu-list">
+          {workingFiles.length === 0 && (
+            <div className="toolbar-working-file-menu-empty">
+              {translate('toolbar.workingFiles.empty' as TranslationKey, 'Рабочих файлов пока нет')}
+            </div>
+          )}
+          {workingFiles.length > 0 && filteredWorkingFiles.length === 0 && (
+            <div className="toolbar-working-file-menu-empty">
+              {translate('toolbar.workingFiles.noMatches' as TranslationKey, 'Ничего не найдено')}
+            </div>
+          )}
+          {filteredWorkingFiles.map((file) => (
+            <div key={`menu:${file.filePath}`} className="toolbar-working-file-menu-row" title={file.filePath}>
+              <button
+                type="button"
+                className="toolbar-working-file-menu-open-button"
+                onClick={() => {
+                  onOpenWorkingFile(file.filePath);
+                  setActiveMenu(null);
+                }}
+              >
+                {file.fileName}
+              </button>
+              <button
+                type="button"
+                className="toolbar-working-file-menu-remove-button"
+                onClick={() => {
+                  onRemoveWorkingFile(file.filePath);
+                  setActiveMenu(null);
+                }}
+                aria-label={`${translate('toolbar.workingFiles.remove' as TranslationKey, 'Убрать из списка')} ${file.fileName}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+  const renderModeMenu = (): React.ReactNode => (
+    <div className="toolbar-menu-section">
+      <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Режим редактора' : 'Editor mode'}</div>
+      <select
+        value={editorMode}
+        onChange={(event) => {
+          const nextMode = event.currentTarget.value;
+          if (isEditorMode(nextMode)) {
+            onEditorModeChange(nextMode);
+          }
+        }}
+        title={locale === 'ru' ? 'Режим редактора' : 'Editor mode'}
+        className="toolbar-select"
+        data-testid="toolbar-editor-mode-select"
+      >
+        <option value="blueprint">{locale === 'ru' ? '🎨 Визуальный' : '🎨 Visual'}</option>
+        <option value="cytoscape">{locale === 'ru' ? '📊 Классический' : '📊 Classic'}</option>
+        <option value="dependency">{locale === 'ru' ? '🧩 Зависимости' : '🧩 Dependency'}</option>
+      </select>
+    </div>
+  );
+
+  const renderCodegenMenu = (): React.ReactNode => (
+    <>
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Профиль кода' : 'Code profile'}</div>
+        <select
+          title={translate('toolbar.codegenProfile', 'Профиль кода')}
+          className="toolbar-select"
+          value={codegenProfile}
+          onChange={(event) => {
+            const nextProfile = event.currentTarget.value;
+            if (isCodegenOutputProfile(nextProfile)) {
+              onCodegenProfileChange(nextProfile);
+            }
+          }}
+        >
+          <option value="clean">{translate('toolbar.codegenProfile.clean', 'Чистый')}</option>
+          <option value="learn">{translate('toolbar.codegenProfile.learn', 'Учебный')}</option>
+          <option value="debug">{translate('toolbar.codegenProfile.debug', 'Отладка')}</option>
+          <option value="recovery">{translate('toolbar.codegenProfile.recovery', 'Восстановление')}</option>
+        </select>
+      </div>
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Entrypoint' : 'Entrypoint'}</div>
+        <select
+          title={translate('toolbar.codegenEntrypointMode', 'Режим entrypoint')}
+          className="toolbar-select"
+          value={codegenEntrypointMode}
+          onChange={(event) => {
+            const nextMode = event.currentTarget.value;
+            if (isCodegenEntrypointMode(nextMode)) {
+              onCodegenEntrypointModeChange(nextMode);
+            }
+          }}
+        >
+          <option value="auto">{translate('toolbar.codegenEntrypointMode.auto', 'Авто')}</option>
+          <option value="executable">{translate('toolbar.codegenEntrypointMode.executable', 'Исполняемый')}</option>
+          <option value="library">{translate('toolbar.codegenEntrypointMode.library', 'Библиотека')}</option>
+        </select>
+        <div className="toolbar-menu-note">
+          {locale === 'ru' ? 'Стандарт запуска и сборки: C++23' : 'Compile & Run standard: C++23'}
+        </div>
+      </div>
+      <div className="toolbar-menu-section">
+        <button
+          type="button"
+          onClick={() => onShowCodePreviewChange(!showCodePreview)}
+          disabled={pending}
+          className={showCodePreview ? 'btn-active' : ''}
+        >
+          {showCodePreview
+            ? (locale === 'ru' ? '👁️ Скрыть код' : '👁️ Hide code')
+            : (locale === 'ru' ? '👁️ Показать код' : '👁️ Show code')}
+        </button>
+      </div>
+    </>
+  );
+
+  const renderViewMenu = (): React.ReactNode => (
+    <>
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Инструменты графа' : 'Graph tools'}</div>
+        <div className="toolbar-menu-button-row">
           <button
-            onClick={onTranslate}
+            type="button"
+            onClick={() => {
+              onTranslate();
+              setActiveMenu(null);
+            }}
             disabled={pending || translationPending}
-            title={translate('translation.title', 'Перевод графа')}
           >
             🌐 {translationPending
               ? translate('translation.translating', 'Перевод...')
               : translate('translation.translate', 'Перевести')}
           </button>
-          <button onClick={onCalculate} disabled={pending} title={translate('tooltip.calculateLayout', 'Рассчитать')}>
+          <button
+            type="button"
+            onClick={() => {
+              onCalculate();
+              setActiveMenu(null);
+            }}
+            disabled={pending}
+          >
             🔄 {translate('toolbar.calculateLayout', 'Лэйаут')}
           </button>
-          <button onClick={onCopyGraphId} disabled={pending} title={translate('tooltip.copyId', 'Скопировать ID')}>
-            🆔
+          <button
+            type="button"
+            onClick={() => {
+              onCopyGraphId();
+              setActiveMenu(null);
+            }}
+            disabled={pending}
+          >
+            🆔 {locale === 'ru' ? 'Скопировать ID' : 'Copy ID'}
           </button>
         </div>
-        
-        {/* Группа: Код */}
-        <div className="toolbar-group">
+      </div>
+      <div className="toolbar-menu-section">
+        <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Вид и помощь' : 'View & Help'}</div>
+        <select
+          value={String(uiScale)}
+          onChange={(event) => {
+            const nextScale = Number(event.currentTarget.value);
+            if (!Number.isFinite(nextScale)) {
+              return;
+            }
+            onUiScaleChange(nextScale);
+          }}
+          title={translate('toolbar.uiScale' as TranslationKey, 'Масштаб интерфейса')}
+          className="toolbar-select"
+          data-testid="toolbar-ui-scale"
+        >
+          <option value="0.8">80%</option>
+          <option value="0.9">90%</option>
+          <option value="1">100%</option>
+          <option value="1.1">110%</option>
+        </select>
+        <div className="toolbar-menu-button-row">
+          <button
+            type="button"
+            onClick={() => {
+              onShowHelp();
+              setActiveMenu(null);
+            }}
+            title={locale === 'ru' ? 'Справка (?)' : 'Help (?)'}
+          >
+            ❓ {locale === 'ru' ? 'Справка' : 'Help'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onShowHotkeys();
+              setActiveMenu(null);
+            }}
+            title={locale === 'ru' ? 'Горячие клавиши (H)' : 'Hotkeys (H)'}
+          >
+            ⌨️ {locale === 'ru' ? 'Клавиши' : 'Hotkeys'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="toolbar app-header">
+      <div className="toolbar-main">
+        <div className="toolbar-info toolbar-info-v2">
+          <div className="toolbar-title-row">
+            <div className="toolbar-title-stack">
+              <div className="toolbar-title" title={boundFilePath ?? graph.name}>
+                {documentTitle}
+              </div>
+              <div className="toolbar-subtitle">
+                {boundFileName && graph.name !== boundFileName && (
+                  <span className="toolbar-bound-file" title={graph.name}>
+                    {locale === 'ru' ? `Граф: ${graph.name}` : `Graph: ${graph.name}`}
+                  </span>
+                )}
+                {!boundFileName && (
+                  <span className="toolbar-bound-file toolbar-bound-file--none">
+                    {translate('toolbar.noFile', 'файл не привязан')}
+                  </span>
+                )}
+              </div>
+            </div>
+            <span
+              className={graph.dirty ? 'toolbar-document-status toolbar-document-status--warn' : 'toolbar-document-status toolbar-document-status--ok'}
+              data-testid="document-status-badge"
+            >
+              ● {documentStatusLabel}
+            </span>
+          </div>
+        </div>
+
+        <div className="toolbar-main-actions">
           <select
-            title={translate('toolbar.codegenProfile', 'Профиль кода')}
-            className="toolbar-select"
-            value={codegenProfile}
+            value={isToolbarTargetPlatform(graph.language) ? graph.language : 'cpp'}
             onChange={(event) => {
-              const nextProfile = event.currentTarget.value;
-              if (isCodegenOutputProfile(nextProfile)) {
-                onCodegenProfileChange(nextProfile);
+              const nextLanguage = event.currentTarget.value;
+              if (isToolbarTargetPlatform(nextLanguage)) {
+                onTargetPlatformChange(nextLanguage);
               }
             }}
+            title={translate('toolbar.targetPlatform', 'Целевая платформа')}
+            className="toolbar-select"
+            data-testid="toolbar-target-platform"
           >
-            <option value="clean">{translate('toolbar.codegenProfile.clean', 'Чистый')}</option>
-            <option value="learn">{translate('toolbar.codegenProfile.learn', 'Учебный')}</option>
-            <option value="debug">{translate('toolbar.codegenProfile.debug', 'Отладка')}</option>
-            <option value="recovery">{translate('toolbar.codegenProfile.recovery', 'Восстановление')}</option>
+            <option value="cpp">CPP</option>
+            <option value="ue">UE</option>
           </select>
           <select
-            title={translate('toolbar.codegenEntrypointMode', 'Режим entrypoint')}
-            className="toolbar-select"
-            value={codegenEntrypointMode}
+            value={locale}
             onChange={(event) => {
-              const nextMode = event.currentTarget.value;
-              if (isCodegenEntrypointMode(nextMode)) {
-                onCodegenEntrypointModeChange(nextMode);
+              const nextLocale = event.currentTarget.value;
+              if (isGraphDisplayLanguage(nextLocale)) {
+                onLocaleChange(nextLocale);
               }
             }}
-          >
-            <option value="auto">{translate('toolbar.codegenEntrypointMode.auto', 'Авто')}</option>
-            <option value="executable">{translate('toolbar.codegenEntrypointMode.executable', 'Исполняемый')}</option>
-            <option value="library">{translate('toolbar.codegenEntrypointMode.library', 'Библиотека')}</option>
-          </select>
-          <select
-            title={locale === 'ru' ? 'Стандарт C++: C++23 (фиксировано)' : 'C++ Standard: C++23 (fixed)'}
+            title={translate('toolbar.languageSwitch', 'Язык интерфейса')}
             className="toolbar-select"
-            value={cppStandard}
-            disabled
           >
-            <option value="cpp23">C++23</option>
+            <option value="ru">🇷🇺 RU</option>
+            <option value="en">🇺🇸 EN</option>
           </select>
           <button
-            onClick={() => onShowCodePreviewChange(!showCodePreview)}
-            disabled={pending}
-            title={showCodePreview ? translate('toolbar.hideCode' as TranslationKey, 'Скрыть код') : translate('toolbar.showCode' as TranslationKey, 'Показать код')}
-            className={showCodePreview ? 'btn-active' : ''}
+            type="button"
+            className={`toolbar-menu-trigger ${activeMenu?.kind === 'files' ? 'btn-active' : ''}`}
+            onClick={(event) => toggleMenu('files', event)}
+            data-testid="toolbar-files-menu-trigger"
           >
-            {showCodePreview ? '👁️ Код' : '👁️‍🗨️ Код'}
+            {locale === 'ru' ? 'Файлы' : 'Files'} ▼
           </button>
-          <button onClick={() => send('requestGenerate')} disabled={pending} title={translate('toolbar.generate', 'Генерировать')}>
-            ⚡ {translate('toolbar.generate', 'Генерировать')}
+          <button
+            type="button"
+            className={`toolbar-menu-trigger ${activeMenu?.kind === 'mode' ? 'btn-active' : ''}`}
+            onClick={(event) => toggleMenu('mode', event)}
+            data-testid="toolbar-mode-menu-trigger"
+          >
+            {locale === 'ru' ? 'Режим' : 'Mode'} ▼
           </button>
-          <button 
-            onClick={() => send('requestCompileAndRun')} 
+          <button
+            type="button"
+            className={`toolbar-menu-trigger ${activeMenu?.kind === 'codegen' ? 'btn-active' : ''}`}
+            onClick={(event) => toggleMenu('codegen', event)}
+            data-testid="toolbar-codegen-menu-trigger"
+          >
+            {locale === 'ru' ? 'Кодоген' : 'Codegen'} ▼
+          </button>
+          <button
+            type="button"
+            className={`toolbar-menu-trigger ${activeMenu?.kind === 'view' ? 'btn-active' : ''}`}
+            onClick={(event) => toggleMenu('view', event)}
+            data-testid="toolbar-view-menu-trigger"
+          >
+            {locale === 'ru' ? 'Вид' : 'View'} ▼
+          </button>
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => send('requestSave')}
+            disabled={pending}
+            title={translate('tooltip.saveGraph', 'Сохранить')}
+          >
+            💾 {translate('toolbar.saveGraph', 'Сохранить')}
+          </button>
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => send('requestValidate')}
+            disabled={pending}
+            title={translate('tooltip.validateGraph', 'Проверить')}
+          >
+            ✅ {translate('toolbar.validateGraph', 'Проверить')}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => send('requestGenerate')}
+            disabled={pending}
+            title={translate('toolbar.generate', 'Генерировать')}
+          >
+            ⚡ {locale === 'ru' ? 'Сгенерировать C++' : 'Generate C++'}
+          </button>
+          <button
+            type="button"
+            className="btn-operational"
+            onClick={() => send('requestCompileAndRun')}
             disabled={pending}
             title={locale === 'ru' ? 'Скомпилировать и запустить' : 'Compile and Run'}
           >
             ▶️ {locale === 'ru' ? 'Запустить' : 'Run'}
           </button>
         </div>
-        
-        {/* Группа: Помощь */}
-        <div className="toolbar-group">
-          <button onClick={onShowHelp} title={locale === 'ru' ? 'Справка (?)' : 'Help (?)'}>
-            ❓
-          </button>
-          <button onClick={onShowHotkeys} title={locale === 'ru' ? 'Горячие клавиши (H)' : 'Hotkeys (H)'}>
-            ⌨️
-          </button>
+      </div>
+
+      <div className="toolbar-context">
+        <div className="toolbar-context-path" title={boundFilePath ?? graph.name}>
+          {locale === 'ru' ? `Проект / Граф / ${graph.name}` : `Project / Graph / ${graph.name}`}
+        </div>
+        <div className="toolbar-context-chips">
+          <span className="toolbar-context-chip">{locale === 'ru' ? `Режим: ${modeLabel}` : `Mode: ${modeLabel}`}</span>
+          <span className="toolbar-context-chip">{locale === 'ru' ? `Кодоген: ${codegenChipLabel}` : `Codegen: ${codegenChipLabel}`}</span>
+          <span className={problemsChipClass} data-testid="problems-indicator">{problemsLabel}</span>
+          <span
+            className={hasStorageIssues ? 'toolbar-context-chip toolbar-context-chip--warn' : 'toolbar-context-chip toolbar-context-chip--ok'}
+            title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
+            data-testid="class-storage-badge"
+          >
+            {storageBadgeLabel}
+          </span>
+          <span
+            className={`toolbar-context-chip ${classNodesAdvancedEnabled ? 'toolbar-context-chip--feature' : ''}`}
+            title={classNodesAdvancedEnabled
+              ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
+              : 'Доступен базовый пакет class-узлов'}
+          >
+            {classNodesBadgeLabel}
+          </span>
         </div>
       </div>
-      {workingFilesMenu && (
+
+      {activeMenu && (
         <div
           ref={menuRef}
-          className="toolbar-working-file-menu-popup"
+          className="toolbar-menu-popup"
           style={{
             position: 'fixed',
-            left: workingFilesMenu.x,
-            top: workingFilesMenu.y,
+            left: activeMenu.x,
+            top: activeMenu.y,
             zIndex: 40,
           }}
-          data-testid="toolbar-working-file-menu-popup"
+          data-testid={`toolbar-${activeMenu.kind}-menu-popup`}
         >
-          <button
-            type="button"
-            className="toolbar-working-file-menu-item"
-            onClick={() => {
-              onAddWorkingFile();
-              setWorkingFilesMenu(null);
-            }}
-            data-testid="toolbar-working-file-menu-add"
-          >
-            ＋ {translate('toolbar.workingFiles.add' as TranslationKey, 'Добавить файл в рабочий список')}
-          </button>
-          <div className="toolbar-working-file-menu-divider" />
-          <div className="toolbar-working-file-menu-search">
-            <input
-              ref={workingFilesSearchRef}
-              type="text"
-              className="toolbar-working-file-menu-search-input"
-              placeholder={translate('toolbar.workingFiles.search' as TranslationKey, 'Поиск файла...')}
-              value={workingFilesFilter}
-              onChange={(event) => setWorkingFilesFilter(event.currentTarget.value)}
-              data-testid="toolbar-working-file-search"
-            />
-            {workingFilesFilter.trim() && (
-              <button
-                type="button"
-                className="toolbar-working-file-menu-search-clear"
-                onClick={() => setWorkingFilesFilter('')}
-                title={translate('search.clear', 'Очистить')}
-                data-testid="toolbar-working-file-search-clear"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <div className="toolbar-working-file-menu-list">
-            {workingFiles.length === 0 && (
-              <div className="toolbar-working-file-menu-empty">
-                {translate('toolbar.workingFiles.empty' as TranslationKey, 'Рабочих файлов пока нет')}
-              </div>
-            )}
-            {workingFiles.length > 0 && filteredWorkingFiles.length === 0 && (
-              <div className="toolbar-working-file-menu-empty">
-                {translate('toolbar.workingFiles.noMatches' as TranslationKey, 'Ничего не найдено')}
-              </div>
-            )}
-            {filteredWorkingFiles.map((file) => (
-              <div key={`menu:${file.filePath}`} className="toolbar-working-file-menu-row" title={file.filePath}>
-                <button
-                  type="button"
-                  className="toolbar-working-file-menu-open-button"
-                  onClick={() => {
-                    onOpenWorkingFile(file.filePath);
-                    setWorkingFilesMenu(null);
-                  }}
-                >
-                  {file.fileName}
-                </button>
-                <button
-                  type="button"
-                  className="toolbar-working-file-menu-remove-button"
-                  onClick={() => {
-                    onRemoveWorkingFile(file.filePath);
-                    setWorkingFilesMenu(null);
-                  }}
-                  aria-label={`${translate('toolbar.workingFiles.remove' as TranslationKey, 'Убрать из списка')} ${file.fileName}`}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+          {activeMenu.kind === 'files' && renderFilesMenu()}
+          {activeMenu.kind === 'mode' && renderModeMenu()}
+          {activeMenu.kind === 'codegen' && renderCodegenMenu()}
+          {activeMenu.kind === 'view' && renderViewMenu()}
         </div>
       )}
     </div>
@@ -1134,13 +1331,6 @@ const GraphFacts: React.FC<{
           <div className="panel-value">{graph.language.toUpperCase()}</div>
         </div>
         <div>
-          <div className={graph.dirty ? 'badge badge-warn' : 'badge badge-ok'}>
-            {graph.dirty
-              ? translate('toolbar.unsaved', 'Есть несохранённые изменения')
-              : translate('overview.synced', 'Синхронизировано')}
-          </div>
-        </div>
-        <div>
           <div className="panel-label">{translate('overview.classStorage', 'Class Storage')}</div>
           <div className="panel-value">{formatClassStorageModeValue(locale, classStorageStatus)}</div>
         </div>
@@ -1157,61 +1347,142 @@ const GraphFacts: React.FC<{
   );
 };
 
+const SelectionSummaryPanel: React.FC<{
+  translate: (key: TranslationKey, fallback: string) => string;
+}> = ({ translate }) => {
+  const graph = useGraphStore((state) => state.graph);
+  const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds);
+  const selectedEdgeIds = useGraphStore((state) => state.selectedEdgeIds);
+
+  const selectedNodes = useMemo(
+    () => graph.nodes.filter((node) => selectedNodeIds.includes(node.id)),
+    [graph.nodes, selectedNodeIds]
+  );
+  const selectedEdges = useMemo(
+    () => graph.edges.filter((edge) => selectedEdgeIds.includes(edge.id)),
+    [graph.edges, selectedEdgeIds]
+  );
+  const nodeLabelById = useMemo(
+    () => new Map(graph.nodes.map((node) => [node.id, resolveGraphNodeDisplayName(graph, node)])),
+    [graph]
+  );
+
+  if (!selectedNodes.length && !selectedEdges.length) {
+    return null;
+  }
+
+  if (selectedNodes.length === 1 && selectedEdges.length === 0) {
+    const node = selectedNodes[0];
+    const incomingEdges = graph.edges.filter((edge) => edge.target === node.id);
+    const outgoingEdges = graph.edges.filter((edge) => edge.source === node.id);
+
+    return (
+      <div className="panel">
+        <div className="panel-title">{translate('inspector.node.title' as TranslationKey, 'Выбранный узел')}</div>
+        <div className="panel-grid">
+          <div>
+            <div className="panel-label">{translate('inspector.node.name' as TranslationKey, 'Имя')}</div>
+            <div className="panel-value">{resolveGraphNodeDisplayName(graph, node)}</div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.node.kind' as TranslationKey, 'Тип')}</div>
+            <div className="panel-value">{node.type}</div>
+          </div>
+          <div>
+            <div className="panel-label">ID</div>
+            <div className="panel-value">{node.id}</div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.node.position' as TranslationKey, 'Позиция')}</div>
+            <div className="panel-value">
+              {node.position ? `${Math.round(node.position.x)} × ${Math.round(node.position.y)}` : 'auto'}
+            </div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.node.incoming' as TranslationKey, 'Входящие')}</div>
+            <div className="panel-value">{incomingEdges.length}</div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.node.outgoing' as TranslationKey, 'Исходящие')}</div>
+            <div className="panel-value">{outgoingEdges.length}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedEdges.length === 1 && selectedNodes.length === 0) {
+    const edge = selectedEdges[0];
+    const sourceLabel = nodeLabelById.get(edge.source) ?? edge.source;
+    const targetLabel = nodeLabelById.get(edge.target) ?? edge.target;
+
+    return (
+      <div className="panel">
+        <div className="panel-title">{translate('inspector.edge.title' as TranslationKey, 'Выбранная связь')}</div>
+        <div className="panel-grid">
+          <div>
+            <div className="panel-label">{translate('inspector.edge.kind' as TranslationKey, 'Вид')}</div>
+            <div className="panel-value">{edge.kind ?? 'execution'}</div>
+          </div>
+          <div>
+            <div className="panel-label">ID</div>
+            <div className="panel-value">{edge.id}</div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.edge.source' as TranslationKey, 'Источник')}</div>
+            <div className="panel-value">{sourceLabel}</div>
+          </div>
+          <div>
+            <div className="panel-label">{translate('inspector.edge.target' as TranslationKey, 'Цель')}</div>
+            <div className="panel-value">{targetLabel}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedNodeLabels = selectedNodes.slice(0, 3).map((node) => resolveGraphNodeDisplayName(graph, node));
+  const hiddenNodeCount = selectedNodes.length - selectedNodeLabels.length;
+
+  return (
+    <div className="panel">
+      <div className="panel-title">{translate('inspector.selection.title' as TranslationKey, 'Выделение')}</div>
+      <div className="panel-grid">
+        <div>
+          <div className="panel-label">{translate('overview.nodes', 'Узлы')}</div>
+          <div className="panel-value">{selectedNodes.length}</div>
+        </div>
+        <div>
+          <div className="panel-label">{translate('overview.edges', 'Связи')}</div>
+          <div className="panel-value">{selectedEdges.length}</div>
+        </div>
+      </div>
+      {selectedNodeLabels.length > 0 && (
+        <div className="panel-note">
+          {translate('inspector.selection.preview' as TranslationKey, 'В фокусе')}: {selectedNodeLabels.join(', ')}
+          {hiddenNodeCount > 0 ? ` +${hiddenNodeCount}` : ''}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ValidationPanel: React.FC<{
   validation?: ValidationResult;
   translate: (key: TranslationKey, fallback: string) => string;
-}> = ({ validation, translate }) => {
+  title?: string;
+  emptyStateLabel?: string;
+  filterNodeIds?: string[];
+  filterEdgeIds?: string[];
+}> = ({ validation, translate, title, emptyStateLabel, filterNodeIds, filterEdgeIds }) => {
   const graph = useGraphStore((state) => state.graph);
-
-  const resolveNodeDisplayName = useCallback(
-    (node: GraphState['nodes'][number]): string => {
-      const directLabel = node.label.trim();
-      if (directLabel.length > 0) {
-        return directLabel;
-      }
-
-      if (!isRecord(node.blueprintNode)) {
-        return node.id;
-      }
-
-      const blueprintNode = node.blueprintNode;
-      const customLabel = typeof blueprintNode.customLabel === 'string' ? blueprintNode.customLabel.trim() : '';
-      if (customLabel.length > 0) {
-        return customLabel;
-      }
-
-      const blueprintLabel = typeof blueprintNode.label === 'string' ? blueprintNode.label.trim() : '';
-      if (blueprintLabel.length > 0) {
-        return blueprintLabel;
-      }
-
-      const properties = isRecord(blueprintNode.properties) ? blueprintNode.properties : undefined;
-      const variableNameRu = typeof properties?.nameRu === 'string' ? properties.nameRu.trim() : '';
-      const variableNameEn = typeof properties?.name === 'string' ? properties.name.trim() : '';
-      const variableName = variableNameRu || variableNameEn;
-      const nodeType = typeof blueprintNode.type === 'string' ? blueprintNode.type : node.type;
-
-      if (variableName.length > 0) {
-        if (nodeType === 'GetVariable') {
-          return `${graph.displayLanguage === 'ru' ? 'Получить' : 'Get'}: ${variableName}`;
-        }
-        if (nodeType === 'SetVariable') {
-          return `${graph.displayLanguage === 'ru' ? 'Установить' : 'Set'}: ${variableName}`;
-        }
-        return variableName;
-      }
-
-      return nodeType || node.id;
-    },
-    [graph.displayLanguage]
-  );
 
   if (!validation) {
     return null;
   }
 
   const nodeLabelById = new Map(
-    graph.nodes.map((node) => [node.id, resolveNodeDisplayName(node)])
+    graph.nodes.map((node) => [node.id, resolveGraphNodeDisplayName(graph, node)])
   );
   const edgeLabelById = new Map(
     graph.edges.map((edge) => {
@@ -1259,30 +1530,19 @@ const ValidationPanel: React.FC<{
     return normalized;
   };
 
-  const issues: ValidationIssue[] = validation.issues?.length
-    ? validation.issues
-    : [
-        ...validation.errors.map((message) => ({
-          severity: 'error' as const,
-          message,
-          nodes: undefined,
-          edges: undefined
-        })),
-        ...validation.warnings.map((message) => ({
-          severity: 'warning' as const,
-          message,
-          nodes: undefined,
-          edges: undefined
-        }))
-      ];
+  const issues = filterValidationIssuesBySelection(
+    buildValidationIssues(validation),
+    filterNodeIds,
+    filterEdgeIds
+  );
 
   const hasProblems = issues.length > 0;
 
   return (
     <div className="panel">
-      <div className="panel-title">{translate('toolbar.validate', 'Валидация')}</div>
+      <div className="panel-title">{title ?? translate('toolbar.validate', 'Валидация')}</div>
       {!hasProblems ? (
-        <div className="badge badge-ok">{translate('toasts.validationOk', 'Ошибок не найдено')}</div>
+        <div className="badge badge-ok">{emptyStateLabel ?? translate('toasts.validationOk', 'Ошибок не найдено')}</div>
       ) : (
         <ul className="validation-list">
           {issues.map((item, index) => {
@@ -1620,6 +1880,8 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
+  const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds);
+  const selectedEdgeIds = useGraphStore((state) => state.selectedEdgeIds);
   const integrations = useGraphStore((state) => state.integrations);
   const setIntegrations = useGraphStore((state) => state.setIntegrations);
   const upsertIntegration = useGraphStore((state) => state.upsertIntegration);
@@ -2824,6 +3086,7 @@ const App: React.FC = () => {
   };
 
   const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape' || showCodePreview;
+  const hasInspectorSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const allExternalSymbols = useMemo<SymbolDescriptor[]>(() => Object.values(symbolCatalog).flat(), [symbolCatalog]);
 
   // Render the appropriate editor based on mode
@@ -2914,6 +3177,7 @@ const App: React.FC = () => {
         onCodegenProfileChange={handleCodegenProfileChange}
         codegenEntrypointMode={codegenEntrypointMode}
         onCodegenEntrypointModeChange={handleCodegenEntrypointModeChange}
+        validation={validation}
       />
       
       {/* Панель горячих клавиш */}
@@ -2952,63 +3216,75 @@ const App: React.FC = () => {
                 }}
               />
             )}
-            {editorMode === 'blueprint' && (
-              <div className="panel">
-                <div
-                  className="panel-title"
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
-                >
-                  <span>{locale === 'ru' ? 'Зависимости' : 'Dependency View'}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowDependencySidebar((value) => !value)}
-                    style={{ fontSize: 11 }}
-                  >
-                    {showDependencySidebar
-                      ? (locale === 'ru' ? 'Скрыть' : 'Hide')
-                      : (locale === 'ru' ? 'Показать' : 'Show')}
-                  </button>
-                 </div>
-                  {showDependencySidebar && (
-                  <div style={{ height: 'clamp(300px, 42vh, 520px)', minHeight: 0, overflow: 'hidden' }}>
-                    <DependencyViewPanel
-                      useGraphStore={useGraphStore}
-                      mode="sidebar"
-                      displayLanguage={locale}
-                      activeFilePath={boundFile.filePath}
-                      onDetachDependency={handleDetachDependency}
-                      onInsertSymbol={handleInsertExternalSymbol}
-                    />
+            {hasInspectorSelection ? (
+              <>
+                <SelectionSummaryPanel translate={translate} />
+                <ValidationPanel
+                  validation={validation}
+                  translate={translate}
+                  title={translate('inspector.selection.validation' as TranslationKey, 'Проблемы выделения')}
+                  emptyStateLabel={translate('inspector.selection.validationOk' as TranslationKey, 'Для выделения проблем не найдено')}
+                  filterNodeIds={selectedNodeIds}
+                  filterEdgeIds={selectedEdgeIds}
+                />
+              </>
+            ) : (
+              <>
+                {editorMode === 'blueprint' && (
+                  <div className="panel">
+                    <div
+                      className="panel-title panel-title-with-action"
+                    >
+                      <span>{locale === 'ru' ? 'Зависимости' : 'Dependency View'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDependencySidebar((value) => !value)}
+                        className="panel-title-action"
+                      >
+                        {showDependencySidebar
+                          ? (locale === 'ru' ? 'Скрыть' : 'Hide')
+                          : (locale === 'ru' ? 'Показать' : 'Show')}
+                      </button>
+                    </div>
+                    {showDependencySidebar && (
+                      <div style={{ height: 'clamp(300px, 42vh, 520px)', minHeight: 0, overflow: 'hidden' }}>
+                        <DependencyViewPanel
+                          useGraphStore={useGraphStore}
+                          mode="sidebar"
+                          displayLanguage={locale}
+                          activeFilePath={boundFile.filePath}
+                          onDetachDependency={handleDetachDependency}
+                          onInsertSymbol={handleInsertExternalSymbol}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
-            
-            {/* Общие панели для Blueprint и Classic */}
-            <>
-              <TranslationActions
-                direction={translationDirection}
-                pending={translationPending}
-                onDirectionChange={setTranslationDirection}
-                onTranslate={handleTranslate}
-                translate={translate}
-              />
-              <LayoutSettingsPanel translate={translate} />
-              {editorMode === 'cytoscape' && (
-                <NodeActions
-                  onAddNode={handleAddNode}
-                  onConnectNodes={handleConnectNodes}
-                  lastNodeAddedToken={lastNodeAddedToken}
-                  lastConnectionToken={lastConnectionToken}
+
+                <TranslationActions
+                  direction={translationDirection}
+                  pending={translationPending}
+                  onDirectionChange={setTranslationDirection}
+                  onTranslate={handleTranslate}
+                  translate={translate}
                 />
-              )}
-              <GraphFacts
-                translate={translate}
-                classStorageStatus={classStorageStatus}
-                classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
-              />
-              <ValidationPanel validation={validation} translate={translate} />
-            </>
+                <LayoutSettingsPanel translate={translate} />
+                {editorMode === 'cytoscape' && (
+                  <NodeActions
+                    onAddNode={handleAddNode}
+                    onConnectNodes={handleConnectNodes}
+                    lastNodeAddedToken={lastNodeAddedToken}
+                    lastConnectionToken={lastConnectionToken}
+                  />
+                )}
+                <GraphFacts
+                  translate={translate}
+                  classStorageStatus={classStorageStatus}
+                  classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
+                />
+                <ValidationPanel validation={validation} translate={translate} />
+              </>
+            )}
           </div>
         )}
       </div>

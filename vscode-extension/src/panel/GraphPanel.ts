@@ -4165,12 +4165,17 @@ export class GraphPanel {
       }
       .toolbar {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 16px;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 16px 10px;
         background: linear-gradient(135deg, var(--mc-toolbar-from), var(--mc-toolbar-to));
         border-bottom: 1px solid var(--mc-toolbar-border);
         box-shadow: var(--mc-shadow);
+      }
+      .toolbar-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 16px;
         flex-wrap: wrap;
       }
@@ -4178,14 +4183,26 @@ export class GraphPanel {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        min-width: 180px;
+        min-width: 220px;
         flex: 1;
       }
+      .toolbar-title-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .toolbar-title-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
       .toolbar-title {
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 16px;
+        font-weight: 700;
         white-space: normal;
-        line-height: 1.25;
+        line-height: 1.2;
       }
       .toolbar-subtitle {
         display: flex;
@@ -4194,8 +4211,6 @@ export class GraphPanel {
         flex-wrap: wrap;
         font-size: 11px;
         color: var(--mc-muted);
-        white-space: normal;
-        overflow: visible;
       }
       .toolbar-bound-file {
         display: inline-flex;
@@ -4204,61 +4219,128 @@ export class GraphPanel {
         color: var(--mc-accent);
         cursor: default;
       }
-      .toolbar-storage-badge {
+      .toolbar-bound-file--none {
+        color: var(--mc-muted);
+        opacity: 0.7;
+        font-style: italic;
+      }
+      .toolbar-document-status {
         display: inline-flex;
         align-items: center;
-        font-size: 10px;
-        padding: 2px 8px;
+        gap: 6px;
+        padding: 6px 10px;
         border-radius: 999px;
+        font-size: 11px;
         border: 1px solid var(--mc-surface-border);
         background: var(--mc-surface);
-        color: var(--mc-muted);
+        white-space: nowrap;
       }
-      .toolbar-storage-badge--ok {
+      .toolbar-document-status--ok {
         border-color: var(--mc-badge-ok-border);
         color: var(--mc-badge-ok-text);
       }
-      .toolbar-storage-badge--warn {
+      .toolbar-document-status--warn {
         border-color: var(--mc-badge-warn-border);
         color: var(--mc-badge-warn-text);
       }
-      .toolbar-storage-badge--feature {
+      .toolbar-main-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        align-items: center;
+      }
+      .toolbar-context {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .toolbar-context-path {
+        font-size: 12px;
+        color: var(--mc-muted);
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .toolbar-context-chips {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .toolbar-context-chip {
+        display: inline-flex;
+        align-items: center;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+      }
+      .toolbar-context-chip--ok {
+        border-color: var(--mc-badge-ok-border);
+        color: var(--mc-badge-ok-text);
+      }
+      .toolbar-context-chip--warn {
+        border-color: var(--mc-badge-warn-border);
+        color: var(--mc-badge-warn-text);
+      }
+      .toolbar-context-chip--error {
+        border-color: color-mix(in srgb, var(--mc-toast-error) 55%, #ef4444);
+        color: #fecaca;
+      }
+      .toolbar-context-chip--feature {
         border-color: var(--mc-accent);
         color: var(--mc-accent);
       }
-      .toolbar-bound-file--none {
-        color: var(--mc-muted);
-        opacity: 0.6;
-        font-style: italic;
-      }
-      .toolbar-working-files {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: nowrap;
-      }
-      .toolbar .toolbar-working-files-trigger {
-        padding: 4px 8px;
-        font-size: 11px;
-        border-radius: 999px;
-        background: var(--mc-surface);
-      }
-      .toolbar-working-file-menu-popup {
-        min-width: 280px;
-        max-width: 420px;
+      .toolbar-menu-popup {
+        min-width: 320px;
+        max-width: 440px;
         display: flex;
         flex-direction: column;
-        gap: 2px;
-        padding: 4px;
+        gap: 12px;
+        padding: 12px;
         border: 1px solid var(--mc-surface-border);
-        border-radius: 8px;
-        background: var(--mc-surface);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--mc-surface) 92%, #0b1020);
         box-shadow: var(--mc-shadow);
       }
-      .toolbar-working-file-menu-divider {
-        height: 1px;
-        margin: 2px 0;
-        background: var(--mc-surface-border);
+      .toolbar-menu-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .toolbar-menu-section + .toolbar-menu-section {
+        padding-top: 10px;
+        border-top: 1px solid var(--mc-surface-border);
+      }
+      .toolbar-menu-section-title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--mc-muted);
+      }
+      .toolbar-menu-field-row,
+      .toolbar-menu-button-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .toolbar-menu-field-row > .toolbar-select {
+        flex: 1;
+        min-width: 0;
+      }
+      .toolbar-menu-note {
+        font-size: 11px;
+        color: var(--mc-muted);
+        line-height: 1.4;
       }
       .toolbar-working-file-menu-search {
         display: grid;
@@ -4349,22 +4431,6 @@ export class GraphPanel {
         color: var(--mc-body-text) !important;
         background: var(--mc-surface-strong) !important;
       }
-      .toolbar-actions {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-      .toolbar-group {
-        display: flex;
-        gap: 4px;
-        padding: 0 8px;
-        border-right: 1px solid var(--mc-surface-border);
-      }
-      .toolbar-group:last-child {
-        border-right: none;
-        padding-right: 0;
-      }
       .toolbar button {
         background: var(--mc-button-bg);
         color: var(--mc-button-text);
@@ -4391,6 +4457,27 @@ export class GraphPanel {
       .toolbar button.btn-active {
         background: var(--mc-badge-ok-bg);
         border-color: var(--mc-badge-ok-border);
+      }
+      .toolbar button.btn-primary {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(37, 99, 235, 0.92));
+        border-color: rgba(96, 165, 250, 0.7);
+        color: #eff6ff;
+      }
+      .toolbar button.btn-primary:hover {
+        border-color: rgba(147, 197, 253, 0.8);
+      }
+      .toolbar button.btn-operational {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.75), rgba(5, 150, 105, 0.88));
+        border-color: rgba(52, 211, 153, 0.65);
+        color: #ecfdf5;
+      }
+      .toolbar button.btn-operational:hover {
+        border-color: rgba(110, 231, 183, 0.75);
+      }
+      .toolbar button.btn-quiet,
+      .toolbar button.toolbar-menu-trigger {
+        background: var(--mc-button-bg);
+        color: var(--mc-button-text);
       }
       .toolbar-select,
       .toolbar select {
@@ -4464,6 +4551,25 @@ export class GraphPanel {
         color: var(--mc-panel-title);
         line-height: 1.25;
       }
+      .panel-title-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .panel-title-action {
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .panel-title-action:hover {
+        color: var(--mc-body-text);
+        border-color: var(--mc-panel-title);
+      }
       .panel-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4504,6 +4610,12 @@ export class GraphPanel {
         font-size: 14px;
         line-height: 1.35;
         word-break: break-word;
+      }
+      .panel-note {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--mc-muted);
       }
       .badge {
         display: inline-flex;

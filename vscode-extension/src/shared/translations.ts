@@ -188,7 +188,13 @@ export type TranslationKey =
   | 'panel.ueMacros.meta'
   | 'panel.ueMacros.metaKey'
   | 'panel.ueMacros.metaValue'
+  | 'panel.ueMacros.displayName'
+  | 'panel.ueMacros.displayNameHint'
+  | 'panel.ueMacros.displayNameRequired'
   | 'panel.ueMacros.ueOnly'
+  | 'panel.ueMacros.attachedTo'
+  | 'panel.ueMacros.allowedTargets'
+  | 'panel.ueMacros.rebind'
   | 'toolbar.noFile'
   | 'warnings.graphBindingDuplicateId'
   | 'warnings.graphBindingIdMismatch'
@@ -393,10 +399,17 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.ueMacros.targetMethod': 'Метод',
     'panel.ueMacros.targetMember': 'Поле',
     'panel.ueMacros.preview': 'Превью',
-    'panel.ueMacros.meta': 'Мета-аргументы',
-    'panel.ueMacros.metaKey': 'Ключ',
+    'panel.ueMacros.meta': 'Дополнительные мета-аргументы',
+    'panel.ueMacros.metaKey': 'Ключ (например Tooltip)',
     'panel.ueMacros.metaValue': 'Значение',
+    'panel.ueMacros.displayName': 'Отображаемое имя',
+    'panel.ueMacros.displayNameHint': 'Будет сохранено как meta=(DisplayName="...")',
+    'panel.ueMacros.displayNameRequired':
+      'Заполните отображаемое имя: оно обязательно и сохранится как meta=(DisplayName="...")',
     'panel.ueMacros.ueOnly': 'Доступно только для UE target',
+    'panel.ueMacros.attachedTo': 'Привязано к',
+    'panel.ueMacros.allowedTargets': 'Можно привязать к',
+    'panel.ueMacros.rebind': 'Перепривязать',
     'warnings.graphBindingDuplicateId': 'Обнаружен дубликат ID графа "{id}" в файлах: {files}',
     'warnings.graphBindingIdMismatch':
       'Несоответствие графа: в коде id={codeId}, в файле ({file}) id={fileId}. Используется id из кода.',
@@ -604,10 +617,17 @@ const translations: Record<Locale, TranslationMap> = {
     'panel.ueMacros.targetMethod': 'Method',
     'panel.ueMacros.targetMember': 'Field',
     'panel.ueMacros.preview': 'Preview',
-    'panel.ueMacros.meta': 'Meta arguments',
-    'panel.ueMacros.metaKey': 'Key',
+    'panel.ueMacros.meta': 'Additional meta arguments',
+    'panel.ueMacros.metaKey': 'Key (for example Tooltip)',
     'panel.ueMacros.metaValue': 'Value',
+    'panel.ueMacros.displayName': 'Display name',
+    'panel.ueMacros.displayNameHint': 'Will be saved as meta=(DisplayName="...")',
+    'panel.ueMacros.displayNameRequired':
+      'Fill in the display name: it is required and will be saved as meta=(DisplayName="...")',
     'panel.ueMacros.ueOnly': 'Available for UE target only',
+    'panel.ueMacros.attachedTo': 'Attached to',
+    'panel.ueMacros.allowedTargets': 'Can attach to',
+    'panel.ueMacros.rebind': 'Rebind',
     'warnings.graphBindingDuplicateId': 'Duplicate graph ID "{id}" detected in files: {files}',
     'warnings.graphBindingIdMismatch':
       'Graph mismatch: source id={codeId}, file ({file}) id={fileId}. Using source id.',

@@ -328,6 +328,62 @@ describe('main.tsx integration', () => {
     }
   });
 
+  it('graphChanged сохраняет ueMacros после локального изменения', async () => {
+    setEditorMode('blueprint');
+    postMessageMock.mockClear();
+    vi.useFakeTimers();
+
+    dispatchSetState({
+      ...createDefaultGraphState(),
+      id: 'graph-ue-macros',
+      name: 'Graph with UE macros',
+      displayLanguage: 'ru',
+      language: 'ue',
+      ueMacros: [
+        {
+          id: 'macro-function',
+          name: 'UE Function',
+          nameRu: 'Функция UE',
+          macroType: 'UFUNCTION',
+          specifiers: ['BlueprintCallable'],
+          category: 'MultiCode',
+          meta: {
+            DisplayName: 'Показать статус',
+          },
+          targetId: 'func-1',
+          targetKind: 'function',
+          createdAt: '2025-01-15T12:00:00.000Z',
+        },
+      ],
+    });
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Simulate Blueprint Change' }));
+
+      await act(async () => {
+        vi.advanceTimersByTime(220);
+      });
+
+      const graphChangedCalls = postMessageMock.mock.calls
+        .map((entry) => entry[0])
+        .filter((message) => message?.type === 'graphChanged');
+      expect(graphChangedCalls.length).toBeGreaterThan(0);
+
+      const payload = graphChangedCalls[graphChangedCalls.length - 1]?.payload as Record<string, unknown>;
+      expect(payload.ueMacros).toEqual([
+        expect.objectContaining({
+          id: 'macro-function',
+          macroType: 'UFUNCTION',
+          meta: expect.objectContaining({
+            DisplayName: 'Показать статус',
+          }),
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('в режиме Dependency добавляет внешний symbol в graph state по клику', async () => {
     setEditorMode('dependency');
     await waitFor(() => {

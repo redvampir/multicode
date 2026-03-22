@@ -41,6 +41,8 @@ export interface GraphState {
   functions?: unknown[];
   /** Реестр пользовательских C++ классов (Blueprint-style) */
   classes?: unknown[];
+  /** Привязки UE-макросов к сущностям графа (Blueprint-style) */
+  ueMacros?: unknown[];
   /**
    * Привязки классов к sidecar-файлам (итерация B: class storage sidecar).
    * В режиме sidecar классы пишутся в `.multicode/classes/*.multicode`, а в графовом `.multicode` остаются только эти привязки.

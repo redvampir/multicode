@@ -14,7 +14,7 @@ import {
 import { serializeGraphState, deserializeGraphState, parseSerializedGraph } from '../shared/serializer';
 import { validateGraphState, type ValidationResult } from '../shared/validator';
 import { migrateToBlueprintFormat, normalizePointerMeta } from '../shared/blueprintTypes';
-import { CppCodeGenerator, createGenerator, UnsupportedLanguageError } from '../codegen';
+import { createGenerator, UnsupportedLanguageError } from '../codegen';
 import { validateExternalSymbols } from '../codegen/externalSymbolResolver';
 import { compileCpp, getTempOutputPath, cleanupTempFiles, type CppStandard } from '../compilation/CppCompiler';
 import { ensureCppToolchain, ToolchainError, type ToolchainUi } from '../compilation/ToolchainManager';
@@ -713,10 +713,23 @@ export class GraphPanel {
   }
 
   public async handleGenerateCode(): Promise<void> {
-    const generator = new CppCodeGenerator();
     const blueprintState = migrateToBlueprintFormat(this.graphState);
     const verboseCodegenLogs = this.readCodegenVerboseLogs();
     const outputProfile = this.readCodegenOutputProfile();
+    let generator;
+
+    try {
+      generator = createGenerator(this.graphState.language);
+    } catch (error) {
+      if (error instanceof UnsupportedLanguageError) {
+        this.postToast(
+          'warning',
+          this.translate('codegen.unsupportedLanguage', { language: error.language.toUpperCase() })
+        );
+        return;
+      }
+      throw error;
+    }
 
     if (verboseCodegenLogs) {
       this.outputChannel.appendLine('');
@@ -1024,9 +1037,26 @@ export class GraphPanel {
   public async handleCompileAndRun(standardOverride?: CppStandard): Promise<void> {
     console.log('[EXTENSION DEBUG] handleCompileAndRun called with standardOverride:', standardOverride);
     this.outputChannel.appendLine('[Compile & Run] Запуск функции компиляции...');
+
+    if (this.graphState.language !== 'cpp') {
+      const targetLabel = this.graphState.language.toUpperCase();
+      this.outputChannel.appendLine(
+        `[Compile & Run] ⚠ Локальный запуск поддерживается только для CPP target. Текущий target: ${targetLabel}.`
+      );
+      if (this.graphState.language === 'ue') {
+        this.outputChannel.appendLine(
+          '[Compile & Run] Для UE используйте "Сгенерировать код" и собирайте результат через Unreal Build Tool / проект Unreal Engine.'
+        );
+        this.postToast('warning', 'UE target нельзя запускать как обычный C++ файл. Сначала сгенерируйте код.');
+      } else {
+        this.postToast('warning', `Локальный запуск не поддерживается для target ${targetLabel}.`);
+      }
+      this.outputChannel.show(true);
+      return;
+    }
     
     // Сначала генерируем код
-    const generator = new CppCodeGenerator();
+    const generator = createGenerator('cpp');
     const blueprintState = migrateToBlueprintFormat(this.graphState);
     await this.reindexIntegrationSymbols(undefined, false);
     const externalValidation = this.validateExternalSymbolsForCodegen(blueprintState);

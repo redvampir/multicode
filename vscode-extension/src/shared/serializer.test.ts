@@ -166,6 +166,32 @@ describe('serializer', () => {
 
       expect(restored.classBindings).toEqual(state.classBindings);
     });
+
+    it('должен сохранять ueMacros при сериализации и десериализации', () => {
+      const state = createValidGraphState();
+      state.language = 'ue';
+      state.ueMacros = [
+        {
+          id: 'macro-function',
+          name: 'UE Function',
+          nameRu: 'Функция UE',
+          macroType: 'UFUNCTION',
+          specifiers: ['BlueprintCallable'],
+          category: 'MultiCode',
+          meta: {
+            DisplayName: 'Показать статус',
+          },
+          targetId: 'func-1',
+          targetKind: 'function',
+          createdAt: '2025-01-15T12:00:00.000Z',
+        },
+      ];
+
+      const serialized = serializeGraphState(state);
+      const restored = deserializeGraphState(serialized);
+
+      expect(restored.ueMacros).toEqual(state.ueMacros);
+    });
   });
 
   describe('parseSerializedGraph', () => {
@@ -520,6 +546,7 @@ describe('serializer', () => {
 
       expect(reloaded.language).toBe('ue');
       expect(reloaded.classes).toEqual(loaded.classes);
+      expect(reloaded.ueMacros).toEqual(loaded.ueMacros);
       expect(reloaded.graphVersion).toBe(3);
     });
   });

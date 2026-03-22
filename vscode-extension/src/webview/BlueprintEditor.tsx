@@ -42,6 +42,7 @@ import {
   NodeTypeDefinition,
   VARIABLE_TYPE_COLORS,
   normalizePointerMeta,
+  UE_MACRO_ALLOWED_TARGETS,
 } from '../shared/blueprintTypes';
 import { PORT_TYPE_COLORS, type PortDataType } from '../shared/portTypes';
 import {
@@ -3383,15 +3384,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
 
         if (targetId && targetKind) {
           const allowedTargets = ['class', 'method', 'member', 'variable', 'function'] as const;
-          const macroAllowed: Record<string, readonly string[]> = {
-            UCLASS: ['class'],
-            UFUNCTION: ['method', 'function'],
-            UPROPERTY: ['member', 'variable'],
-            USTRUCT: ['class'],
-            UENUM: ['class'],
-            UINTERFACE: ['class'],
-          };
-          const allowed = macroAllowed[macro.macroType] ?? allowedTargets;
+          const allowed = UE_MACRO_ALLOWED_TARGETS[macro.macroType] ?? allowedTargets;
           if (allowed.includes(targetKind)) {
             const updatedMacros = macros.map((m) =>
               m.id === ueMacroAttachModeId ? { ...m, targetId, targetKind } : m,

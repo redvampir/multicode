@@ -1131,6 +1131,16 @@ const normalizeMigratedClasses = (classes: unknown[] | undefined): BlueprintClas
     }, []);
 };
 
+const normalizeMigratedUeMacros = (ueMacros: unknown[] | undefined): UeMacroBinding[] => {
+  if (!Array.isArray(ueMacros)) {
+    return [];
+  }
+
+  return ueMacros
+    .map((entry) => normalizeUeMacroBinding(entry))
+    .filter((entry): entry is UeMacroBinding => entry !== null);
+};
+
 const normalizeMigratedFunctions = (functions: unknown[] | undefined): BlueprintFunction[] => {
   if (!Array.isArray(functions)) {
     return [];
@@ -1663,6 +1673,7 @@ export function migrateToBlueprintFormat(oldState: GraphState): BlueprintGraphSt
     variables: normalizeMigratedVariables(oldState.variables as unknown[] | undefined),
     functions: normalizeMigratedFunctions(oldState.functions as unknown[] | undefined),
     classes: normalizeMigratedClasses(oldState.classes as unknown[] | undefined),
+    ueMacros: normalizeMigratedUeMacros(oldState.ueMacros as unknown[] | undefined),
   };
 }
 
@@ -3370,6 +3381,7 @@ export function migrateFromBlueprintFormat(blueprintState: BlueprintGraphState):
     variables: blueprintState.variables,
     functions: blueprintState.functions,
     classes: blueprintState.classes,
+    ueMacros: blueprintState.ueMacros,
   };
 }
 

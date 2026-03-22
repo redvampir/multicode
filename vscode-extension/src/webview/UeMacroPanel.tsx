@@ -2,29 +2,25 @@ import React, { useCallback, useMemo, useState } from 'react';
 import type {
   BlueprintGraphState,
   UeMacroBinding,
-  UeMacroType,
   UeMacroTargetKind,
+  UeMacroType,
 } from '../shared/blueprintTypes';
 import {
   createUeMacroBinding,
   renderUeMacroString,
-  UE_MACRO_TYPES,
-  UE_MACRO_LABELS,
+  UE_MACRO_ALLOWED_TARGETS,
   UE_MACRO_COLORS,
+  UE_MACRO_LABELS,
   UE_MACRO_SPECIFIERS,
+  UE_MACRO_TYPES,
 } from '../shared/blueprintTypes';
 import { getTranslation } from '../shared/translations';
-
-// ─── Интерфейсы ─────────────────────────────────────────────
 
 export interface UeMacroPanelProps {
   graphState: BlueprintGraphState;
   onUeMacrosChange: (macros: UeMacroBinding[]) => void;
-  /** Сейчас активен режим привязки для этого макроса? */
   attachModeId?: string | null;
-  /** Запросить attach-режим */
   onRequestAttach?: (macroId: string) => void;
-  /** Отмена attach-режима */
   onCancelAttach?: () => void;
   displayLanguage: 'ru' | 'en';
   collapsed?: boolean;
@@ -40,8 +36,12 @@ interface MacroDialogState {
   category: string;
   name: string;
   nameRu: string;
+  displayName: string;
   metaEntries: Array<{ key: string; value: string }>;
 }
+
+const DISPLAY_NAME_META_KEY = 'DisplayName';
+const DISPLAY_NAME_META_KEY_NORMALIZED = DISPLAY_NAME_META_KEY.toLowerCase();
 
 const INITIAL_DIALOG: MacroDialogState = {
   isOpen: false,
@@ -52,53 +52,129 @@ const INITIAL_DIALOG: MacroDialogState = {
   category: 'MultiCode',
   name: '',
   nameRu: '',
+  displayName: '',
   metaEntries: [],
 };
 
-// ─── Хелперы ────────────────────────────────────────────────
-
-/** Найти название целевой сущности по ID */
-function resolveTargetLabel(
-  graphState: BlueprintGraphState,
-  targetId?: string,
-  targetKind?: UeMacroTargetKind,
-  lang: 'ru' | 'en' = 'ru',
-): string | null {
-  if (!targetId) return null;
-
-  if (targetKind === 'class') {
-    const cls = graphState.classes?.find((c) => c.id === targetId);
-    return cls ? (lang === 'ru' && cls.nameRu ? cls.nameRu : cls.name) : null;
+const getDefaultSpecifiersForDialog = (macroType: UeMacroType): string[] => {
+  if (macroType === 'UCLASS') {
+    return ['BlueprintType'];
   }
-  if (targetKind === 'function') {
-    const fn = graphState.functions?.find((f) => f.id === targetId);
-    return fn ? (lang === 'ru' ? fn.nameRu : fn.name) : null;
+  if (macroType === 'UFUNCTION') {
+    return ['BlueprintCallable'];
   }
-  if (targetKind === 'variable') {
-    const v = graphState.variables?.find((vr) => vr.id === targetId);
-    return v ? (lang === 'ru' ? v.nameRu : v.name) : null;
+  if (macroType === 'UPROPERTY') {
+    return ['EditAnywhere', 'BlueprintReadWrite'];
   }
-  if (targetKind === 'method') {
-    for (const cls of graphState.classes ?? []) {
-      const m = cls.methods.find((mt) => mt.id === targetId);
-      if (m) return lang === 'ru' && m.nameRu ? m.nameRu : m.name;
-    }
-  }
-  if (targetKind === 'member') {
-    for (const cls of graphState.classes ?? []) {
-      const f = cls.members.find((mb) => mb.id === targetId);
-      if (f) return lang === 'ru' && f.nameRu ? f.nameRu : f.name;
-    }
-  }
-  return null;
-}
+  return ['BlueprintType'];
+};
 
 const targetKindLabel = (kind: UeMacroTargetKind, lang: 'ru' | 'en'): string => {
   const key = `panel.ueMacros.target${kind[0].toUpperCase()}${kind.slice(1)}` as Parameters<typeof getTranslation>[1];
   return getTranslation(lang, key);
 };
 
-// ─── Компонент ──────────────────────────────────────────────
+const resolveTargetLabel = (
+  graphState: BlueprintGraphState,
+  targetId?: string,
+  targetKind?: UeMacroTargetKind,
+  lang: 'ru' | 'en' = 'ru',
+): string | null => {
+  if (!targetId || !targetKind) {
+    return null;
+  }
+
+  if (targetKind === 'class') {
+    const cls = graphState.classes?.find((candidate) => candidate.id === targetId);
+    if (!cls) {
+      return null;
+    }
+    return lang === 'ru' && cls.nameRu ? cls.nameRu : cls.name;
+  }
+
+  if (targetKind === 'function') {
+    const func = graphState.functions?.find((candidate) => candidate.id === targetId);
+    if (!func) {
+      return null;
+    }
+    return lang === 'ru' && func.nameRu ? func.nameRu : func.name;
+  }
+
+  if (targetKind === 'variable') {
+    const variable = graphState.variables?.find((candidate) => candidate.id === targetId);
+    if (!variable) {
+      return null;
+    }
+    return lang === 'ru' && variable.nameRu ? variable.nameRu : variable.name;
+  }
+
+  if (targetKind === 'method') {
+    for (const cls of graphState.classes ?? []) {
+      const method = cls.methods.find((candidate) => candidate.id === targetId);
+      if (!method) {
+        continue;
+      }
+      const ownerName = lang === 'ru' && cls.nameRu ? cls.nameRu : cls.name;
+      const methodName = lang === 'ru' && method.nameRu ? method.nameRu : method.name;
+      return `${ownerName}::${methodName}`;
+    }
+    return null;
+  }
+
+  for (const cls of graphState.classes ?? []) {
+    const member = cls.members.find((candidate) => candidate.id === targetId);
+    if (!member) {
+      continue;
+    }
+    const ownerName = lang === 'ru' && cls.nameRu ? cls.nameRu : cls.name;
+    const memberName = lang === 'ru' && member.nameRu ? member.nameRu : member.name;
+    return `${ownerName}::${memberName}`;
+  }
+
+  return null;
+};
+
+const getAllowedTargetLabels = (macroType: UeMacroType, lang: 'ru' | 'en'): string[] =>
+  UE_MACRO_ALLOWED_TARGETS[macroType].map((kind) => targetKindLabel(kind, lang));
+
+const getDialogDisplayName = (
+  meta: Record<string, string> | undefined,
+  fallbackNameRu: string,
+  fallbackName: string,
+): string => {
+  const displayName = meta?.[DISPLAY_NAME_META_KEY];
+  if (typeof displayName === 'string' && displayName.trim().length > 0) {
+    return displayName.trim();
+  }
+  return fallbackNameRu || fallbackName;
+};
+
+const getDialogMetaEntries = (
+  meta: Record<string, string> | undefined,
+): Array<{ key: string; value: string }> =>
+  meta
+    ? Object.entries(meta)
+        .filter(([key]) => key.trim().toLowerCase() !== DISPLAY_NAME_META_KEY_NORMALIZED)
+        .map(([key, value]) => ({ key, value }))
+    : [];
+
+const buildDialogMetaObject = (
+  displayName: string,
+  metaEntries: Array<{ key: string; value: string }>,
+): Record<string, string> => {
+  const metaObj: Record<string, string> = {
+    [DISPLAY_NAME_META_KEY]: displayName.trim(),
+  };
+
+  for (const { key, value } of metaEntries) {
+    const trimmedKey = key.trim();
+    if (trimmedKey.length > 0 && trimmedKey.toLowerCase() !== DISPLAY_NAME_META_KEY_NORMALIZED) {
+      metaObj[trimmedKey] = value;
+    }
+  }
+
+  return metaObj;
+};
 
 export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
   graphState,
@@ -111,32 +187,37 @@ export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
   onToggleCollapsed,
 }) => {
   const t = useCallback(
-    (key: Parameters<typeof getTranslation>[1]) => getTranslation(lang, key),
+    (key: Parameters<typeof getTranslation>[1], fallback?: string) =>
+      getTranslation(lang, key, undefined, fallback),
     [lang],
   );
 
   const macros = useMemo(() => graphState.ueMacros ?? [], [graphState.ueMacros]);
   const isUeTarget = graphState.language === 'ue';
-
   const [dialog, setDialog] = useState<MacroDialogState>(INITIAL_DIALOG);
 
-  // ─── CRUD ─────────────────────────────────────────
+  const activeAttachMacro = useMemo(
+    () => macros.find((macro) => macro.id === attachModeId) ?? null,
+    [attachModeId, macros],
+  );
+
+  const editingMacro = useMemo(
+    () => (dialog.mode === 'edit' && dialog.editId ? macros.find((macro) => macro.id === dialog.editId) ?? null : null),
+    [dialog.editId, dialog.mode, macros],
+  );
 
   const openCreateDialog = useCallback((macroType: UeMacroType) => {
     const label = UE_MACRO_LABELS[macroType];
-    const defaultSpecs = macroType === 'UCLASS' ? ['BlueprintType']
-      : macroType === 'UFUNCTION' ? ['BlueprintCallable']
-      : macroType === 'UPROPERTY' ? ['EditAnywhere', 'BlueprintReadWrite']
-      : ['BlueprintType'];
     setDialog({
       isOpen: true,
       mode: 'create',
       editId: null,
       macroType,
-      specifiers: defaultSpecs,
+      specifiers: getDefaultSpecifiersForDialog(macroType),
       category: 'MultiCode',
       name: label.en,
       nameRu: label.ru,
+      displayName: label.ru,
       metaEntries: [],
     });
   }, []);
@@ -151,20 +232,20 @@ export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
       category: macro.category,
       name: macro.name,
       nameRu: macro.nameRu,
-      metaEntries: macro.meta
-        ? Object.entries(macro.meta).map(([key, value]) => ({ key, value }))
-        : [],
+      displayName: getDialogDisplayName(macro.meta, macro.nameRu, macro.name),
+      metaEntries: getDialogMetaEntries(macro.meta),
     });
   }, []);
 
   const closeDialog = useCallback(() => setDialog(INITIAL_DIALOG), []);
 
   const saveDialog = useCallback(() => {
-    const metaObj: Record<string, string> = {};
-    for (const { key, value } of dialog.metaEntries) {
-      const k = key.trim();
-      if (k) metaObj[k] = value;
+    const trimmedDisplayName = dialog.displayName.trim();
+    if (!trimmedDisplayName) {
+      return;
     }
+
+    const metaObj = buildDialogMetaObject(trimmedDisplayName, dialog.metaEntries);
 
     if (dialog.mode === 'create') {
       const binding = createUeMacroBinding(dialog.macroType, {
@@ -172,60 +253,61 @@ export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
         nameRu: dialog.nameRu || UE_MACRO_LABELS[dialog.macroType].ru,
         specifiers: dialog.specifiers,
         category: dialog.category,
-        meta: Object.keys(metaObj).length > 0 ? metaObj : undefined,
+        meta: metaObj,
       });
       onUeMacrosChange([...macros, binding]);
     } else if (dialog.editId) {
       onUeMacrosChange(
-        macros.map((m) =>
-          m.id === dialog.editId
+        macros.map((macro) =>
+          macro.id === dialog.editId
             ? {
-                ...m,
+                ...macro,
                 name: dialog.name,
                 nameRu: dialog.nameRu,
                 specifiers: dialog.specifiers,
                 category: dialog.category,
-                meta: Object.keys(metaObj).length > 0 ? metaObj : undefined,
+                meta: metaObj,
               }
-            : m,
+            : macro,
         ),
       );
     }
+
     closeDialog();
-  }, [dialog, macros, onUeMacrosChange, closeDialog]);
+  }, [closeDialog, dialog, macros, onUeMacrosChange]);
 
   const deleteMacro = useCallback(
-    (id: string) => onUeMacrosChange(macros.filter((m) => m.id !== id)),
+    (id: string) => onUeMacrosChange(macros.filter((macro) => macro.id !== id)),
     [macros, onUeMacrosChange],
   );
 
   const detachMacro = useCallback(
     (id: string) =>
       onUeMacrosChange(
-        macros.map((m) => (m.id === id ? { ...m, targetId: undefined, targetKind: undefined } : m)),
+        macros.map((macro) =>
+          macro.id === id ? { ...macro, targetId: undefined, targetKind: undefined } : macro,
+        ),
       ),
     [macros, onUeMacrosChange],
   );
 
-  const toggleSpecifier = useCallback(
-    (spec: string) =>
-      setDialog((prev) => ({
-        ...prev,
-        specifiers: prev.specifiers.includes(spec)
-          ? prev.specifiers.filter((s) => s !== spec)
-          : [...prev.specifiers, spec],
-      })),
-    [],
-  );
+  const toggleSpecifier = useCallback((specifier: string) => {
+    setDialog((prev) => ({
+      ...prev,
+      specifiers: prev.specifiers.includes(specifier)
+        ? prev.specifiers.filter((item) => item !== specifier)
+        : [...prev.specifiers, specifier],
+    }));
+  }, []);
 
-  // ─── Preview строки макроса ───────────────────────
+  const trimmedDisplayName = dialog.displayName.trim();
+  const isDialogValid = trimmedDisplayName.length > 0;
 
   const dialogPreview = useMemo(() => {
-    const metaObj: Record<string, string> = {};
-    for (const { key, value } of dialog.metaEntries) {
-      const k = key.trim();
-      if (k) metaObj[k] = value;
-    }
+    const metaObj = trimmedDisplayName
+      ? buildDialogMetaObject(trimmedDisplayName, dialog.metaEntries)
+      : undefined;
+
     return renderUeMacroString({
       id: '',
       name: '',
@@ -233,422 +315,410 @@ export const UeMacroPanel: React.FC<UeMacroPanelProps> = ({
       macroType: dialog.macroType,
       specifiers: dialog.specifiers,
       category: dialog.category,
-      meta: Object.keys(metaObj).length > 0 ? metaObj : undefined,
+      meta: metaObj,
     });
-  }, [dialog.macroType, dialog.specifiers, dialog.category, dialog.metaEntries]);
+  }, [dialog.category, dialog.macroType, dialog.metaEntries, dialog.specifiers, trimmedDisplayName]);
 
-  // ─── Рендер ───────────────────────────────────────
+  const dialogAllowedTargetLabels = useMemo(
+    () => getAllowedTargetLabels(dialog.macroType, lang),
+    [dialog.macroType, lang],
+  );
+
+  const dialogCurrentTargetLabel = useMemo(
+    () =>
+      editingMacro
+        ? resolveTargetLabel(graphState, editingMacro.targetId, editingMacro.targetKind, lang)
+        : null,
+    [editingMacro, graphState, lang],
+  );
+
+  const attachBannerHint = useMemo(() => {
+    if (!activeAttachMacro) {
+      return '';
+    }
+
+    const targetKinds = getAllowedTargetLabels(activeAttachMacro.macroType, lang).join(', ');
+    const macroLabel = lang === 'ru' ? activeAttachMacro.nameRu : activeAttachMacro.name;
+    return `${macroLabel}: ${t('panel.ueMacros.allowedTargets', 'Можно привязать к')} ${targetKinds}`;
+  }, [activeAttachMacro, lang, t]);
 
   return (
     <div className="bp-panel bp-ue-macro-panel">
-      {/* Заголовок секции */}
       <div
-        className="bp-panel-header"
+        className="function-list-header bp-ue-macro-header"
         onClick={onToggleCollapsed}
         data-testid="ue-macros-section-toggle"
-        style={{ cursor: 'pointer', userSelect: 'none' }}
       >
-        <span className="bp-panel-collapse-icon">{collapsed ? '▶' : '▼'}</span>
-        <span className="bp-panel-title">{t('panel.ueMacros.title')}</span>
-        {!isUeTarget && (
-          <span
-            className="bp-ue-macro-badge-disabled"
-            title={t('panel.ueMacros.ueOnly')}
-            style={{
-              fontSize: '0.7em',
-              color: '#888',
-              marginLeft: 6,
-              fontStyle: 'italic',
+        <div className="panel-header-title">
+          <button
+            type="button"
+            className="panel-collapse-btn"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapsed?.();
             }}
+            title={lang === 'ru' ? 'Свернуть или развернуть секцию' : 'Collapse or expand section'}
+            aria-label={lang === 'ru' ? 'Переключить секцию UE-макросов' : 'Toggle UE macros section'}
           >
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <h3>{t('panel.ueMacros.title', 'UE Макросы')}</h3>
+        </div>
+        {!isUeTarget && (
+          <span className="bp-ue-macro-badge-disabled" title={t('panel.ueMacros.ueOnly', 'Доступно только для UE target')}>
             UE
           </span>
         )}
-
-        {/* Кнопки создания макросов */}
-        {!collapsed && isUeTarget && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-            {UE_MACRO_TYPES.map((mt) => (
-              <button
-                key={mt}
-                className="bp-btn bp-btn-sm"
-                style={{
-                  backgroundColor: UE_MACRO_COLORS[mt],
-                  color: '#fff',
-                  fontSize: '0.7em',
-                  padding: '2px 6px',
-                  borderRadius: 3,
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-                title={`${t('panel.ueMacros.create')} ${mt}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openCreateDialog(mt);
-                }}
-              >
-                {mt}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Attach-баннер */}
-      {attachModeId && (
-        <div
-          className="bp-ue-macro-attach-banner"
-          style={{
-            background: '#1E88E5',
-            color: '#fff',
-            padding: '6px 10px',
-            fontSize: '0.85em',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span>{t('panel.ueMacros.attachBanner')}</span>
-          <button
-            className="bp-btn bp-btn-sm"
-            style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', border: 'none', cursor: 'pointer' }}
-            onClick={onCancelAttach}
-          >
-            {t('panel.ueMacros.attachCancel')}
-          </button>
-        </div>
-      )}
-
-      {/* Список макросов */}
       {!collapsed && (
-        <div className="bp-ue-macro-list" style={{ padding: '4px 8px' }}>
-          {macros.length === 0 && (
-            <div style={{ color: '#888', fontSize: '0.85em', padding: '8px 0' }}>
-              <div>{t('panel.ueMacros.empty')}</div>
-              <div style={{ fontSize: '0.8em', marginTop: 4 }}>
-                {t('panel.ueMacros.emptyHint')}
-              </div>
+        <>
+          {isUeTarget && (
+            <div className="bp-ue-macro-toolbar">
+              {UE_MACRO_TYPES.map((macroType) => (
+                <button
+                  key={macroType}
+                  type="button"
+                  className="bp-ue-macro-create-btn"
+                  style={{ ['--ue-macro-accent' as string]: UE_MACRO_COLORS[macroType] } as React.CSSProperties}
+                  title={`${t('panel.ueMacros.create', 'Создать')} ${macroType}`}
+                  onClick={() => openCreateDialog(macroType)}
+                >
+                  <span className="bp-ue-macro-create-type">{macroType}</span>
+                  <span className="bp-ue-macro-create-label">{lang === 'ru' ? UE_MACRO_LABELS[macroType].ru : UE_MACRO_LABELS[macroType].en}</span>
+                </button>
+              ))}
             </div>
           )}
 
-          {macros.map((macro) => {
-            const targetLabel = resolveTargetLabel(graphState, macro.targetId, macro.targetKind, lang);
-            const macroStr = renderUeMacroString(macro);
-            const isAttaching = attachModeId === macro.id;
-
-            return (
-              <div
-                key={macro.id}
-                className={`bp-ue-macro-item ${isAttaching ? 'bp-ue-macro-item--attaching' : ''}`}
-                style={{
-                  borderLeft: `3px solid ${UE_MACRO_COLORS[macro.macroType]}`,
-                  padding: '6px 8px',
-                  marginBottom: 4,
-                  background: isAttaching ? 'rgba(30, 136, 229, 0.15)' : 'rgba(255,255,255,0.03)',
-                  borderRadius: 3,
-                }}
+          {attachModeId && activeAttachMacro && (
+            <div className="bp-ue-macro-attach-banner">
+              <div className="bp-ue-macro-attach-copy">
+                <strong>{activeAttachMacro.macroType}</strong>
+                <span>{attachBannerHint}</span>
+              </div>
+              <button
+                type="button"
+                className="bp-ue-macro-inline-btn"
+                onClick={onCancelAttach}
               >
-                {/* Заголовок макроса */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: UE_MACRO_COLORS[macro.macroType],
-                      fontSize: '0.85em',
-                    }}
-                  >
-                    {macro.macroType}
-                  </span>
-                  <span style={{ fontSize: '0.8em', color: '#ccc' }}>
-                    {lang === 'ru' ? macro.nameRu : macro.name}
-                  </span>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                    <button
-                      className="bp-btn bp-btn-xs"
-                      title={t('panel.ueMacros.attach')}
-                      onClick={() => onRequestAttach?.(macro.id)}
-                      style={{ fontSize: '0.75em', cursor: 'pointer' }}
-                    >
-                      📌
-                    </button>
-                    <button
-                      className="bp-btn bp-btn-xs"
-                      title={lang === 'ru' ? 'Редактировать' : 'Edit'}
-                      onClick={() => openEditDialog(macro)}
-                      style={{ fontSize: '0.75em', cursor: 'pointer' }}
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      className="bp-btn bp-btn-xs"
-                      title={t('panel.ueMacros.delete')}
-                      onClick={() => deleteMacro(macro.id)}
-                      style={{ fontSize: '0.75em', cursor: 'pointer' }}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </div>
+                {t('panel.ueMacros.attachCancel', 'Отмена')}
+              </button>
+            </div>
+          )}
 
-                {/* Привязка */}
-                <div style={{ fontSize: '0.75em', marginTop: 3, color: '#aaa' }}>
-                  {macro.targetId && macro.targetKind ? (
-                    <span>
-                      → {targetKindLabel(macro.targetKind, lang)}:{' '}
-                      <strong style={{ color: '#ddd' }}>{targetLabel || macro.targetId}</strong>
-                      <button
-                        className="bp-btn bp-btn-xs"
-                        onClick={() => detachMacro(macro.id)}
-                        style={{ marginLeft: 6, fontSize: '0.8em', cursor: 'pointer' }}
-                        title={t('panel.ueMacros.detach')}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ) : (
-                    <span style={{ fontStyle: 'italic' }}>{t('panel.ueMacros.noTarget')}</span>
+          <div className="bp-ue-macro-list">
+            {macros.length === 0 && (
+              <div className="bp-ue-macro-empty">
+                <div className="bp-ue-macro-empty-title">{t('panel.ueMacros.empty', 'Нет UE-макросов')}</div>
+                <div className="bp-ue-macro-empty-hint">
+                  {t(
+                    'panel.ueMacros.emptyHint',
+                    'Создайте макрос и привяжите к классу, функции или переменной, чтобы он стал Blueprint-доступным в Unreal Engine',
                   )}
                 </div>
-
-                {/* Превью макроса */}
-                <div
-                  style={{
-                    fontSize: '0.7em',
-                    marginTop: 3,
-                    color: '#8a8',
-                    fontFamily: 'monospace',
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  {macroStr}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ─── Диалог создания/редактирования ─────────────── */}
-      {dialog.isOpen && (
-        <div
-          className="bp-ue-macro-dialog-overlay"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onClick={closeDialog}
-        >
-          <div
-            className="bp-ue-macro-dialog"
-            style={{
-              background: '#1e1e2e',
-              borderRadius: 8,
-              padding: 20,
-              minWidth: 400,
-              maxWidth: 540,
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              border: `2px solid ${UE_MACRO_COLORS[dialog.macroType]}`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 12px', color: UE_MACRO_COLORS[dialog.macroType] }}>
-              {dialog.mode === 'create'
-                ? `${t('panel.ueMacros.create')} ${dialog.macroType}`
-                : `${dialog.macroType} — ${lang === 'ru' ? dialog.nameRu : dialog.name}`}
-            </h3>
-
-            {/* Тип макроса (только при создании) */}
-            {dialog.mode === 'create' && (
-              <div style={{ marginBottom: 10 }}>
-                <label style={{ fontSize: '0.85em', color: '#aaa' }}>{t('panel.ueMacros.type')}</label>
-                <select
-                  value={dialog.macroType}
-                  onChange={(e) => {
-                    const mt = e.target.value as UeMacroType;
-                    setDialog((prev) => ({
-                      ...prev,
-                      macroType: mt,
-                      specifiers: mt === 'UCLASS' ? ['BlueprintType']
-                        : mt === 'UFUNCTION' ? ['BlueprintCallable']
-                        : mt === 'UPROPERTY' ? ['EditAnywhere', 'BlueprintReadWrite']
-                        : ['BlueprintType'],
-                      name: UE_MACRO_LABELS[mt].en,
-                      nameRu: UE_MACRO_LABELS[mt].ru,
-                    }));
-                  }}
-                  style={{ width: '100%', padding: 6, marginTop: 4 }}
-                >
-                  {UE_MACRO_TYPES.map((mt) => (
-                    <option key={mt} value={mt}>{mt}</option>
-                  ))}
-                </select>
               </div>
             )}
 
-            {/* Имена */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.85em', color: '#aaa' }}>Name (EN)</label>
-                <input
-                  value={dialog.name}
-                  onChange={(e) => setDialog((prev) => ({ ...prev, name: e.target.value }))}
-                  style={{ width: '100%', padding: 6, marginTop: 4 }}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.85em', color: '#aaa' }}>Имя (RU)</label>
-                <input
-                  value={dialog.nameRu}
-                  onChange={(e) => setDialog((prev) => ({ ...prev, nameRu: e.target.value }))}
-                  style={{ width: '100%', padding: 6, marginTop: 4 }}
-                />
+            {macros.map((macro) => {
+              const targetLabel = resolveTargetLabel(graphState, macro.targetId, macro.targetKind, lang);
+              const macroString = renderUeMacroString(macro);
+              const isAttaching = attachModeId === macro.id;
+              const allowedTargetLabels = getAllowedTargetLabels(macro.macroType, lang);
+              const accentStyle = {
+                ['--ue-macro-accent' as string]: UE_MACRO_COLORS[macro.macroType],
+              } as React.CSSProperties;
+
+              return (
+                <article
+                  key={macro.id}
+                  className={`bp-ue-macro-item ${isAttaching ? 'bp-ue-macro-item--attaching' : ''}`}
+                  style={accentStyle}
+                >
+                  <div className="bp-ue-macro-item-head">
+                    <div className="bp-ue-macro-title-block">
+                      <span className="bp-ue-macro-type-badge">{macro.macroType}</span>
+                      <div className="bp-ue-macro-title-stack">
+                        <div className="bp-ue-macro-display-name">
+                          {lang === 'ru' ? macro.nameRu : macro.name}
+                        </div>
+                        <div className="bp-ue-macro-binding-row">
+                          {macro.targetId && macro.targetKind ? (
+                            <>
+                              <span className="bp-ue-macro-binding-label">
+                                {t('panel.ueMacros.attachedTo', 'Привязано к')}
+                              </span>
+                              <span className="bp-ue-macro-target-chip">
+                                {targetKindLabel(macro.targetKind, lang)}
+                              </span>
+                              <span className="bp-ue-macro-target-value">
+                                {targetLabel || macro.targetId}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="bp-ue-macro-unbound">
+                                {t('panel.ueMacros.noTarget', 'Не привязан')}
+                              </span>
+                              <span className="bp-ue-macro-binding-label">
+                                {t('panel.ueMacros.allowedTargets', 'Можно привязать к')}
+                              </span>
+                              <div className="bp-ue-macro-allowed-list">
+                                {allowedTargetLabels.map((label) => (
+                                  <span key={`${macro.id}:${label}`} className="bp-ue-macro-allowed-chip">
+                                    {label}
+                                  </span>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bp-ue-macro-actions">
+                      <button
+                        type="button"
+                        className="bp-ue-macro-inline-btn"
+                        onClick={() => {
+                          if (isAttaching) {
+                            onCancelAttach?.();
+                            return;
+                          }
+                          onRequestAttach?.(macro.id);
+                        }}
+                      >
+                        {isAttaching
+                          ? t('panel.ueMacros.attachCancel', 'Отмена')
+                          : macro.targetId
+                            ? t('panel.ueMacros.rebind', 'Перепривязать')
+                            : t('panel.ueMacros.attach', 'Привязать')}
+                      </button>
+                      {macro.targetId && (
+                        <button
+                          type="button"
+                          className="bp-ue-macro-inline-btn"
+                          onClick={() => detachMacro(macro.id)}
+                        >
+                          {t('panel.ueMacros.detach', 'Отвязать')}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="bp-ue-macro-inline-btn"
+                        onClick={() => openEditDialog(macro)}
+                      >
+                        {lang === 'ru' ? 'Изменить' : 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        className="bp-ue-macro-inline-btn bp-ue-macro-inline-btn--danger"
+                        onClick={() => deleteMacro(macro.id)}
+                      >
+                        {lang === 'ru' ? 'Удалить' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bp-ue-macro-preview">
+                    {macroString}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {dialog.isOpen && (
+        <div className="bp-ue-macro-dialog-overlay" onClick={closeDialog}>
+          <div
+            className="bp-ue-macro-dialog"
+            style={{ ['--ue-macro-accent' as string]: UE_MACRO_COLORS[dialog.macroType] } as React.CSSProperties}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bp-ue-macro-dialog-header">
+              <div>
+                <h3>
+                  {dialog.mode === 'create'
+                    ? `${t('panel.ueMacros.create', 'Создать')} ${dialog.macroType}`
+                    : `${dialog.macroType} — ${lang === 'ru' ? dialog.nameRu : dialog.name}`}
+                </h3>
+                <div className="bp-ue-macro-dialog-subtitle">
+                  {editingMacro?.targetId && editingMacro.targetKind
+                    ? `${t('panel.ueMacros.attachedTo', 'Привязано к')} ${targetKindLabel(editingMacro.targetKind, lang)}: ${dialogCurrentTargetLabel || editingMacro.targetId}`
+                    : `${t('panel.ueMacros.allowedTargets', 'Можно привязать к')}: ${dialogAllowedTargetLabels.join(', ')}`}
+                </div>
               </div>
             </div>
 
-            {/* Category */}
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: '0.85em', color: '#aaa' }}>{t('panel.ueMacros.category')}</label>
-              <input
-                value={dialog.category}
-                onChange={(e) => setDialog((prev) => ({ ...prev, category: e.target.value }))}
-                style={{ width: '100%', padding: 6, marginTop: 4 }}
-                placeholder='MultiCode'
-              />
-            </div>
-
-            {/* Спецификаторы */}
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: '0.85em', color: '#aaa' }}>{t('panel.ueMacros.specifiers')}</label>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 4,
-                  marginTop: 6,
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                }}
-              >
-                {UE_MACRO_SPECIFIERS[dialog.macroType].map((spec) => {
-                  const active = dialog.specifiers.includes(spec);
-                  return (
-                    <button
-                      key={spec}
-                      onClick={() => toggleSpecifier(spec)}
-                      style={{
-                        padding: '3px 8px',
-                        fontSize: '0.78em',
-                        borderRadius: 3,
-                        border: active
-                          ? `1px solid ${UE_MACRO_COLORS[dialog.macroType]}`
-                          : '1px solid #555',
-                        background: active ? UE_MACRO_COLORS[dialog.macroType] + '30' : 'transparent',
-                        color: active ? '#fff' : '#aaa',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {active ? '✓ ' : ''}{spec}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Мета-аргументы */}
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: '0.85em', color: '#aaa' }}>{t('panel.ueMacros.meta')}</label>
-              {dialog.metaEntries.map((entry, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                  <input
-                    value={entry.key}
-                    placeholder={t('panel.ueMacros.metaKey')}
-                    onChange={(e) => {
-                      const updated = [...dialog.metaEntries];
-                      updated[idx] = { ...updated[idx], key: e.target.value };
-                      setDialog((prev) => ({ ...prev, metaEntries: updated }));
+            <div className="bp-ue-macro-dialog-body">
+              {dialog.mode === 'create' && (
+                <div className="bp-ue-macro-field">
+                  <label>{t('panel.ueMacros.type', 'Тип макроса')}</label>
+                  <select
+                    className="bp-ue-macro-input"
+                    value={dialog.macroType}
+                    onChange={(event) => {
+                      const macroType = event.target.value as UeMacroType;
+                      setDialog((prev) => ({
+                        ...prev,
+                        macroType,
+                        specifiers: getDefaultSpecifiersForDialog(macroType),
+                        name: UE_MACRO_LABELS[macroType].en,
+                        nameRu: UE_MACRO_LABELS[macroType].ru,
+                        displayName: prev.displayName || UE_MACRO_LABELS[macroType].ru,
+                      }));
                     }}
-                    style={{ flex: 1, padding: 4, fontSize: '0.85em' }}
-                  />
-                  <input
-                    value={entry.value}
-                    placeholder={t('panel.ueMacros.metaValue')}
-                    onChange={(e) => {
-                      const updated = [...dialog.metaEntries];
-                      updated[idx] = { ...updated[idx], value: e.target.value };
-                      setDialog((prev) => ({ ...prev, metaEntries: updated }));
-                    }}
-                    style={{ flex: 1, padding: 4, fontSize: '0.85em' }}
-                  />
-                  <button
-                    onClick={() => {
-                      const updated = dialog.metaEntries.filter((_, i) => i !== idx);
-                      setDialog((prev) => ({ ...prev, metaEntries: updated }));
-                    }}
-                    style={{ cursor: 'pointer', fontSize: '0.8em' }}
                   >
-                    ✕
+                    {UE_MACRO_TYPES.map((macroType) => (
+                      <option key={macroType} value={macroType}>
+                        {macroType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="bp-ue-macro-form-grid">
+                <div className="bp-ue-macro-field">
+                  <label>Name (EN)</label>
+                  <input
+                    className="bp-ue-macro-input"
+                    value={dialog.name}
+                    onChange={(event) => setDialog((prev) => ({ ...prev, name: event.target.value }))}
+                  />
+                </div>
+                <div className="bp-ue-macro-field">
+                  <label>Имя (RU)</label>
+                  <input
+                    className="bp-ue-macro-input"
+                    value={dialog.nameRu}
+                    onChange={(event) => setDialog((prev) => ({ ...prev, nameRu: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="bp-ue-macro-field">
+                <label>{t('panel.ueMacros.category', 'Категория')}</label>
+                <input
+                  className="bp-ue-macro-input"
+                  value={dialog.category}
+                  onChange={(event) => setDialog((prev) => ({ ...prev, category: event.target.value }))}
+                  placeholder="MultiCode"
+                />
+              </div>
+
+              <div className="bp-ue-macro-field">
+                <label>{t('panel.ueMacros.displayName', 'Отображаемое имя')}</label>
+                <input
+                  className={`bp-ue-macro-input ${isDialogValid ? '' : 'bp-ue-macro-input--invalid'}`}
+                  value={dialog.displayName}
+                  onChange={(event) => setDialog((prev) => ({ ...prev, displayName: event.target.value }))}
+                  placeholder={lang === 'ru' ? 'Название, которое увидит пользователь в Blueprint' : 'Visible name in Blueprint'}
+                  aria-label={t('panel.ueMacros.displayName', 'Отображаемое имя')}
+                  aria-invalid={!isDialogValid}
+                  required
+                />
+                <div className={`bp-ue-macro-field-note ${isDialogValid ? '' : 'bp-ue-macro-field-note--error'}`}>
+                  {isDialogValid
+                    ? t('panel.ueMacros.displayNameHint', 'Будет сохранено как meta=(DisplayName="...")')
+                    : t('panel.ueMacros.displayNameRequired', 'Заполните отображаемое имя: оно обязательно и сохранится как meta=(DisplayName="...")')}
+                </div>
+              </div>
+
+              <div className="bp-ue-macro-field">
+                <label>{t('panel.ueMacros.specifiers', 'Спецификаторы')}</label>
+                <div className="bp-ue-macro-specifier-grid">
+                  {UE_MACRO_SPECIFIERS[dialog.macroType].map((specifier) => {
+                    const active = dialog.specifiers.includes(specifier);
+                    return (
+                      <button
+                        key={specifier}
+                        type="button"
+                        className={`bp-ue-macro-specifier-btn ${active ? 'active' : ''}`}
+                        onClick={() => toggleSpecifier(specifier)}
+                      >
+                        {active ? '✓ ' : ''}
+                        {specifier}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bp-ue-macro-field">
+                <div className="bp-ue-macro-field-row">
+                  <label>{t('panel.ueMacros.meta', 'Дополнительные мета-аргументы')}</label>
+                  <button
+                    type="button"
+                    className="bp-ue-macro-inline-btn"
+                    onClick={() =>
+                      setDialog((prev) => ({
+                        ...prev,
+                        metaEntries: [...prev.metaEntries, { key: '', value: '' }],
+                      }))
+                    }
+                  >
+                    + meta
                   </button>
                 </div>
-              ))}
-              <button
-                onClick={() =>
-                  setDialog((prev) => ({
-                    ...prev,
-                    metaEntries: [...prev.metaEntries, { key: '', value: '' }],
-                  }))
-                }
-                className="bp-btn bp-btn-sm"
-                style={{ marginTop: 4, fontSize: '0.8em', cursor: 'pointer' }}
-              >
-                + meta
-              </button>
-            </div>
 
-            {/* Превью */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: '0.85em', color: '#aaa' }}>{t('panel.ueMacros.preview')}</label>
-              <div
-                style={{
-                  fontFamily: 'monospace',
-                  fontSize: '0.85em',
-                  color: UE_MACRO_COLORS[dialog.macroType],
-                  background: '#111',
-                  padding: '8px 10px',
-                  borderRadius: 4,
-                  marginTop: 4,
-                  wordBreak: 'break-all',
-                }}
-              >
-                {dialogPreview}
+                <div className="bp-ue-macro-meta-list">
+                  {dialog.metaEntries.map((entry, index) => (
+                    <div key={`${entry.key}:${index}`} className="bp-ue-macro-meta-row">
+                      <input
+                        className="bp-ue-macro-input"
+                        value={entry.key}
+                        placeholder={t('panel.ueMacros.metaKey', 'Ключ (например Tooltip)')}
+                        onChange={(event) => {
+                          const updated = [...dialog.metaEntries];
+                          updated[index] = { ...updated[index], key: event.target.value };
+                          setDialog((prev) => ({ ...prev, metaEntries: updated }));
+                        }}
+                      />
+                      <input
+                        className="bp-ue-macro-input"
+                        value={entry.value}
+                        placeholder={t('panel.ueMacros.metaValue', 'Значение')}
+                        onChange={(event) => {
+                          const updated = [...dialog.metaEntries];
+                          updated[index] = { ...updated[index], value: event.target.value };
+                          setDialog((prev) => ({ ...prev, metaEntries: updated }));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="bp-ue-macro-inline-btn bp-ue-macro-inline-btn--danger"
+                        onClick={() => {
+                          const updated = dialog.metaEntries.filter((_, itemIndex) => itemIndex !== index);
+                          setDialog((prev) => ({ ...prev, metaEntries: updated }));
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bp-ue-macro-field">
+                <label>{t('panel.ueMacros.preview', 'Превью')}</label>
+                <div className="bp-ue-macro-preview bp-ue-macro-preview--dialog">
+                  {dialogPreview}
+                </div>
               </div>
             </div>
 
-            {/* Кнопки */}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                className="bp-btn"
-                onClick={closeDialog}
-                style={{ padding: '6px 16px', cursor: 'pointer' }}
-              >
+            <div className="bp-ue-macro-dialog-actions">
+              <button type="button" className="bp-ue-macro-inline-btn" onClick={closeDialog}>
                 {lang === 'ru' ? 'Отмена' : 'Cancel'}
               </button>
               <button
-                className="bp-btn"
+                type="button"
+                className="bp-ue-macro-inline-btn bp-ue-macro-inline-btn--primary"
                 onClick={saveDialog}
-                style={{
-                  padding: '6px 16px',
-                  background: UE_MACRO_COLORS[dialog.macroType],
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
+                disabled={!isDialogValid}
               >
                 {dialog.mode === 'create'
                   ? (lang === 'ru' ? 'Создать' : 'Create')

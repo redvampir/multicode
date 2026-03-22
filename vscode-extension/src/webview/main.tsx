@@ -282,6 +282,7 @@ const buildGraphMutationPayload = (graphState: GraphState): GraphMutationPayload
   variables: graphState.variables,
   functions: graphState.functions,
   classes: graphState.classes,
+  ueMacros: graphState.ueMacros,
   integrationBindings: graphState.integrationBindings,
   symbolLocalization: graphState.symbolLocalization,
 });

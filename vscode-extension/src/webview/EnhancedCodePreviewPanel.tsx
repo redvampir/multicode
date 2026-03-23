@@ -236,6 +236,7 @@ interface EnhancedCodePreviewProps {
   onNodeSelect?: (nodeId: string) => void;
   onGenerateComplete?: (result: CodeGenerationResult) => void;
   packageRegistrySnapshot?: Partial<PackageRegistrySnapshot>;
+  layout?: 'side' | 'bottom';
 }
 
 // ============================================
@@ -248,6 +249,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   onNodeSelect,
   onGenerateComplete,
   packageRegistrySnapshot,
+  layout = 'side',
 }) => {
   const [result, setResult] = useState<CodeGenerationResult | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -256,7 +258,7 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipContent, setTooltipContent] = useState('');
-  const [showMinimap, setShowMinimap] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(layout === 'side');
   const [showFunctionsPanel, setShowFunctionsPanel] = useState(false);  
   const codeRef = useRef<HTMLDivElement>(null);
   const supportInfo = getLanguageSupportInfo(graph.language);
@@ -555,8 +557,19 @@ export const EnhancedCodePreviewPanel: React.FC<EnhancedCodePreviewProps> = ({
     );
   };
 
+  const containerStyle: React.CSSProperties = layout === 'bottom'
+    ? {
+        ...styles.container,
+        minWidth: 0,
+        maxWidth: 'none',
+        width: '100%',
+        borderLeft: 'none',
+        borderTop: '1px solid #313244',
+      }
+    : styles.container;
+
   return (
-    <div style={styles.container}>
+    <div style={containerStyle}>
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.title}>

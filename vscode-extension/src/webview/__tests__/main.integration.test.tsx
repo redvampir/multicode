@@ -147,6 +147,10 @@ const dispatchExternalIpcResponse = (data: unknown): void => {
 const openWorkingFilesMenu = async (): Promise<void> =>
   openToolbarMenu('toolbar-files-menu-trigger', 'toolbar-files-menu-popup');
 
+const openUtilityTab = (tabId: 'problems' | 'generated' | 'console' | 'packages' | 'dependencies'): void => {
+  fireEvent.click(screen.getByTestId(`utility-tab-${tabId}`));
+};
+
 describe('main.tsx integration', () => {
   beforeAll(async () => {
     localStorage.clear();
@@ -184,7 +188,7 @@ describe('main.tsx integration', () => {
     expect(screen.getByText('Настройки расположения')).toBeInTheDocument();
     expect(screen.getByText('Алгоритм')).toBeInTheDocument();
     expect(screen.getByText('Сводка графа')).toBeInTheDocument();
-    expect(screen.getByText('Тестовая ошибка')).toBeInTheDocument();
+    expect(screen.getAllByText('Тестовая ошибка').length).toBeGreaterThan(0);
     expect(screen.queryByText('Создать связь')).not.toBeInTheDocument();
   });
 
@@ -197,7 +201,7 @@ describe('main.tsx integration', () => {
     expect(screen.getByText('Настройки расположения')).toBeInTheDocument();
     expect(screen.getByText('Алгоритм')).toBeInTheDocument();
     expect(screen.getByText('Сводка графа')).toBeInTheDocument();
-    expect(screen.getByText('Тестовая ошибка')).toBeInTheDocument();
+    expect(screen.getAllByText('Тестовая ошибка').length).toBeGreaterThan(0);
     expect(screen.getByText('Создать связь')).toBeInTheDocument();
   });
 
@@ -215,6 +219,38 @@ describe('main.tsx integration', () => {
         payload: expect.objectContaining({ direction: 'ru-en' })
       })
     );
+  });
+
+  it('validation errors автоматически раскрывают Problems в utility panel', async () => {
+    await setEditorMode('blueprint');
+
+    dispatchValidationResult();
+
+    expect(await screen.findByTestId('utility-panel-body-problems')).toBeInTheDocument();
+    expect(screen.getByTestId('utility-tab-problems')).toHaveTextContent('1');
+  });
+
+  it('Generate C++ раскрывает вкладку сгенерированного кода внизу', async () => {
+    await setEditorMode('blueprint');
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /Сгенерировать C\+\+/i }));
+
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'requestGenerate',
+        })
+      );
+      expect(screen.getByTestId('utility-panel-body-generated')).toBeInTheDocument();
+      expect(screen.getByTestId('enhanced-code-preview-mock')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(2100);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('переключает целевую платформу графа через toolbar', async () => {
@@ -416,17 +452,28 @@ describe('main.tsx integration', () => {
     }
   });
 
+  it('Dependencies открываются в нижней utility panel по вкладке', async () => {
+    await setEditorMode('blueprint');
+
+    openUtilityTab('dependencies');
+
+    expect(await screen.findByTestId('utility-panel-body-dependencies')).toBeInTheDocument();
+    expect(screen.getByTestId('dependency-view-panel-mock')).toBeInTheDocument();
+  });
+
   it('кнопки выбора файлов отправляют file/pick с нужной целью', async () => {
     await setEditorMode('blueprint');
     postMessageMock.mockClear();
 
     await openWorkingFilesMenu();
     fireEvent.click(screen.getByTestId('toolbar-bind-file-pick'));
-    expect(postMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'file/pick',
-        payload: expect.objectContaining({ purpose: 'bind' }),
-      })
+    await waitFor(() =>
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'file/pick',
+          payload: expect.objectContaining({ purpose: 'bind' }),
+        })
+      )
     );
     dispatchExternalIpcResponse({
       type: 'file/pick',
@@ -439,11 +486,13 @@ describe('main.tsx integration', () => {
 
     await openWorkingFilesMenu();
     fireEvent.click(screen.getByTestId('toolbar-dependency-file-pick'));
-    expect(postMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'file/pick',
-        payload: expect.objectContaining({ purpose: 'dependency' }),
-      })
+    await waitFor(() =>
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'file/pick',
+          payload: expect.objectContaining({ purpose: 'dependency' }),
+        })
+      )
     );
     dispatchExternalIpcResponse({
       type: 'file/pick',

@@ -61,13 +61,20 @@ import {
 // Feature toggle: 'blueprint' = Visual Flow (новый), 'cytoscape' = Cytoscape (старый)
 type EditorMode = 'blueprint' | 'cytoscape' | 'dependency';
 const EDITOR_MODE_KEY = 'multicode.editorMode';
-const DEPENDENCY_SIDEBAR_KEY = 'multicode.dependencySidebarVisible';
 const UI_SCALE_KEY = 'multicode.uiScale';
 
 type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
 type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
 type CodegenEntrypointMode = 'auto' | 'executable' | 'library';
 type ToolbarTargetPlatform = Extract<GraphState['language'], 'cpp' | 'ue'>;
+type UtilityTabId = 'problems' | 'generated' | 'console' | 'packages' | 'dependencies';
+type UtilityLogEntry = {
+  id: number;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  source: 'extension' | 'webview';
+  timestamp: string;
+};
 
 const getInitialEditorMode = (): EditorMode => {
   try {
@@ -80,21 +87,6 @@ const getInitialEditorMode = (): EditorMode => {
   }
   // По умолчанию используем новый Visual Flow редактор
   return 'blueprint';
-};
-
-const getInitialDependencySidebarVisible = (): boolean => {
-  try {
-    const saved = localStorage.getItem(DEPENDENCY_SIDEBAR_KEY);
-    if (saved === '0') {
-      return false;
-    }
-    if (saved === '1') {
-      return true;
-    }
-  } catch {
-    // Ignore localStorage errors
-  }
-  return true;
 };
 
 const getInitialUiScale = (): number => {
@@ -1186,7 +1178,10 @@ const Toolbar: React.FC<{
           <button
             type="button"
             className="btn-primary"
-            onClick={() => send('requestGenerate')}
+            onClick={() => {
+              send('requestGenerate');
+              onShowCodePreviewChange(true);
+            }}
             disabled={pending}
             title={translate('toolbar.generate', 'Генерировать')}
           >
@@ -1877,6 +1872,129 @@ const LayoutSettingsPanel: React.FC<{ translate: (key: TranslationKey, fallback:
   );
 };
 
+const formatUtilityTimestamp = (timestamp: string, locale: GraphDisplayLanguage): string => {
+  try {
+    return new Intl.DateTimeFormat(locale === 'ru' ? 'ru-RU' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(new Date(timestamp));
+  } catch {
+    return timestamp;
+  }
+};
+
+const ConsoleUtilityPanel: React.FC<{
+  locale: GraphDisplayLanguage;
+  logs: UtilityLogEntry[];
+  onClear: () => void;
+}> = ({ locale, logs, onClear }) => (
+  <div className="utility-console">
+    <div className="utility-console__header">
+      <div className="utility-console__title">
+        {locale === 'ru' ? 'Журнал extension/webview' : 'Extension/Webview Log'}
+      </div>
+      <button type="button" className="utility-console__clear" onClick={onClear}>
+        {locale === 'ru' ? 'Очистить' : 'Clear'}
+      </button>
+    </div>
+    {logs.length === 0 ? (
+      <div className="utility-empty-state">
+        {locale === 'ru' ? 'Логи появятся после операций редактора и генерации.' : 'Logs will appear after editor and generation activity.'}
+      </div>
+    ) : (
+      <div className="utility-console__list" data-testid="utility-console-list">
+        {logs.map((entry) => (
+          <div key={entry.id} className={`utility-console__entry utility-console__entry--${entry.level}`}>
+            <span className="utility-console__time">{formatUtilityTimestamp(entry.timestamp, locale)}</span>
+            <span className="utility-console__source">{entry.source}</span>
+            <span className="utility-console__message">{entry.message}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const PackagesUtilityPanel: React.FC<{
+  locale: GraphDisplayLanguage;
+  packages: Array<{ name: string; version: string; displayName: string; nodeCount: number }>;
+}> = ({ locale, packages }) => (
+  <div className="utility-list-panel">
+    <div className="utility-list-panel__header">
+      <div className="utility-list-panel__title">
+        {locale === 'ru' ? 'Загруженные пакеты узлов' : 'Loaded node packages'}
+      </div>
+      <div className="utility-list-panel__meta">
+        {locale === 'ru' ? `Всего: ${packages.length}` : `Total: ${packages.length}`}
+      </div>
+    </div>
+    {packages.length === 0 ? (
+      <div className="utility-empty-state">
+        {locale === 'ru'
+          ? 'Пакеты не загружены в shell-level panel. Встроенные категории редактора остаются доступны.'
+          : 'No packages are loaded into the shell-level panel. Built-in editor categories remain available.'}
+      </div>
+    ) : (
+      <div className="utility-list-panel__list">
+        {packages.map((pkg) => (
+          <div key={pkg.name} className="utility-list-panel__item">
+            <div className="utility-list-panel__item-title">{pkg.displayName}</div>
+            <div className="utility-list-panel__item-meta">
+              {pkg.name} · v{pkg.version} · {locale === 'ru' ? `${pkg.nodeCount} узлов` : `${pkg.nodeCount} nodes`}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const UtilityPanel: React.FC<{
+  locale: GraphDisplayLanguage;
+  isOpen: boolean;
+  activeTab: UtilityTabId;
+  tabs: Array<{ id: UtilityTabId; label: string; badge?: string | number | null }>;
+  onSelectTab: (tab: UtilityTabId) => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({ locale, isOpen, activeTab, tabs, onSelectTab, onClose, children }) => (
+  <div className={`utility-panel${isOpen ? ' is-open' : ''}`} data-testid="utility-panel">
+    <div className="utility-panel__tabs">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          className={`utility-panel__tab${isOpen && activeTab === tab.id ? ' is-active' : ''}`}
+          onClick={() => onSelectTab(tab.id)}
+          data-testid={`utility-tab-${tab.id}`}
+        >
+          <span>{tab.label}</span>
+          {tab.badge !== undefined && tab.badge !== null && tab.badge !== '' && (
+            <span className="utility-panel__badge">{tab.badge}</span>
+          )}
+        </button>
+      ))}
+      <div className="utility-panel__spacer" />
+      {isOpen && (
+        <button
+          type="button"
+          className="utility-panel__collapse"
+          onClick={onClose}
+          data-testid="utility-panel-collapse"
+        >
+          {locale === 'ru' ? 'Скрыть' : 'Hide'}
+        </button>
+      )}
+    </div>
+    {isOpen && (
+      <div className="utility-panel__body" data-testid={`utility-panel-body-${activeTab}`}>
+        {children}
+      </div>
+    )}
+  </div>
+);
+
 const App: React.FC = () => {
   const setGraph = useGraphStore((state) => state.setGraph);
   const graph = useGraphStore((state) => state.graph);
@@ -1908,10 +2026,11 @@ const App: React.FC = () => {
   
   // Editor mode: 'blueprint' (React Flow) or 'cytoscape' (classic)
   const [editorMode, setEditorMode] = useState<EditorMode>(getInitialEditorMode);
-  
-  // Code preview state
-  const [showCodePreview, setShowCodePreview] = useState(false);
-  const [showDependencySidebar, setShowDependencySidebar] = useState<boolean>(getInitialDependencySidebarVisible);
+  const [utilityPanelState, setUtilityPanelState] = useState<{ isOpen: boolean; activeTab: UtilityTabId }>({
+    isOpen: false,
+    activeTab: 'problems',
+  });
+  const [consoleEntries, setConsoleEntries] = useState<UtilityLogEntry[]>([]);
   const [uiScale, setUiScale] = useState<number>(getInitialUiScale);
   const [codegenProfile, setCodegenProfile] = useState<CodegenOutputProfile>('clean');
   const [codegenEntrypointMode, setCodegenEntrypointMode] = useState<CodegenEntrypointMode>('auto');
@@ -1961,11 +2080,52 @@ const App: React.FC = () => {
     replacements?: Record<string, string>
   ): string => getTranslation(localeRef.current, key, replacements, fallback), []);
 
+  const packageList = useMemo(() => globalRegistry.getPackageList(), [registryVersion]);
+  const validationIssues = useMemo(() => buildValidationIssues(validation), [validation]);
+  const utilityProblemBadge = validationIssues.length > 0 ? validationIssues.length : null;
+  const showCodePreview = utilityPanelState.isOpen && utilityPanelState.activeTab === 'generated';
+
+  const openUtilityTab = useCallback((activeTab: UtilityTabId): void => {
+    setUtilityPanelState({ isOpen: true, activeTab });
+  }, []);
+
+  const closeUtilityPanel = useCallback((): void => {
+    setUtilityPanelState((current) => ({ ...current, isOpen: false }));
+  }, []);
+
+  const handleCodePreviewVisibility = useCallback((show: boolean): void => {
+    if (show) {
+      openUtilityTab('generated');
+      return;
+    }
+
+    setUtilityPanelState((current) => {
+      if (current.activeTab !== 'generated') {
+        return current;
+      }
+      return { ...current, isOpen: false };
+    });
+  }, [openUtilityTab]);
+
   const pushToast = useCallback((kind: ToastKind, message: string): void => {
     const id = Date.now() + Math.round(Math.random() * 1000);
     setToasts((prev) => [...prev.slice(-3), { id, kind, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 3200);
   }, []);
+
+  const appendConsoleEntry = useCallback(
+    (level: UtilityLogEntry['level'], message: string, source: UtilityLogEntry['source']): void => {
+      const entry: UtilityLogEntry = {
+        id: Date.now() + Math.round(Math.random() * 1000),
+        level,
+        message,
+        source,
+        timestamp: new Date().toISOString(),
+      };
+      setConsoleEntries((prev) => [...prev.slice(-199), entry]);
+    },
+    []
+  );
 
   const requestExternalIpc = useCallback(
     <TType extends ExternalIpcRequest['type']>(
@@ -2226,14 +2386,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem(DEPENDENCY_SIDEBAR_KEY, showDependencySidebar ? '1' : '0');
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [showDependencySidebar]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(UI_SCALE_KEY, String(uiScale));
     } catch {
       // Ignore localStorage errors
@@ -2316,6 +2468,17 @@ const App: React.FC = () => {
     });
     return unsubscribe;
   }, []);
+
+  const previousProblemCountRef = useRef(0);
+
+  useEffect(() => {
+    const previousCount = previousProblemCountRef.current;
+    const currentCount = validationIssues.length;
+    if (currentCount > 0 && previousCount === 0) {
+      openUtilityTab('problems');
+    }
+    previousProblemCountRef.current = currentCount;
+  }, [openUtilityTab, validationIssues.length]);
 
   // Синхронизация blueprintGraph при изменении graph
   // Обновляем blueprintGraph ТОЛЬКО при remote-изменениях (загрузка, новый граф).
@@ -2552,6 +2715,7 @@ const App: React.FC = () => {
           setTranslationPending(false);
           break;
         case 'log':
+          appendConsoleEntry(message.payload.level, message.payload.message, 'extension');
           if (message.payload.level === 'error') {
             console.error(message.payload.message);
           } else if (message.payload.level === 'warn') {
@@ -2590,7 +2754,7 @@ const App: React.FC = () => {
     window.addEventListener('message', handler);
     sendToExtension({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
-  }, [handleExternalIpcResponse, pushToast, resetPendingGraphMutation, setGraph]);
+  }, [appendConsoleEntry, handleExternalIpcResponse, pushToast, resetPendingGraphMutation, setGraph]);
 
   useEffect(() => {
     const unsubscribe = useGraphStore.subscribe((state) => {
@@ -3085,9 +3249,95 @@ const App: React.FC = () => {
     layoutRunnerRef.current();
   };
 
-  const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape' || showCodePreview;
+  const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape';
   const hasInspectorSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const allExternalSymbols = useMemo<SymbolDescriptor[]>(() => Object.values(symbolCatalog).flat(), [symbolCatalog]);
+  const utilityTabs = useMemo<Array<{ id: UtilityTabId; label: string; badge?: string | number | null }>>(
+    () => [
+      {
+        id: 'problems',
+        label: locale === 'ru' ? 'Проблемы' : 'Problems',
+        badge: utilityProblemBadge,
+      },
+      {
+        id: 'generated',
+        label: locale === 'ru' ? 'Сгенерированный код' : 'Generated code',
+      },
+      {
+        id: 'console',
+        label: locale === 'ru' ? 'Консоль' : 'Console',
+        badge: consoleEntries.length > 0 ? consoleEntries.length : null,
+      },
+      {
+        id: 'packages',
+        label: locale === 'ru' ? 'Пакеты' : 'Packages',
+        badge: packageList.length > 0 ? packageList.length : null,
+      },
+      {
+        id: 'dependencies',
+        label: locale === 'ru' ? 'Зависимости' : 'Dependencies',
+        badge: integrations.length > 0 ? integrations.length : null,
+      },
+    ],
+    [consoleEntries.length, integrations.length, locale, packageList.length, utilityProblemBadge]
+  );
+
+  const renderUtilityContent = (): React.ReactNode => {
+    switch (utilityPanelState.activeTab) {
+      case 'generated':
+        return (
+          <div className="utility-panel__fill" data-testid="utility-generated-content">
+            <EnhancedCodePreviewPanel
+              graph={blueprintGraph}
+              locale={locale}
+              packageRegistrySnapshot={packageRegistrySnapshotForPreview}
+              layout="bottom"
+              onGenerateComplete={(result) => {
+                pushToast(
+                  'success',
+                  result.success
+                    ? translate('toast.generation.success', 'Код успешно сгенерирован')
+                    : translate('toast.generation.error', 'Ошибка генерации кода')
+                );
+              }}
+            />
+          </div>
+        );
+      case 'console':
+        return (
+          <ConsoleUtilityPanel
+            locale={locale}
+            logs={consoleEntries}
+            onClear={() => setConsoleEntries([])}
+          />
+        );
+      case 'packages':
+        return <PackagesUtilityPanel locale={locale} packages={packageList} />;
+      case 'dependencies':
+        return (
+          <div className="utility-panel__fill" data-testid="utility-dependencies-content">
+            <DependencyViewPanel
+              useGraphStore={useGraphStore}
+              mode="standalone"
+              displayLanguage={locale}
+              activeFilePath={boundFile.filePath}
+              onDetachDependency={handleDetachDependency}
+              onInsertSymbol={handleInsertExternalSymbol}
+            />
+          </div>
+        );
+      case 'problems':
+      default:
+        return (
+          <ValidationPanel
+            validation={validation}
+            translate={translate}
+            title={translate('utility.problems.title' as TranslationKey, 'Проблемы графа')}
+            emptyStateLabel={translate('utility.problems.ok' as TranslationKey, 'Проблемы не найдены')}
+          />
+        );
+    }
+  };
 
   // Render the appropriate editor based on mode
   const renderEditor = () => {
@@ -3154,7 +3404,7 @@ const App: React.FC = () => {
         onEditorModeChange={handleEditorModeChange}
         onTargetPlatformChange={handleTargetPlatformChange}
         showCodePreview={showCodePreview}
-        onShowCodePreviewChange={setShowCodePreview}
+        onShowCodePreviewChange={handleCodePreviewVisibility}
         onShowHotkeys={() => setShowHotkeys(true)}
         onShowHelp={() => setShowHelp(true)}
         uiScale={uiScale}
@@ -3203,19 +3453,6 @@ const App: React.FC = () => {
         {/* Side panels */}
         {showSidePanel && (
           <div className="side-panel">
-            {/* Enhanced Code Preview for blueprint editor */}
-            {editorMode === 'blueprint' && showCodePreview && (
-              <EnhancedCodePreviewPanel
-                graph={blueprintGraph}
-                locale={locale}
-                packageRegistrySnapshot={packageRegistrySnapshotForPreview}
-                onGenerateComplete={(result) => {
-                  pushToast('success', result.success 
-                    ? translate('toast.generation.success', 'Код успешно сгенерирован')
-                    : translate('toast.generation.error', 'Ошибка генерации кода'));
-                }}
-              />
-            )}
             {hasInspectorSelection ? (
               <>
                 <SelectionSummaryPanel translate={translate} />
@@ -3230,37 +3467,6 @@ const App: React.FC = () => {
               </>
             ) : (
               <>
-                {editorMode === 'blueprint' && (
-                  <div className="panel">
-                    <div
-                      className="panel-title panel-title-with-action"
-                    >
-                      <span>{locale === 'ru' ? 'Зависимости' : 'Dependency View'}</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowDependencySidebar((value) => !value)}
-                        className="panel-title-action"
-                      >
-                        {showDependencySidebar
-                          ? (locale === 'ru' ? 'Скрыть' : 'Hide')
-                          : (locale === 'ru' ? 'Показать' : 'Show')}
-                      </button>
-                    </div>
-                    {showDependencySidebar && (
-                      <div style={{ height: 'clamp(300px, 42vh, 520px)', minHeight: 0, overflow: 'hidden' }}>
-                        <DependencyViewPanel
-                          useGraphStore={useGraphStore}
-                          mode="sidebar"
-                          displayLanguage={locale}
-                          activeFilePath={boundFile.filePath}
-                          onDetachDependency={handleDetachDependency}
-                          onInsertSymbol={handleInsertExternalSymbol}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 <TranslationActions
                   direction={translationDirection}
                   pending={translationPending}
@@ -3288,6 +3494,16 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      <UtilityPanel
+        locale={locale}
+        isOpen={utilityPanelState.isOpen}
+        activeTab={utilityPanelState.activeTab}
+        tabs={utilityTabs}
+        onSelectTab={(tab) => openUtilityTab(tab)}
+        onClose={closeUtilityPanel}
+      >
+        {renderUtilityContent()}
+      </UtilityPanel>
       <ToastContainer
         toasts={toasts}
         onClose={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}

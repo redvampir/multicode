@@ -67,6 +67,7 @@ type CppStandard = 'cpp14' | 'cpp17' | 'cpp20' | 'cpp23';
 type CodegenOutputProfile = 'clean' | 'learn' | 'debug' | 'recovery';
 type CodegenEntrypointMode = 'auto' | 'executable' | 'library';
 type ToolbarTargetPlatform = Extract<GraphState['language'], 'cpp' | 'ue'>;
+type ShellMode = 'wide' | 'compact' | 'narrow';
 type UtilityTabId = 'problems' | 'generated' | 'console' | 'packages' | 'dependencies';
 type UtilityLogEntry = {
   id: number;
@@ -129,6 +130,23 @@ const createDefaultClassStorageStatus = (): ClassStorageStatus => ({
 const createDefaultClassNodesConfig = (): ClassNodesConfig => ({
   advancedEnabled: false,
 });
+
+const getViewportWidth = (): number => {
+  if (typeof window === 'undefined' || !Number.isFinite(window.innerWidth) || window.innerWidth <= 0) {
+    return 1440;
+  }
+  return window.innerWidth;
+};
+
+const getShellMode = (viewportWidth: number): ShellMode => {
+  if (viewportWidth < 1100) {
+    return 'narrow';
+  }
+  if (viewportWidth < 1280) {
+    return 'compact';
+  }
+  return 'wide';
+};
 
 type PersistedState = { graph?: GraphState; locale?: GraphDisplayLanguage; layout?: LayoutSettings };
 
@@ -481,6 +499,10 @@ const Toolbar: React.FC<{
   onCodegenProfileChange: (profile: CodegenOutputProfile) => void;
   codegenEntrypointMode: CodegenEntrypointMode;
   onCodegenEntrypointModeChange: (mode: CodegenEntrypointMode) => void;
+  shellMode: ShellMode;
+  showInspectorToggle: boolean;
+  isInspectorOpen: boolean;
+  onToggleInspector: () => void;
   validation?: ValidationResult;
 }> = ({
   locale,
@@ -517,6 +539,10 @@ const Toolbar: React.FC<{
   onCodegenProfileChange,
   codegenEntrypointMode,
   onCodegenEntrypointModeChange,
+  shellMode,
+  showInspectorToggle,
+  isInspectorOpen,
+  onToggleInspector,
   validation,
 }) => {
   const graph = useGraphStore((state) => state.graph);
@@ -535,6 +561,7 @@ const Toolbar: React.FC<{
   const hasStorageIssues = classStorageStatus.missing > 0 || classStorageStatus.failed > 0;
   const storageBadgeLabel = formatClassStorageBadgeLabel(locale, classStorageStatus, sidecarOkCount);
   const classNodesBadgeLabel = formatClassNodesBadgeLabel(locale, classNodesAdvancedEnabled);
+  const isCompactShell = shellMode !== 'wide';
 
   const flushCurrentGraphState = (): void => {
     const snapshot = useGraphStore.getState().graph;
@@ -1163,8 +1190,12 @@ const Toolbar: React.FC<{
             onClick={() => send('requestSave')}
             disabled={pending}
             title={translate('tooltip.saveGraph', 'Сохранить')}
+            aria-label={translate('toolbar.saveGraph', 'Сохранить')}
           >
-            💾 {translate('toolbar.saveGraph', 'Сохранить')}
+            <span aria-hidden="true">💾</span>
+            <span className="toolbar-action-label toolbar-action-label--secondary">
+              {translate('toolbar.saveGraph', 'Сохранить')}
+            </span>
           </button>
           <button
             type="button"
@@ -1172,8 +1203,12 @@ const Toolbar: React.FC<{
             onClick={() => send('requestValidate')}
             disabled={pending}
             title={translate('tooltip.validateGraph', 'Проверить')}
+            aria-label={translate('toolbar.validateGraph', 'Проверить')}
           >
-            ✅ {translate('toolbar.validateGraph', 'Проверить')}
+            <span aria-hidden="true">✅</span>
+            <span className="toolbar-action-label toolbar-action-label--secondary">
+              {translate('toolbar.validateGraph', 'Проверить')}
+            </span>
           </button>
           <button
             type="button"
@@ -1184,8 +1219,12 @@ const Toolbar: React.FC<{
             }}
             disabled={pending}
             title={translate('toolbar.generate', 'Генерировать')}
+            aria-label={locale === 'ru' ? 'Сгенерировать C++' : 'Generate C++'}
           >
-            ⚡ {locale === 'ru' ? 'Сгенерировать C++' : 'Generate C++'}
+            <span aria-hidden="true">⚡</span>
+            <span className="toolbar-action-label">
+              {locale === 'ru' ? 'Сгенерировать C++' : 'Generate C++'}
+            </span>
           </button>
           <button
             type="button"
@@ -1193,8 +1232,10 @@ const Toolbar: React.FC<{
             onClick={() => send('requestCompileAndRun')}
             disabled={pending}
             title={locale === 'ru' ? 'Скомпилировать и запустить' : 'Compile and Run'}
+            aria-label={locale === 'ru' ? 'Запустить' : 'Run'}
           >
-            ▶️ {locale === 'ru' ? 'Запустить' : 'Run'}
+            <span aria-hidden="true">▶️</span>
+            <span className="toolbar-action-label">{locale === 'ru' ? 'Запустить' : 'Run'}</span>
           </button>
         </div>
       </div>
@@ -1222,6 +1263,20 @@ const Toolbar: React.FC<{
           >
             {classNodesBadgeLabel}
           </span>
+          {showInspectorToggle && (
+            <button
+              type="button"
+              className={`toolbar-context-chip toolbar-context-chip--button ${isInspectorOpen ? 'toolbar-context-chip--feature' : ''}`}
+              onClick={onToggleInspector}
+              aria-pressed={isInspectorOpen}
+              data-testid="toolbar-inspector-toggle"
+              title={locale === 'ru'
+                ? (isInspectorOpen ? 'Скрыть инспектор' : 'Открыть инспектор')
+                : (isInspectorOpen ? 'Hide inspector' : 'Open inspector')}
+            >
+              {isCompactShell ? (locale === 'ru' ? 'Инспектор' : 'Inspector') : (locale === 'ru' ? 'Панель справа' : 'Right panel')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -2031,6 +2086,7 @@ const App: React.FC = () => {
     activeTab: 'problems',
   });
   const [consoleEntries, setConsoleEntries] = useState<UtilityLogEntry[]>([]);
+  const [viewportWidth, setViewportWidth] = useState<number>(getViewportWidth);
   const [uiScale, setUiScale] = useState<number>(getInitialUiScale);
   const [codegenProfile, setCodegenProfile] = useState<CodegenOutputProfile>('clean');
   const [codegenEntrypointMode, setCodegenEntrypointMode] = useState<CodegenEntrypointMode>('auto');
@@ -2080,10 +2136,15 @@ const App: React.FC = () => {
     replacements?: Record<string, string>
   ): string => getTranslation(localeRef.current, key, replacements, fallback), []);
 
+  const shellMode = useMemo<ShellMode>(() => getShellMode(viewportWidth), [viewportWidth]);
   const packageList = useMemo(() => globalRegistry.getPackageList(), [registryVersion]);
   const validationIssues = useMemo(() => buildValidationIssues(validation), [validation]);
   const utilityProblemBadge = validationIssues.length > 0 ? validationIssues.length : null;
   const showCodePreview = utilityPanelState.isOpen && utilityPanelState.activeTab === 'generated';
+  const canShowInspector = editorMode === 'blueprint' || editorMode === 'cytoscape';
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(() => getShellMode(getViewportWidth()) === 'wide');
+  const previousShellModeRef = useRef<ShellMode>(shellMode);
+  const previousInspectorCapabilityRef = useRef<boolean>(canShowInspector);
 
   const openUtilityTab = useCallback((activeTab: UtilityTabId): void => {
     setUtilityPanelState({ isOpen: true, activeTab });
@@ -2391,6 +2452,15 @@ const App: React.FC = () => {
       // Ignore localStorage errors
     }
   }, [uiScale]);
+
+  useEffect(() => {
+    const handleResize = (): void => {
+      setViewportWidth(getViewportWidth());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // Глобальный обработчик клавиш для панели горячих клавиш
   useEffect(() => {
@@ -3249,7 +3319,21 @@ const App: React.FC = () => {
     layoutRunnerRef.current();
   };
 
-  const showSidePanel = editorMode === 'blueprint' || editorMode === 'cytoscape';
+  useEffect(() => {
+    const shellChanged = previousShellModeRef.current !== shellMode;
+    const capabilityChanged = previousInspectorCapabilityRef.current !== canShowInspector;
+
+    if (shellChanged || capabilityChanged) {
+      setIsInspectorOpen(canShowInspector && shellMode === 'wide');
+    }
+
+    previousShellModeRef.current = shellMode;
+    previousInspectorCapabilityRef.current = canShowInspector;
+  }, [canShowInspector, shellMode]);
+
+  const isInspectorDrawer = canShowInspector && shellMode !== 'wide';
+  const showPinnedInspector = canShowInspector && !isInspectorDrawer;
+  const showInspectorPanel = canShowInspector && (showPinnedInspector || isInspectorOpen);
   const hasInspectorSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const allExternalSymbols = useMemo<SymbolDescriptor[]>(() => Object.values(symbolCatalog).flat(), [symbolCatalog]);
   const utilityTabs = useMemo<Array<{ id: UtilityTabId; label: string; badge?: string | number | null }>>(
@@ -3281,6 +3365,51 @@ const App: React.FC = () => {
     ],
     [consoleEntries.length, integrations.length, locale, packageList.length, utilityProblemBadge]
   );
+
+  const renderInspectorContent = (): React.ReactNode => {
+    if (hasInspectorSelection) {
+      return (
+        <>
+          <SelectionSummaryPanel translate={translate} />
+          <ValidationPanel
+            validation={validation}
+            translate={translate}
+            title={translate('inspector.selection.validation' as TranslationKey, 'Проблемы выделения')}
+            emptyStateLabel={translate('inspector.selection.validationOk' as TranslationKey, 'Для выделения проблем не найдено')}
+            filterNodeIds={selectedNodeIds}
+            filterEdgeIds={selectedEdgeIds}
+          />
+        </>
+      );
+    }
+
+    return (
+      <>
+        <TranslationActions
+          direction={translationDirection}
+          pending={translationPending}
+          onDirectionChange={setTranslationDirection}
+          onTranslate={handleTranslate}
+          translate={translate}
+        />
+        <LayoutSettingsPanel translate={translate} />
+        {editorMode === 'cytoscape' && (
+          <NodeActions
+            onAddNode={handleAddNode}
+            onConnectNodes={handleConnectNodes}
+            lastNodeAddedToken={lastNodeAddedToken}
+            lastConnectionToken={lastConnectionToken}
+          />
+        )}
+        <GraphFacts
+          translate={translate}
+          classStorageStatus={classStorageStatus}
+          classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
+        />
+        <ValidationPanel validation={validation} translate={translate} />
+      </>
+    );
+  };
 
   const renderUtilityContent = (): React.ReactNode => {
     switch (utilityPanelState.activeTab) {
@@ -3391,7 +3520,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="app-shell" style={{ zoom: uiScale }}>
+    <div className={`app-shell app-shell--${shellMode}`} style={{ zoom: uiScale }}>
       <Toolbar
         locale={locale}
         onLocaleChange={handleLocaleChange}
@@ -3427,6 +3556,10 @@ const App: React.FC = () => {
         onCodegenProfileChange={handleCodegenProfileChange}
         codegenEntrypointMode={codegenEntrypointMode}
         onCodegenEntrypointModeChange={handleCodegenEntrypointModeChange}
+        shellMode={shellMode}
+        showInspectorToggle={isInspectorDrawer}
+        isInspectorOpen={isInspectorOpen}
+        onToggleInspector={() => setIsInspectorOpen((current) => !current)}
         validation={validation}
       />
       
@@ -3445,52 +3578,42 @@ const App: React.FC = () => {
         />
       )}
       
-      <div className={`workspace${showSidePanel ? ' with-sidebar' : ''}`}>
+      <div className={`workspace${showPinnedInspector ? ' with-sidebar' : ''}${isInspectorDrawer && isInspectorOpen ? ' with-drawer' : ''}`}>
         <div className="canvas-wrapper">
           {renderEditor()}
         </div>
         
+        {isInspectorDrawer && isInspectorOpen && (
+          <button
+            type="button"
+            className="side-panel-backdrop"
+            aria-label={locale === 'ru' ? 'Закрыть инспектор' : 'Close inspector'}
+            data-testid="inspector-backdrop"
+            onClick={() => setIsInspectorOpen(false)}
+          />
+        )}
+
         {/* Side panels */}
-        {showSidePanel && (
-          <div className="side-panel">
-            {hasInspectorSelection ? (
-              <>
-                <SelectionSummaryPanel translate={translate} />
-                <ValidationPanel
-                  validation={validation}
-                  translate={translate}
-                  title={translate('inspector.selection.validation' as TranslationKey, 'Проблемы выделения')}
-                  emptyStateLabel={translate('inspector.selection.validationOk' as TranslationKey, 'Для выделения проблем не найдено')}
-                  filterNodeIds={selectedNodeIds}
-                  filterEdgeIds={selectedEdgeIds}
-                />
-              </>
-            ) : (
-              <>
-                <TranslationActions
-                  direction={translationDirection}
-                  pending={translationPending}
-                  onDirectionChange={setTranslationDirection}
-                  onTranslate={handleTranslate}
-                  translate={translate}
-                />
-                <LayoutSettingsPanel translate={translate} />
-                {editorMode === 'cytoscape' && (
-                  <NodeActions
-                    onAddNode={handleAddNode}
-                    onConnectNodes={handleConnectNodes}
-                    lastNodeAddedToken={lastNodeAddedToken}
-                    lastConnectionToken={lastConnectionToken}
-                  />
-                )}
-                <GraphFacts
-                  translate={translate}
-                  classStorageStatus={classStorageStatus}
-                  classNodesAdvancedEnabled={classNodesConfig.advancedEnabled}
-                />
-                <ValidationPanel validation={validation} translate={translate} />
-              </>
+        {showInspectorPanel && (
+          <div className={`side-panel${isInspectorDrawer ? ' side-panel--drawer' : ''}`} data-testid="inspector-panel">
+            {isInspectorDrawer && (
+              <div className="side-panel__drawer-header">
+                <div className="side-panel__drawer-title">
+                  {hasInspectorSelection
+                    ? (locale === 'ru' ? 'Инспектор выделения' : 'Selection inspector')
+                    : (locale === 'ru' ? 'Инспектор графа' : 'Graph inspector')}
+                </div>
+                <button
+                  type="button"
+                  className="side-panel__drawer-close"
+                  onClick={() => setIsInspectorOpen(false)}
+                  data-testid="inspector-drawer-close"
+                >
+                  {locale === 'ru' ? 'Скрыть' : 'Hide'}
+                </button>
+              </div>
             )}
+            {renderInspectorContent()}
           </div>
         )}
       </div>

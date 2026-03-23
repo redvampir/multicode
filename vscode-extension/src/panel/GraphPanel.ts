@@ -4298,6 +4298,15 @@ export class GraphPanel {
         border-color: var(--mc-accent);
         color: var(--mc-accent);
       }
+      .toolbar-context-chip--button {
+        cursor: pointer;
+        transition: all 0.1s ease;
+      }
+      .toolbar-context-chip--button:hover {
+        color: var(--mc-body-text);
+        border-color: var(--mc-panel-title);
+        background: var(--mc-surface-strong);
+      }
       .toolbar-menu-popup {
         min-width: 320px;
         max-width: 440px;
@@ -4479,6 +4488,24 @@ export class GraphPanel {
         background: var(--mc-button-bg);
         color: var(--mc-button-text);
       }
+      .toolbar button.toolbar-context-chip--button {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+        border: 1px solid var(--mc-surface-border);
+      }
+      .toolbar button.toolbar-context-chip--button:hover {
+        color: var(--mc-body-text);
+        border-color: var(--mc-panel-title);
+        background: var(--mc-surface-strong);
+      }
+      .toolbar-action-label {
+        display: inline-flex;
+        align-items: center;
+      }
       .toolbar-select,
       .toolbar select {
         background: var(--mc-button-bg);
@@ -4506,6 +4533,9 @@ export class GraphPanel {
         display: grid;
         grid-template-columns: minmax(0, 1fr) clamp(340px, 28vw, 420px);
       }
+      .workspace.with-drawer {
+        position: relative;
+      }
       .canvas-wrapper {
         background: var(--mc-surface-strong);
         flex: 1;
@@ -4532,6 +4562,50 @@ export class GraphPanel {
         min-width: 0;
         min-height: 0;
         scrollbar-gutter: stable;
+      }
+      .side-panel--drawer {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        bottom: 10px;
+        width: min(360px, calc(100vw - 36px));
+        z-index: 30;
+        border-radius: 16px;
+        box-shadow: 0 18px 44px rgba(3, 7, 18, 0.5);
+      }
+      .side-panel-backdrop {
+        position: absolute;
+        inset: 0;
+        border: 0;
+        background: rgba(2, 6, 23, 0.45);
+        backdrop-filter: blur(2px);
+        z-index: 20;
+        cursor: pointer;
+      }
+      .side-panel__drawer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding-bottom: 4px;
+      }
+      .side-panel__drawer-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--mc-panel-title);
+      }
+      .side-panel__drawer-close {
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .side-panel__drawer-close:hover {
+        color: var(--mc-body-text);
+        border-color: var(--mc-panel-title);
       }
       .utility-panel {
         display: flex;
@@ -4684,6 +4758,54 @@ export class GraphPanel {
         font-size: 13px;
         font-weight: 700;
         color: var(--mc-body-text);
+      }
+      .app-shell--compact .toolbar-main-actions {
+        gap: 4px;
+      }
+      .app-shell--compact .toolbar-action-label--secondary {
+        display: none;
+      }
+      .app-shell--compact .toolbar button.btn-quiet {
+        padding-inline: 10px;
+      }
+      .app-shell--compact .toolbar-context {
+        gap: 8px;
+      }
+      .app-shell--compact .toolbar-select,
+      .app-shell--compact .toolbar select {
+        min-width: 0;
+      }
+      .app-shell--narrow .toolbar {
+        gap: 8px;
+        padding: 10px 12px 8px;
+      }
+      .app-shell--narrow .toolbar-main {
+        gap: 10px;
+      }
+      .app-shell--narrow .toolbar-main-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .app-shell--narrow .toolbar-context {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .app-shell--narrow .toolbar-context-path,
+      .app-shell--narrow .toolbar-context-chips {
+        width: 100%;
+      }
+      .app-shell--narrow .toolbar-action-label--secondary {
+        display: none;
+      }
+      .app-shell--narrow .side-panel--drawer {
+        top: 6px;
+        right: 6px;
+        bottom: 6px;
+        width: min(340px, calc(100vw - 20px));
+      }
+      .app-shell--narrow .utility-panel__body {
+        height: 240px;
+        max-height: 34vh;
       }
       .panel {
         background: var(--mc-surface);

@@ -151,10 +151,22 @@ const openUtilityTab = (tabId: 'problems' | 'generated' | 'console' | 'packages'
   fireEvent.click(screen.getByTestId(`utility-tab-${tabId}`));
 };
 
+const setViewportWidth = (width: number): void => {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+  act(() => {
+    window.dispatchEvent(new Event('resize'));
+  });
+};
+
 describe('main.tsx integration', () => {
   beforeAll(async () => {
     localStorage.clear();
     document.body.innerHTML = '<div id="root"></div>';
+    setViewportWidth(1440);
 
     const globals = globalThis as WebviewGlobals;
     globals.acquireVsCodeApi = acquireVsCodeApiMock;
@@ -174,6 +186,7 @@ describe('main.tsx integration', () => {
     setStateMock.mockClear();
     getStateMock.mockClear();
     getStateMock.mockReturnValue(undefined);
+    setViewportWidth(1440);
   });
 
   afterAll(() => {
@@ -228,6 +241,30 @@ describe('main.tsx integration', () => {
 
     expect(await screen.findByTestId('utility-panel-body-problems')).toBeInTheDocument();
     expect(screen.getByTestId('utility-tab-problems')).toHaveTextContent('1');
+  });
+
+  it('на compact width inspector схлопнут по умолчанию и открывается drawer-ом', async () => {
+    await setEditorMode('blueprint');
+    setViewportWidth(1200);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('inspector-panel')).not.toBeInTheDocument();
+    });
+
+    const toggle = screen.getByTestId('toolbar-inspector-toggle');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(toggle);
+
+    expect(await screen.findByTestId('inspector-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('inspector-panel').className).toContain('side-panel--drawer');
+    expect(screen.getByText('Перевод графа')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('inspector-drawer-close'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('inspector-panel')).not.toBeInTheDocument();
+    });
   });
 
   it('Generate C++ раскрывает вкладку сгенерированного кода внизу', async () => {

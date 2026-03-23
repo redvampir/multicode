@@ -462,7 +462,7 @@ const reportWebviewError = (message: string): void => {
   sendToExtension({ type: 'reportWebviewError', payload: { message } });
 };
 
-type ToolbarMenuKind = 'files' | 'mode' | 'codegen' | 'view';
+type ToolbarMenuKind = 'files' | 'mode' | 'codegen' | 'view' | 'overflow';
 
 const Toolbar: React.FC<{
   locale: GraphDisplayLanguage;
@@ -561,7 +561,7 @@ const Toolbar: React.FC<{
   const hasStorageIssues = classStorageStatus.missing > 0 || classStorageStatus.failed > 0;
   const storageBadgeLabel = formatClassStorageBadgeLabel(locale, classStorageStatus, sidecarOkCount);
   const classNodesBadgeLabel = formatClassNodesBadgeLabel(locale, classNodesAdvancedEnabled);
-  const isCompactShell = shellMode !== 'wide';
+  const showCollapsedMenus = shellMode !== 'wide';
 
   const flushCurrentGraphState = (): void => {
     const snapshot = useGraphStore.getState().graph;
@@ -650,7 +650,7 @@ const Toolbar: React.FC<{
         y: rect.bottom + 8,
       };
     });
-    if (kind === 'files') {
+    if (kind === 'files' || kind === 'overflow') {
       setWorkingFilesFilter('');
     }
   }, []);
@@ -719,7 +719,7 @@ const Toolbar: React.FC<{
   }, [activeMenu]);
 
   useEffect(() => {
-    if (activeMenu?.kind !== 'files') {
+    if (activeMenu?.kind !== 'files' && activeMenu?.kind !== 'overflow') {
       return;
     }
     const frame = window.requestAnimationFrame(() => {
@@ -1091,6 +1091,15 @@ const Toolbar: React.FC<{
     </>
   );
 
+  const renderOverflowMenu = (): React.ReactNode => (
+    <>
+      {renderFilesMenu()}
+      {renderModeMenu()}
+      {renderCodegenMenu()}
+      {renderViewMenu()}
+    </>
+  );
+
   return (
     <div className="toolbar app-header">
       <div className="toolbar-main">
@@ -1122,7 +1131,7 @@ const Toolbar: React.FC<{
           </div>
         </div>
 
-        <div className="toolbar-main-actions">
+        <div className="toolbar-main-actions" data-testid="toolbar-main-actions">
           <select
             value={isToolbarTargetPlatform(graph.language) ? graph.language : 'cpp'}
             onChange={(event) => {
@@ -1152,38 +1161,51 @@ const Toolbar: React.FC<{
             <option value="ru">🇷🇺 RU</option>
             <option value="en">🇺🇸 EN</option>
           </select>
-          <button
-            type="button"
-            className={`toolbar-menu-trigger ${activeMenu?.kind === 'files' ? 'btn-active' : ''}`}
-            onClick={(event) => toggleMenu('files', event)}
-            data-testid="toolbar-files-menu-trigger"
-          >
-            {locale === 'ru' ? 'Файлы' : 'Files'} ▼
-          </button>
-          <button
-            type="button"
-            className={`toolbar-menu-trigger ${activeMenu?.kind === 'mode' ? 'btn-active' : ''}`}
-            onClick={(event) => toggleMenu('mode', event)}
-            data-testid="toolbar-mode-menu-trigger"
-          >
-            {locale === 'ru' ? 'Режим' : 'Mode'} ▼
-          </button>
-          <button
-            type="button"
-            className={`toolbar-menu-trigger ${activeMenu?.kind === 'codegen' ? 'btn-active' : ''}`}
-            onClick={(event) => toggleMenu('codegen', event)}
-            data-testid="toolbar-codegen-menu-trigger"
-          >
-            {locale === 'ru' ? 'Кодоген' : 'Codegen'} ▼
-          </button>
-          <button
-            type="button"
-            className={`toolbar-menu-trigger ${activeMenu?.kind === 'view' ? 'btn-active' : ''}`}
-            onClick={(event) => toggleMenu('view', event)}
-            data-testid="toolbar-view-menu-trigger"
-          >
-            {locale === 'ru' ? 'Вид' : 'View'} ▼
-          </button>
+          {showCollapsedMenus ? (
+            <button
+              type="button"
+              className={`toolbar-menu-trigger ${activeMenu?.kind === 'overflow' ? 'btn-active' : ''}`}
+              onClick={(event) => toggleMenu('overflow', event)}
+              data-testid="toolbar-overflow-menu-trigger"
+            >
+              {locale === 'ru' ? 'Ещё' : 'More'} ▼
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`toolbar-menu-trigger ${activeMenu?.kind === 'files' ? 'btn-active' : ''}`}
+                onClick={(event) => toggleMenu('files', event)}
+                data-testid="toolbar-files-menu-trigger"
+              >
+                {locale === 'ru' ? 'Файлы' : 'Files'} ▼
+              </button>
+              <button
+                type="button"
+                className={`toolbar-menu-trigger ${activeMenu?.kind === 'mode' ? 'btn-active' : ''}`}
+                onClick={(event) => toggleMenu('mode', event)}
+                data-testid="toolbar-mode-menu-trigger"
+              >
+                {locale === 'ru' ? 'Режим' : 'Mode'} ▼
+              </button>
+              <button
+                type="button"
+                className={`toolbar-menu-trigger ${activeMenu?.kind === 'codegen' ? 'btn-active' : ''}`}
+                onClick={(event) => toggleMenu('codegen', event)}
+                data-testid="toolbar-codegen-menu-trigger"
+              >
+                {locale === 'ru' ? 'Кодоген' : 'Codegen'} ▼
+              </button>
+              <button
+                type="button"
+                className={`toolbar-menu-trigger ${activeMenu?.kind === 'view' ? 'btn-active' : ''}`}
+                onClick={(event) => toggleMenu('view', event)}
+                data-testid="toolbar-view-menu-trigger"
+              >
+                {locale === 'ru' ? 'Вид' : 'View'} ▼
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="btn-quiet"
@@ -1237,6 +1259,20 @@ const Toolbar: React.FC<{
             <span aria-hidden="true">▶️</span>
             <span className="toolbar-action-label">{locale === 'ru' ? 'Запустить' : 'Run'}</span>
           </button>
+          {showInspectorToggle && (
+            <button
+              type="button"
+              className={isInspectorOpen ? 'btn-quiet btn-active' : 'btn-quiet'}
+              onClick={onToggleInspector}
+              aria-pressed={isInspectorOpen}
+              data-testid="toolbar-inspector-toggle"
+              title={locale === 'ru'
+                ? (isInspectorOpen ? 'Скрыть инспектор' : 'Открыть инспектор')
+                : (isInspectorOpen ? 'Hide inspector' : 'Open inspector')}
+            >
+              <span className="toolbar-action-label">{locale === 'ru' ? 'Инспектор' : 'Inspector'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1263,27 +1299,13 @@ const Toolbar: React.FC<{
           >
             {classNodesBadgeLabel}
           </span>
-          {showInspectorToggle && (
-            <button
-              type="button"
-              className={`toolbar-context-chip toolbar-context-chip--button ${isInspectorOpen ? 'toolbar-context-chip--feature' : ''}`}
-              onClick={onToggleInspector}
-              aria-pressed={isInspectorOpen}
-              data-testid="toolbar-inspector-toggle"
-              title={locale === 'ru'
-                ? (isInspectorOpen ? 'Скрыть инспектор' : 'Открыть инспектор')
-                : (isInspectorOpen ? 'Hide inspector' : 'Open inspector')}
-            >
-              {isCompactShell ? (locale === 'ru' ? 'Инспектор' : 'Inspector') : (locale === 'ru' ? 'Панель справа' : 'Right panel')}
-            </button>
-          )}
         </div>
       </div>
 
       {activeMenu && (
         <div
           ref={menuRef}
-          className="toolbar-menu-popup"
+          className={`toolbar-menu-popup${activeMenu.kind === 'overflow' ? ' toolbar-menu-popup--overflow' : ''}`}
           style={{
             position: 'fixed',
             left: activeMenu.x,
@@ -1296,6 +1318,7 @@ const Toolbar: React.FC<{
           {activeMenu.kind === 'mode' && renderModeMenu()}
           {activeMenu.kind === 'codegen' && renderCodegenMenu()}
           {activeMenu.kind === 'view' && renderViewMenu()}
+          {activeMenu.kind === 'overflow' && renderOverflowMenu()}
         </div>
       )}
     </div>

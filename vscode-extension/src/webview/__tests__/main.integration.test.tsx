@@ -253,6 +253,12 @@ describe('main.tsx integration', () => {
 
     const toggle = screen.getByTestId('toolbar-inspector-toggle');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    const mainActions = screen.getByTestId('toolbar-main-actions');
+    const actionButtons = within(mainActions).getAllByRole('button');
+    const runIndex = actionButtons.findIndex((button) => button.getAttribute('aria-label') === 'Запустить');
+    const inspectorIndex = actionButtons.findIndex((button) => button.getAttribute('data-testid') === 'toolbar-inspector-toggle');
+    expect(runIndex).toBeGreaterThanOrEqual(0);
+    expect(inspectorIndex).toBe(runIndex + 1);
 
     fireEvent.click(toggle);
 
@@ -265,6 +271,22 @@ describe('main.tsx integration', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('inspector-panel')).not.toBeInTheDocument();
     });
+  });
+
+  it('на narrow width secondary menus схлопываются в overflow', async () => {
+    setViewportWidth(1000);
+
+    expect(screen.queryByTestId('toolbar-files-menu-trigger')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('toolbar-mode-menu-trigger')).not.toBeInTheDocument();
+    expect(screen.getByTestId('toolbar-overflow-menu-trigger')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('toolbar-overflow-menu-trigger'));
+
+    const popup = await screen.findByTestId('toolbar-overflow-menu-popup');
+    expect(within(popup).getByText('Документ')).toBeInTheDocument();
+    expect(within(popup).getByText('Режим редактора')).toBeInTheDocument();
+    expect(within(popup).getByText('Профиль кода')).toBeInTheDocument();
+    expect(within(popup).getByText('Вид и помощь')).toBeInTheDocument();
   });
 
   it('Generate C++ раскрывает вкладку сгенерированного кода внизу', async () => {

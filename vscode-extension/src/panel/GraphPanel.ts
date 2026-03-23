@@ -4298,15 +4298,6 @@ export class GraphPanel {
         border-color: var(--mc-accent);
         color: var(--mc-accent);
       }
-      .toolbar-context-chip--button {
-        cursor: pointer;
-        transition: all 0.1s ease;
-      }
-      .toolbar-context-chip--button:hover {
-        color: var(--mc-body-text);
-        border-color: var(--mc-panel-title);
-        background: var(--mc-surface-strong);
-      }
       .toolbar-menu-popup {
         min-width: 320px;
         max-width: 440px;
@@ -4318,6 +4309,10 @@ export class GraphPanel {
         border-radius: 12px;
         background: color-mix(in srgb, var(--mc-surface) 92%, #0b1020);
         box-shadow: var(--mc-shadow);
+      }
+      .toolbar-menu-popup--overflow {
+        max-height: min(80vh, 760px);
+        overflow-y: auto;
       }
       .toolbar-menu-section {
         display: flex;
@@ -4487,20 +4482,6 @@ export class GraphPanel {
       .toolbar button.toolbar-menu-trigger {
         background: var(--mc-button-bg);
         color: var(--mc-button-text);
-      }
-      .toolbar button.toolbar-context-chip--button {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 8px;
-        border-radius: 999px;
-        background: var(--mc-surface);
-        color: var(--mc-muted);
-        border: 1px solid var(--mc-surface-border);
-      }
-      .toolbar button.toolbar-context-chip--button:hover {
-        color: var(--mc-body-text);
-        border-color: var(--mc-panel-title);
-        background: var(--mc-surface-strong);
       }
       .toolbar-action-label {
         display: inline-flex;

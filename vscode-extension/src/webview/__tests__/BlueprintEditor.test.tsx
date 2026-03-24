@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor, act, fireEvent, screen } from '@testing-library/react';
+import { render, waitFor, act, fireEvent, screen, within } from '@testing-library/react';
 import { type Edge, ReactFlowProvider } from '@xyflow/react';
 import {
   BlueprintEditor,
@@ -847,6 +847,8 @@ describe('BlueprintEditor', () => {
         expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
       });
 
+      fireEvent.click(screen.getByTestId('blueprint-toolbar-panels-trigger'));
+      expect(screen.getByTestId('blueprint-toolbar-menu-panels')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /UE Макросы/ })).toBeInTheDocument();
       expect(screen.getByTestId('ue-macro-badges-function-func-1')).toBeInTheDocument();
       expect(screen.getByTestId('ue-macro-badges-variable-var-1')).toBeInTheDocument();
@@ -871,7 +873,8 @@ describe('BlueprintEditor', () => {
         </TestWrapper>
       );
 
-      const toolbarToggle = screen.getByRole('button', { name: /UE Макросы/ });
+      fireEvent.click(screen.getByTestId('blueprint-toolbar-panels-trigger'));
+      const toolbarToggle = within(screen.getByTestId('blueprint-toolbar-menu-panels')).getByRole('button', { name: /UE Макросы/ });
 
       await waitFor(() => {
         expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
@@ -883,7 +886,8 @@ describe('BlueprintEditor', () => {
         expect(container.querySelector('.bp-ue-macro-panel')).toBeNull();
       });
 
-      fireEvent.click(toolbarToggle);
+      fireEvent.click(screen.getByTestId('blueprint-toolbar-panels-trigger'));
+      fireEvent.click(within(screen.getByTestId('blueprint-toolbar-menu-panels')).getByRole('button', { name: /UE Макросы/ }));
 
       await waitFor(() => {
         expect(container.querySelector('.bp-ue-macro-panel')).toBeTruthy();
@@ -894,6 +898,26 @@ describe('BlueprintEditor', () => {
       await waitFor(() => {
         expect(container.querySelector('.bp-ue-macro-list')).toBeNull();
       });
+    });
+
+    it('should expose code preview and package manager via utilities menu', async () => {
+      const onGraphChange = vi.fn();
+
+      render(
+        <TestWrapper>
+          <BlueprintEditor
+            graph={createEmptyGraph()}
+            onGraphChange={onGraphChange}
+            displayLanguage="ru"
+          />
+        </TestWrapper>
+      );
+
+      fireEvent.click(screen.getByTestId('blueprint-toolbar-utilities-trigger'));
+
+      const menu = await screen.findByTestId('blueprint-toolbar-menu-utilities');
+      expect(within(menu).getByRole('button', { name: /Код/ })).toBeInTheDocument();
+      expect(within(menu).getByRole('button', { name: /Пакеты/ })).toBeInTheDocument();
     });
   });
 

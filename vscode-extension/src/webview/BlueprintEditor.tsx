@@ -110,6 +110,7 @@ import {
 const EDGE_INTERACTION_WIDTH = 24;
 const BLOCK_SHORTCUTS_WHEN_DIALOG_OPEN_SELECTOR = '.variable-dialog-overlay, .pointer-dialog-overlay, .function-editor-overlay, .class-editor-overlay';
 const FUNCTION_BOUNDARY_NODE_TYPES = new Set<NodeType>(['FunctionEntry', 'FunctionReturn']);
+type ToolbarQuickMenu = 'panels' | 'utilities';
 
 const isTextInputContext = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -1684,6 +1685,8 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
   const [pointerPanelVisible, setPointerPanelVisible] = useState(true); // Панель указателей/ссылок видна по умолчанию
   const [classPanelVisible, setClassPanelVisible] = useState(!isFunctionModal); // Панель классов
   const [ueMacrosPanelVisible, setUeMacrosPanelVisible] = useState(graph.language === 'ue');
+  const [toolbarMenu, setToolbarMenu] = useState<ToolbarQuickMenu | null>(null);
+  const toolbarMenuRef = useRef<HTMLDivElement | null>(null);
   const [isFunctionsSectionCollapsed, setIsFunctionsSectionCollapsed] = useState(false);
   const [isVariablesSectionCollapsed, setIsVariablesSectionCollapsed] = useState(false);
   const [isPointersSectionCollapsed, setIsPointersSectionCollapsed] = useState(false);
@@ -3859,6 +3862,7 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
         setCodePreviewVisible(false);
         setPackageManagerVisible(false);
         setContextMenu(null);
+        setToolbarMenu(null);
       }
     };
     
@@ -3869,6 +3873,36 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     handleDeleteSelected, handleZoomToFit, handleSelectAll, handleAutoLayout,
     cancelPointerAttach, pointerAttachPointerId, functionGraphDialogFunctionId, uiMode
   ]);
+
+  useEffect(() => {
+    if (!toolbarMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof window.Node)) {
+        setToolbarMenu(null);
+        return;
+      }
+      if (!toolbarMenuRef.current?.contains(target)) {
+        setToolbarMenu(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setToolbarMenu(null);
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [toolbarMenu]);
   
   // Handle node hover from code panel
   const handleCodeLineHover = useCallback((nodeId: string | null) => {
@@ -3905,9 +3939,13 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     add: displayLanguage === 'ru' ? 'Добавить (A)' : 'Add (A)',
     code: displayLanguage === 'ru' ? 'Код (C)' : 'Code (C)',
     packages: displayLanguage === 'ru' ? 'Пакеты (P)' : 'Packages (P)',
+    utilities: displayLanguage === 'ru' ? 'Утилиты' : 'Utilities',
+    panels: displayLanguage === 'ru' ? 'Панели' : 'Panels',
     functions: displayLanguage === 'ru' ? 'Функции' : 'Functions',
+    variables: displayLanguage === 'ru' ? 'Переменные' : 'Variables',
     classes: displayLanguage === 'ru' ? 'Классы' : 'Classes',
     pointers: displayLanguage === 'ru' ? 'Указатели' : 'Pointers',
+    ueMacros: displayLanguage === 'ru' ? 'UE Макросы' : 'UE Macros',
     undo: displayLanguage === 'ru' ? 'Отменить' : 'Undo',
     redo: displayLanguage === 'ru' ? 'Повторить' : 'Redo',
     fit: displayLanguage === 'ru' ? 'Вписать (F)' : 'Fit (F)',
@@ -3951,6 +3989,101 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
     (classPanelVisible && !isClassesSectionCollapsed ? 1 : 0) +
     (graph.language === 'ue' && ueMacrosPanelVisible && !isUeMacrosSectionCollapsed ? 1 : 0);
   const shouldBalanceExpandedSections = expandedSidebarSections > 1;
+
+  const renderToolbarPanelsMenu = (): React.ReactNode => (
+    <div className="editor-toolbar-menu-section">
+      <div className="editor-toolbar-menu-title">{t.panels}</div>
+      {!isFunctionModal && (
+        <button
+          type="button"
+          className={`editor-toolbar-menu-item ${functionPanelVisible ? 'active-purple' : ''}`}
+          onClick={() => {
+            setFunctionPanelVisible((value) => !value);
+            setToolbarMenu(null);
+          }}
+        >
+          <span>ƒ</span>
+          <span>{t.functions}</span>
+        </button>
+      )}
+      <button
+        type="button"
+        className={`editor-toolbar-menu-item ${variablePanelVisible ? 'active-green' : ''}`}
+        onClick={() => {
+          setVariablePanelVisible((value) => !value);
+          setToolbarMenu(null);
+        }}
+      >
+        <span>📊</span>
+        <span>{t.variables}</span>
+      </button>
+      <button
+        type="button"
+        className={`editor-toolbar-menu-item ${pointerPanelVisible ? 'active-green' : ''}`}
+        onClick={() => {
+          setPointerPanelVisible((value) => !value);
+          setToolbarMenu(null);
+        }}
+      >
+        <span>🔗</span>
+        <span>{t.pointers}</span>
+      </button>
+      {!isFunctionModal && (
+        <button
+          type="button"
+          className={`editor-toolbar-menu-item ${classPanelVisible ? 'active-purple' : ''}`}
+          onClick={() => {
+            setClassPanelVisible((value) => !value);
+            setToolbarMenu(null);
+          }}
+        >
+          <span>🏛️</span>
+          <span>{t.classes}</span>
+        </button>
+      )}
+      {graph.language === 'ue' && (
+        <button
+          type="button"
+          className={`editor-toolbar-menu-item ${ueMacrosPanelVisible ? 'active' : ''}`}
+          onClick={() => {
+            setUeMacrosPanelVisible((value) => !value);
+            setToolbarMenu(null);
+          }}
+        >
+          <span>Ⓤ</span>
+          <span>{t.ueMacros}</span>
+        </button>
+      )}
+    </div>
+  );
+
+  const renderToolbarUtilitiesMenu = (): React.ReactNode => (
+    <div className="editor-toolbar-menu-section">
+      <div className="editor-toolbar-menu-title">{t.utilities}</div>
+      <button
+        type="button"
+        className={`editor-toolbar-menu-item ${codePreviewVisible ? 'active' : ''}`}
+        onClick={() => {
+          setCodePreviewVisible((value) => !value);
+          setToolbarMenu(null);
+        }}
+      >
+        <span>{'</>'}</span>
+        <span>{t.code}</span>
+      </button>
+      <button
+        type="button"
+        className={`editor-toolbar-menu-item ${packageManagerVisible ? 'active' : ''}`}
+        onClick={() => {
+          setPackageManagerVisible((value) => !value);
+          setToolbarMenu(null);
+        }}
+      >
+        <span>📦</span>
+        <span>{t.packages}</span>
+      </button>
+    </div>
+  );
 
   useEffect(() => {
     const detail = {
@@ -4271,122 +4404,82 @@ const BlueprintEditorInner: React.FC<BlueprintEditorProps> = ({
           />
           
           <Panel position="top-left">
-            <div className="editor-toolbar">
-              {/* Добавить узел */}
-              <button
-                onClick={() => setPaletteVisible(v => !v)}
-                className={`panel-btn ${paletteVisible ? 'active' : ''}`}
-              >
-                <span>+</span>
-                <span>{t.add}</span>
-              </button>
-              
-              {/* Код */}
-              <button
-                onClick={() => setCodePreviewVisible(v => !v)}
-                className={`panel-btn ${codePreviewVisible ? 'active' : ''}`}
-              >
-                <span>{'</>'}</span>
-                <span>{t.code}</span>
-              </button>
-              
-              {/* Пакеты */}
-              <button
-                onClick={() => setPackageManagerVisible(v => !v)}
-                className={`panel-btn ${packageManagerVisible ? 'active' : ''}`}
-              >
-                <span>📦</span>
-                <span>{t.packages}</span>
-              </button>
-              
-              {/* Функции (скрываем в модальном редакторе функции) */}
-              {!isFunctionModal && (
+            <div className="editor-toolbar-shell">
+              <div className="editor-toolbar">
                 <button
-                  onClick={() => setFunctionPanelVisible(v => !v)}
-                  className={`panel-btn ${functionPanelVisible ? 'active-purple' : ''}`}
+                  onClick={() => setPaletteVisible(v => !v)}
+                  className={`panel-btn ${paletteVisible ? 'active' : ''}`}
                 >
-                  <span>ƒ</span>
-                  <span>{t.functions}</span>
+                  <span>+</span>
+                  <span>{t.add}</span>
                 </button>
-              )}
-              
-              {/* Переменные */}
-              <button
-                onClick={() => setVariablePanelVisible(v => !v)}
-                className={`panel-btn ${variablePanelVisible ? 'active-green' : ''}`}
-              >
-                <span>📊</span>
-                <span>{displayLanguage === 'ru' ? 'Переменные' : 'Variables'}</span>
-              </button>
 
-              <button
-                onClick={() => setPointerPanelVisible(v => !v)}
-                className={`panel-btn ${pointerPanelVisible ? 'active-green' : ''}`}
-              >
-                <span>🔗</span>
-                <span>{t.pointers}</span>
-              </button>
-
-              {!isFunctionModal && (
                 <button
-                  onClick={() => setClassPanelVisible(v => !v)}
-                  className={`panel-btn ${classPanelVisible ? 'active-purple' : ''}`}
+                  type="button"
+                  onClick={() => setToolbarMenu((value) => value === 'panels' ? null : 'panels')}
+                  className={`panel-btn ${toolbarMenu === 'panels' ? 'active' : ''}`}
+                  data-testid="blueprint-toolbar-panels-trigger"
                 >
-                  <span>🏛️</span>
-                  <span>{t.classes}</span>
+                  <span>☰</span>
+                  <span>{t.panels}</span>
                 </button>
-              )}
 
-              {graph.language === 'ue' && (
                 <button
-                  onClick={() => setUeMacrosPanelVisible(v => !v)}
-                  className={`panel-btn ${ueMacrosPanelVisible ? 'active' : ''}`}
+                  type="button"
+                  onClick={() => setToolbarMenu((value) => value === 'utilities' ? null : 'utilities')}
+                  className={`panel-btn ${toolbarMenu === 'utilities' ? 'active' : ''}`}
+                  data-testid="blueprint-toolbar-utilities-trigger"
                 >
-                  <span>Ⓤ</span>
-                  <span>{displayLanguage === 'ru' ? 'UE Макросы' : 'UE Macros'}</span>
+                  <span>⋯</span>
+                  <span>{t.utilities}</span>
                 </button>
+
+                <div className="panel-divider" />
+
+                <button
+                  onClick={handleUndo}
+                  disabled={!historyState.canUndo}
+                  title={`${t.undo} (Ctrl+Z)`}
+                  className="panel-btn panel-btn-icon"
+                >
+                  ↶
+                </button>
+
+                <button
+                  onClick={handleRedo}
+                  disabled={!historyState.canRedo}
+                  title={`${t.redo} (Ctrl+Y)`}
+                  className="panel-btn panel-btn-icon"
+                >
+                  ↷
+                </button>
+
+                <button
+                  onClick={handleZoomToFit}
+                  title={t.fit}
+                  className="panel-btn panel-btn-icon"
+                >
+                  ⊡
+                </button>
+
+                <button
+                  onClick={handleAutoLayout}
+                  title={t.layout}
+                  className="panel-btn panel-btn-icon"
+                >
+                  ⊞
+                </button>
+              </div>
+
+              {toolbarMenu && (
+                <div
+                  ref={toolbarMenuRef}
+                  className="editor-toolbar-menu"
+                  data-testid={`blueprint-toolbar-menu-${toolbarMenu}`}
+                >
+                  {toolbarMenu === 'panels' ? renderToolbarPanelsMenu() : renderToolbarUtilitiesMenu()}
+                </div>
               )}
-              
-              {/* Разделитель */}
-              <div className="panel-divider" />
-              
-              {/* Undo */}
-              <button
-                onClick={handleUndo}
-                disabled={!historyState.canUndo}
-                title={`${t.undo} (Ctrl+Z)`}
-                className="panel-btn panel-btn-icon"
-              >
-                ↶
-              </button>
-              
-              {/* Redo */}
-              <button
-                onClick={handleRedo}
-                disabled={!historyState.canRedo}
-                title={`${t.redo} (Ctrl+Y)`}
-                className="panel-btn panel-btn-icon"
-              >
-                ↷
-              </button>
-              
-              {/* Zoom to Fit */}
-              <button
-                onClick={handleZoomToFit}
-                title={t.fit}
-                className="panel-btn panel-btn-icon"
-              >
-                ⊡
-              </button>
-              
-              {/* Auto Layout */}
-              <button
-                onClick={handleAutoLayout}
-                title={t.layout}
-                className="panel-btn panel-btn-icon"
-              >
-                ⊞
-              </button>
             </div>
           </Panel>
           

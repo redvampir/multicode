@@ -289,6 +289,42 @@ describe('main.tsx integration', () => {
     expect(within(popup).getByText('Вид и помощь')).toBeInTheDocument();
   });
 
+  it('на compact width вторичные контекстные статусы доступны через popup', async () => {
+    await setEditorMode('blueprint');
+    setViewportWidth(1200);
+
+    dispatchExternalIpcResponse({
+      type: 'classStorageStatusChanged',
+      payload: {
+        mode: 'sidecar',
+        isBoundSource: true,
+        graphFilePath: 'f:/workspace/.multicode/graph-1.multicode',
+        classesDirPath: 'f:/workspace/.multicode/classes',
+        bindingsTotal: 2,
+        classesLoaded: 2,
+        missing: 1,
+        failed: 0,
+        fallbackEmbedded: 1,
+        updatedAt: new Date().toISOString(),
+        classItems: [
+          { classId: 'class-a', filePath: 'f:/workspace/.multicode/classes/class-a.multicode', status: 'ok' },
+          { classId: 'class-b', filePath: 'f:/workspace/.multicode/classes/class-b.multicode', status: 'missing' },
+        ],
+      },
+    });
+
+    expect(screen.getByTestId('problems-indicator')).toBeInTheDocument();
+    expect(screen.queryByTestId('class-storage-badge')).not.toBeInTheDocument();
+    expect(screen.getByTestId('toolbar-context-menu-trigger')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('toolbar-context-menu-trigger'));
+
+    const popup = await screen.findByTestId('toolbar-context-menu-popup');
+    expect(within(popup).getByText(/Кодоген:/i)).toBeInTheDocument();
+    expect(within(popup).getByTestId('class-storage-badge')).toHaveTextContent('Хранение классов: внешние файлы');
+    expect(within(popup).getByText(/Class Nodes|Узлы классов/i)).toBeInTheDocument();
+  });
+
   it('Generate C++ раскрывает вкладку сгенерированного кода внизу', async () => {
     await setEditorMode('blueprint');
     vi.useFakeTimers();

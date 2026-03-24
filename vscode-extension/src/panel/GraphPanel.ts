@@ -4298,6 +4298,25 @@ export class GraphPanel {
         border-color: var(--mc-accent);
         color: var(--mc-accent);
       }
+      .toolbar-context-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--mc-surface-border);
+        background: var(--mc-surface);
+        color: var(--mc-muted);
+        cursor: pointer;
+        transition: all 0.1s ease;
+      }
+      .toolbar-context-trigger:hover,
+      .toolbar-context-trigger.is-active {
+        color: var(--mc-body-text);
+        border-color: var(--mc-panel-title);
+        background: var(--mc-surface-strong);
+      }
       .toolbar-menu-popup {
         min-width: 320px;
         max-width: 440px;
@@ -4345,6 +4364,11 @@ export class GraphPanel {
         font-size: 11px;
         color: var(--mc-muted);
         line-height: 1.4;
+      }
+      .toolbar-status-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
       .toolbar-working-file-menu-search {
         display: grid;

@@ -462,7 +462,7 @@ const reportWebviewError = (message: string): void => {
   sendToExtension({ type: 'reportWebviewError', payload: { message } });
 };
 
-type ToolbarMenuKind = 'files' | 'mode' | 'codegen' | 'view' | 'overflow';
+type ToolbarMenuKind = 'files' | 'mode' | 'codegen' | 'view' | 'overflow' | 'context';
 
 const Toolbar: React.FC<{
   locale: GraphDisplayLanguage;
@@ -562,6 +562,7 @@ const Toolbar: React.FC<{
   const storageBadgeLabel = formatClassStorageBadgeLabel(locale, classStorageStatus, sidecarOkCount);
   const classNodesBadgeLabel = formatClassNodesBadgeLabel(locale, classNodesAdvancedEnabled);
   const showCollapsedMenus = shellMode !== 'wide';
+  const showCollapsedContext = shellMode !== 'wide';
 
   const flushCurrentGraphState = (): void => {
     const snapshot = useGraphStore.getState().graph;
@@ -1100,6 +1101,32 @@ const Toolbar: React.FC<{
     </>
   );
 
+  const renderContextMenu = (): React.ReactNode => (
+    <div className="toolbar-menu-section">
+      <div className="toolbar-menu-section-title">{locale === 'ru' ? 'Контекст графа' : 'Graph context'}</div>
+      <div className="toolbar-status-grid">
+        <span className="toolbar-context-chip">{locale === 'ru' ? `Режим: ${modeLabel}` : `Mode: ${modeLabel}`}</span>
+        <span className="toolbar-context-chip">{locale === 'ru' ? `Кодоген: ${codegenChipLabel}` : `Codegen: ${codegenChipLabel}`}</span>
+        <span className={problemsChipClass}>{problemsLabel}</span>
+        <span
+          className={hasStorageIssues ? 'toolbar-context-chip toolbar-context-chip--warn' : 'toolbar-context-chip toolbar-context-chip--ok'}
+          title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
+          data-testid="class-storage-badge"
+        >
+          {storageBadgeLabel}
+        </span>
+        <span
+          className={`toolbar-context-chip ${classNodesAdvancedEnabled ? 'toolbar-context-chip--feature' : ''}`}
+          title={classNodesAdvancedEnabled
+            ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
+            : 'Доступен базовый пакет class-узлов'}
+        >
+          {classNodesBadgeLabel}
+        </span>
+      </div>
+    </div>
+  );
+
   return (
     <div className="toolbar app-header">
       <div className="toolbar-main">
@@ -1281,24 +1308,41 @@ const Toolbar: React.FC<{
           {locale === 'ru' ? `Проект / Граф / ${graph.name}` : `Project / Graph / ${graph.name}`}
         </div>
         <div className="toolbar-context-chips">
-          <span className="toolbar-context-chip">{locale === 'ru' ? `Режим: ${modeLabel}` : `Mode: ${modeLabel}`}</span>
-          <span className="toolbar-context-chip">{locale === 'ru' ? `Кодоген: ${codegenChipLabel}` : `Codegen: ${codegenChipLabel}`}</span>
+          {shellMode !== 'narrow' && (
+            <span className="toolbar-context-chip">{locale === 'ru' ? `Режим: ${modeLabel}` : `Mode: ${modeLabel}`}</span>
+          )}
+          {!showCollapsedContext && (
+            <span className="toolbar-context-chip">{locale === 'ru' ? `Кодоген: ${codegenChipLabel}` : `Codegen: ${codegenChipLabel}`}</span>
+          )}
           <span className={problemsChipClass} data-testid="problems-indicator">{problemsLabel}</span>
-          <span
-            className={hasStorageIssues ? 'toolbar-context-chip toolbar-context-chip--warn' : 'toolbar-context-chip toolbar-context-chip--ok'}
-            title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
-            data-testid="class-storage-badge"
-          >
-            {storageBadgeLabel}
-          </span>
-          <span
-            className={`toolbar-context-chip ${classNodesAdvancedEnabled ? 'toolbar-context-chip--feature' : ''}`}
-            title={classNodesAdvancedEnabled
-              ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
-              : 'Доступен базовый пакет class-узлов'}
-          >
-            {classNodesBadgeLabel}
-          </span>
+          {showCollapsedContext ? (
+            <button
+              type="button"
+              className={`toolbar-context-trigger ${activeMenu?.kind === 'context' ? 'is-active' : ''}`}
+              onClick={(event) => toggleMenu('context', event)}
+              data-testid="toolbar-context-menu-trigger"
+            >
+              {locale === 'ru' ? 'Контекст' : 'Context'} ▼
+            </button>
+          ) : (
+            <>
+              <span
+                className={hasStorageIssues ? 'toolbar-context-chip toolbar-context-chip--warn' : 'toolbar-context-chip toolbar-context-chip--ok'}
+                title={formatClassStorageBadgeTitle(locale, classStorageStatus, sidecarOkCount)}
+                data-testid="class-storage-badge"
+              >
+                {storageBadgeLabel}
+              </span>
+              <span
+                className={`toolbar-context-chip ${classNodesAdvancedEnabled ? 'toolbar-context-chip--feature' : ''}`}
+                title={classNodesAdvancedEnabled
+                  ? 'Расширенные class-узлы включены настройкой multicode.classNodes.advanced'
+                  : 'Доступен базовый пакет class-узлов'}
+              >
+                {classNodesBadgeLabel}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -1319,6 +1363,7 @@ const Toolbar: React.FC<{
           {activeMenu.kind === 'codegen' && renderCodegenMenu()}
           {activeMenu.kind === 'view' && renderViewMenu()}
           {activeMenu.kind === 'overflow' && renderOverflowMenu()}
+          {activeMenu.kind === 'context' && renderContextMenu()}
         </div>
       )}
     </div>
